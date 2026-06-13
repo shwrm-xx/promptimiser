@@ -1,0 +1,38 @@
+agent:
+  name: vibe-session-governor
+  primary_objective: reduce_context_reread_cost
+  secondary_objective: close_batches_cleanly
+
+budget:
+  warn_after_session_turns: 12
+  recommend_fresh_session_after_turns: 20
+  max_repeated_reads_per_file: 1
+  max_handoff_tokens: 800
+  max_claude_md_tokens: 1200
+  max_agents_md_tokens: 1200
+
+context_policy:
+  prefer:
+    - git_status
+    - git_diff
+    - rg_search
+    - partial_read
+    - local_summary
+  avoid:
+    - full_file_reread
+    - broad_project_scan
+    - exhaustive_visual_recapture
+    - long_handoff
+    - duplicated_rules
+  exceptions:
+    - file_changed_since_last_read
+    - previous_read_was_partial
+    - exact_content_required_for_bug
+    - user_explicitly_requests_full_review
+
+closure_policy:
+  one_batch_equals_one_commit: true
+  require_changelog: true
+  require_targeted_verification: true
+  require_unverified_items: true
+  recommend_fresh_session_after_commit: true
