@@ -1,0 +1,7 @@
+.DS_Store
+node_modules/
+*.log
+
+# Artéfacts de test en bac à sable
+/.sandbox/
+*.vsg-backup-*.json

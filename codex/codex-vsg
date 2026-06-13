@@ -1,0 +1,25 @@
+#!/bin/bash
+# codex-vsg — lance Codex en garantissant un AGENTS.md projet (socle VSG) au préalable.
+# Installation : copier dans un dossier du PATH (ex. ~/bin/codex-vsg), chmod +x.
+set -u
+
+HERE="$(pwd)"
+TPL="$HOME/.claude/vibe-session-governor/templates/AGENTS.md"
+BOOT="$HOME/.claude/vibe-session-governor/scripts/bootstrap-project.js"
+
+if [ ! -f "$HERE/AGENTS.md" ]; then
+  # Repo git : bootstrap prudent (jamais d'écrasement). Sinon : copie directe du template.
+  if command -v node >/dev/null 2>&1 && [ -f "$BOOT" ]; then
+    node "$BOOT" >/dev/null 2>&1 || true
+  fi
+  if [ ! -f "$HERE/AGENTS.md" ] && [ -f "$TPL" ]; then
+    cp "$TPL" "$HERE/AGENTS.md"
+    echo "codex-vsg : AGENTS.md créé depuis le template VSG."
+  fi
+fi
+
+if ! command -v codex >/dev/null 2>&1; then
+  echo "codex-vsg : binaire 'codex' introuvable dans le PATH." >&2
+  exit 127
+fi
+exec codex "$@"

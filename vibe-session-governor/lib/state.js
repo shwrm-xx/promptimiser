@@ -1,0 +1,59 @@
+'use strict';
+// État de session keyé par session_id, dans .vibe-agent/session-state.json.
+// Écriture atomique, fail-silent. No-op si le projet n'est pas initialisé.
+const fs = require('fs');
+const path = require('path');
+const { vibeDir, isInitialized } = require('./project');
+
+const DEFAULT_STATE = {
+  session_id: null,
+  current_batch: null,
+  turn_count_estimate: 0,
+  batch_status: 'not_started',
+  verification_status: 'not_checked',
+  fresh_session_recommended: false,
+  closure_reminded_for_batch: false,
+  prompt_reminders: {}, // anti-spam des rappels UserPromptSubmit (clé -> true)
+};
+
+function stateFile(root) {
+  return path.join(vibeDir(root), 'session-state.json');
+}
+
+function writeAtomic(file, obj) {
+  try {
+    const tmp = file + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
+    fs.renameSync(tmp, file);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function loadSessionState(root, sessionId) {
+  if (!isInitialized(root)) {
+    return Object.assign({}, DEFAULT_STATE, { session_id: sessionId || null });
+  }
+  let st;
+  try {
+    st = JSON.parse(fs.readFileSync(stateFile(root), 'utf8'));
+  } catch (_) {
+    st = null;
+  }
+  if (!st || typeof st !== 'object') st = {};
+  // Nouvelle session => flags remis à zéro.
+  if (sessionId && st.session_id && st.session_id !== sessionId) {
+    return Object.assign({}, DEFAULT_STATE, { session_id: sessionId });
+  }
+  const merged = Object.assign({}, DEFAULT_STATE, st);
+  if (sessionId) merged.session_id = sessionId;
+  return merged;
+}
+
+function saveSessionState(root, state) {
+  if (!isInitialized(root)) return false;
+  return writeAtomic(stateFile(root), state);
+}
+
+module.exports = { loadSessionState, saveSessionState, DEFAULT_STATE };
