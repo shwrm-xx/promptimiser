@@ -1,6 +1,6 @@
-# CLAUDE.md — dépôt `promptimiser` (source de Vibe Session Governor)
+# CLAUDE.md — dépôt `promptimiser` (source de Promptimizer)
 
-Ce dépôt **n'est pas une app** : c'est la **source** du package **Vibe Session Governor (VSG)**,
+Ce dépôt **n'est pas une app** : c'est la **source** du package **Promptimizer (PMZ)**,
 un système Claude Code de gouvernance de sessions vibecoding. Réponds en français.
 
 ## Ce qu'est ce dépôt
@@ -9,11 +9,11 @@ L'arborescence reflète **en miroir plat** la cible d'installation `~/.claude/` 
 
 | Source (ce dépôt)                  | Cible après install                       |
 |------------------------------------|-------------------------------------------|
-| `vibe-session-governor/`           | `~/.claude/vibe-session-governor/`        |
-| `skills/vibe-session-governor/`    | `~/.claude/skills/vibe-session-governor/` |
-| `vibe-session-governor/commands/`  | `~/.claude/commands/`                     |
+| `promptimizer/`           | `~/.claude/promptimizer/`        |
+| `skills/promptimizer/`    | `~/.claude/skills/promptimizer/` |
+| `promptimizer/commands/`  | `~/.claude/commands/`                     |
 
-`vibe-session-governor/install/install.command` résout sa propre position et déploie vers
+`promptimizer/install/install.command` résout sa propre position et déploie vers
 `~/.claude/`. La spec d'origine est dans `mwn/` ; l'architecture vivante est dans
 [ARCHITECTURE.md](ARCHITECTURE.md) (source de vérité pour le contrat des hooks).
 

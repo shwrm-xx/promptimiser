@@ -49,10 +49,10 @@ function main() {
   const verdict = classify(cmd);
   const short = cmd.length > 200 ? cmd.slice(0, 200) + '…' : cmd;
   if (verdict === 'deny') {
-    return preToolDecision('deny', 'Commande catastrophique bloquée par Vibe Session Governor : ' + short);
+    return preToolDecision('deny', 'Commande catastrophique bloquée par Promptimizer : ' + short);
   }
   if (verdict === 'ask') {
-    return preToolDecision('ask', 'Commande destructive — confirmer avant exécution (VSG) : ' + short);
+    return preToolDecision('ask', 'Commande destructive — confirmer avant exécution (PMZ) : ' + short);
   }
   return passThrough();
 }

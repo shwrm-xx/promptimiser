@@ -7,7 +7,7 @@ Analyse l'état de la session avec priorité absolue à l'économie de contexte.
 
 Ne relis pas de fichiers complets si `git status`, `git diff`, `git grep` ou les ledgers
 `.vibe-agent/` suffisent. Tu peux exécuter :
-`node ~/.claude/vibe-session-governor/scripts/audit-context.js`
+`node ~/.claude/promptimizer/scripts/audit-context.js`
 
 Produis :
 1. statut budget contexte ;

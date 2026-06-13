@@ -5,7 +5,7 @@ allowed-tools: Bash(node *), Bash(git *)
 
 Clôture le lot courant avec discipline.
 
-Point de départ : `node ~/.claude/vibe-session-governor/scripts/close-batch.js`
+Point de départ : `node ~/.claude/promptimizer/scripts/close-batch.js`
 
 Étapes :
 1. Résumer la demande initiale.

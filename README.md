@@ -1,4 +1,4 @@
-# Vibe Session Governor (VSG)
+# Promptimizer (PMZ)
 
 Système local de gouvernance pour sessions de **vibecoding**, conçu pour **Claude Code
 desktop** (macOS). Il s'installe une fois, s'active automatiquement sur tous les projets, et
@@ -14,20 +14,20 @@ Il fournit aussi un **delta Codex** (`AGENTS.md`) pour porter le même socle de 
 
 ## Installation
 
-1. Double-clique sur `vibe-session-governor/install/install.command`.
+1. Double-clique sur `promptimizer/install/install.command`.
    _(1re fois : si macOS bloque, clic droit → Ouvrir, ou retire la quarantaine —
-   `xattr -dr com.apple.quarantine vibe-session-governor`.)_
+   `xattr -dr com.apple.quarantine promptimizer`.)_
    L'installeur copie le package dans `~/.claude/`, **sauvegarde** ton `settings.json`, fusionne
-   les hooks **sans rien écraser**, et te **propose** de laisser VSG reprendre le rôle d'un
+   les hooks **sans rien écraser**, et te **propose** de laisser PMZ reprendre le rôle d'un
    éventuel hook `Stop` existant (réversible).
-2. Vérifie avec `vibe-session-governor/install/vsg-doctor.command`.
+2. Vérifie avec `promptimizer/install/pmz-doctor.command`.
 
 Aucun `sudo` n'est demandé.
 
 ## Vérification
 
 ```
-Vibe Session Governor — diagnostic
+Promptimizer — diagnostic
 
 Claude settings : OK
 Hooks globaux : OK
@@ -41,7 +41,7 @@ Statut : vert
 ## Comportement dans Claude Code
 
 - **Au démarrage** d'un projet initialisé : court rappel des priorités.
-- **Projet non initialisé** (repo git) : VSG **propose** l'initialisation ; rien n'est écrit sans
+- **Projet non initialisé** (repo git) : PMZ **propose** l'initialisation ; rien n'est écrit sans
   ton accord.
 - **Pendant la session** : confirmation demandée avant une commande destructive
   (`git reset --hard`, `rm -rf <dossier>`…) ; les commandes catastrophiques sont bloquées. Les
@@ -51,12 +51,12 @@ Statut : vert
 
 ## Slash commands (secours)
 
-`/vsg-init` · `/budget` · `/check-context` · `/close-batch` · `/fresh-session`
+`/pmz-init` · `/budget` · `/check-context` · `/close-batch` · `/fresh-session`
 
 ## Désinstallation
 
-Double-clique sur `vibe-session-governor/install/uninstall.command` (retire **uniquement** les
-hooks VSG, propose de restaurer l'ancien hook, ne touche jamais à tes projets).
+Double-clique sur `promptimizer/install/uninstall.command` (retire **uniquement** les
+hooks PMZ, propose de restaurer l'ancien hook, ne touche jamais à tes projets).
 
 ## Pour les contributeurs
 

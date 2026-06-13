@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 function disabled() {
-  return process.env.VSG_DISABLE === '1';
+  return process.env.PMZ_DISABLE === '1';
 }
 
 const EXTRA_DIRS = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];

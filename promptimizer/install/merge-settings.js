@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Fusion sûre des hooks VSG dans ~/.claude/settings.json.
+// Fusion sûre des hooks PMZ dans ~/.claude/settings.json.
 // - parse STRICT (échec -> abort, aucune écriture)
 // - backup horodaté vérifié
 // - fusion append-only par event, taguée (idempotente)
@@ -15,13 +15,13 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const VSG_TAG = 'vibe-session-governor/hooks/';
-const HOOK_BASE = '~/.claude/vibe-session-governor/hooks';
-const STATE_DIR = process.env.VSG_STATE_DIR ||
-  path.join(os.homedir(), '.claude', 'vibe-session-governor', 'state');
+const PMZ_TAG = 'promptimizer/hooks/';
+const HOOK_BASE = '~/.claude/promptimizer/hooks';
+const STATE_DIR = process.env.PMZ_STATE_DIR ||
+  path.join(os.homedir(), '.claude', 'promptimizer', 'state');
 const SIDECAR = path.join(STATE_DIR, 'taken-over.json');
 
-const VSG_HOOKS = {
+const PMZ_HOOKS = {
   SessionStart: [{ matcher: 'startup|resume', hooks: [cmd('session-start.js', 10)] }],
   UserPromptSubmit: [{ hooks: [cmd('user-prompt-submit.js', 5)] }],
   PreToolUse: [{ matcher: 'Bash', hooks: [cmd('pre-tool-use.js', 5)] }],
@@ -36,7 +36,7 @@ function clone(x) { return JSON.parse(JSON.stringify(x)); }
 
 function isVsgEntry(entry) {
   return !!(entry && Array.isArray(entry.hooks) &&
-    entry.hooks.some((h) => h && typeof h.command === 'string' && h.command.includes(VSG_TAG)));
+    entry.hooks.some((h) => h && typeof h.command === 'string' && h.command.includes(PMZ_TAG)));
 }
 function hasContextGuard(entry) {
   return !!(entry && Array.isArray(entry.hooks) &&
@@ -51,9 +51,9 @@ function stripVsg(hooks) {
   }
 }
 function addVsg(hooks) {
-  for (const event of Object.keys(VSG_HOOKS)) {
+  for (const event of Object.keys(PMZ_HOOKS)) {
     if (!Array.isArray(hooks[event])) hooks[event] = [];
-    for (const entry of VSG_HOOKS[event]) hooks[event].push(clone(entry));
+    for (const entry of PMZ_HOOKS[event]) hooks[event].push(clone(entry));
   }
 }
 function takeover(hooks) {
@@ -96,7 +96,7 @@ function timestamp() {
 }
 function backup(settingsPath) {
   if (!fs.existsSync(settingsPath)) return null;
-  const dest = settingsPath.replace(/\.json$/, '') + `.vsg-backup-${timestamp()}.json`;
+  const dest = settingsPath.replace(/\.json$/, '') + `.pmz-backup-${timestamp()}.json`;
   fs.copyFileSync(settingsPath, dest);
   if (!fs.existsSync(dest) || fs.statSync(dest).size === 0) throw new Error('sauvegarde vide/échouée');
   return dest;
@@ -137,7 +137,7 @@ function main() {
       hooks.Stop.some(isVsgEntry) && hooks.Stop.some(hasContextGuard);
     process.stdout.write(JSON.stringify({
       settings_exists: fs.existsSync(settingsPath),
-      vsg_hooks_present: vsgPresent,
+      pmz_hooks_present: vsgPresent,
       context_guard_present: guardPresent,
       double_stop: doubleStop,
     }, null, 2) + '\n');

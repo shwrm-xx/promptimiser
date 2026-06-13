@@ -2,7 +2,7 @@
 // Messages injectés par les hooks. Courts, conformes à la spec mwn/ (rg -> git grep).
 
 const MSG_ACTIF = [
-  'Vibe Session Governor actif.',
+  'Promptimizer actif.',
   'Priorité : réduire les relectures de contexte.',
   'Utilise git grep/git diff avant Read complet.',
   'Clôture chaque lot par vérif ciblée + changelog + commit + handoff court.',
@@ -10,9 +10,9 @@ const MSG_ACTIF = [
 
 const MSG_NON_INIT = [
   'Projet non initialisé détecté.',
-  'Vibe Session Governor peut créer un socle prudent (CLAUDE.md, AGENTS.md, CHANGELOG.md, .vibe-agent/).',
+  'Promptimizer peut créer un socle prudent (CLAUDE.md, AGENTS.md, CHANGELOG.md, .vibe-agent/).',
   "Propose-le et ne crée les fichiers qu'APRÈS confirmation de l'utilisateur, via :",
-  'node ~/.claude/vibe-session-governor/scripts/bootstrap-project.js',
+  'node ~/.claude/promptimizer/scripts/bootstrap-project.js',
   'Avant de coder : finaliser CLAUDE.md/AGENTS.md avec lecture minimale, puis proposer un premier lot court.',
 ].join('\n');
 

@@ -10,7 +10,7 @@ Utilise d'abord :
 - `git diff --stat`
 - `.vibe-agent/context-ledger.json`
 - `.vibe-agent/read-ledger.json`
-- `node ~/.claude/vibe-session-governor/scripts/audit-context.js`
+- `node ~/.claude/promptimizer/scripts/audit-context.js`
 
 Ne propose une lecture complète que si elle est nécessaire.
 

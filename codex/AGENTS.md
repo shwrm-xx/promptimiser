@@ -1,4 +1,4 @@
-# AGENTS.md — socle Vibe Session Governor (Codex)
+# AGENTS.md — socle Promptimizer (Codex)
 
 Instructions persistantes pour agents de code (Codex et compatibles). Même socle de règles que
 côté Claude Code, sans les hooks (que Codex ne gère pas).

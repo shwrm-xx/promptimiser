@@ -1,23 +1,23 @@
-# ARCHITECTURE — Vibe Session Governor
+# ARCHITECTURE — Promptimizer
 
 Capture la couche **stable** et le non-greppable. Le code fait foi pour le détail volatil.
 
 ## Vue d'ensemble
 
-VSG = un package installé dans `~/.claude/` qui branche **5 hooks Claude Code** + une **skill
+PMZ = un package installé dans `~/.claude/` qui branche **5 hooks Claude Code** + une **skill
 globale** + des **slash commands** + des **scripts** + des **templates** + un **delta Codex**.
 Le dépôt en est la source (miroir plat → `~/.claude/`, cf. [CLAUDE.md](CLAUDE.md)).
 
 ```
-Vibe Session Governor
-├─ Project Initializer      (session-start + bootstrap-project + /vsg-init)
+Promptimizer
+├─ Project Initializer      (session-start + bootstrap-project + /pmz-init)
 ├─ Context Budget Controller (occupancy.js : occupation par tokens, paliers, systemMessage)
 └─ Batch Quality Controller  (stop + audit-batch + close-batch + ledgers)
 ```
 
 ## Contrat des hooks (source de vérité)
 
-Hooks invoqués via `node ~/.claude/vibe-session-governor/hooks/<x>.js` (le `~` est développé
+Hooks invoqués via `node ~/.claude/promptimizer/hooks/<x>.js` (le `~` est développé
 dans le champ `command` de `settings.json`). Stdin = JSON ; sortie = JSON sur stdout, exit 0.
 
 | Hook | Event / matcher | Lit (stdin) | Émet | Rôle |
@@ -31,7 +31,7 @@ dans le champ `command` de `settings.json`). Stdin = JSON ; sortie = JSON sur st
 ### Invariants NON négociables
 1. **Fail-open** : toute erreur/timeout/JSON → `exit 0` ; jamais `exit 2` ; doute → `allow`.
    `try/catch` global + `uncaughtException`/`unhandledRejection` + watchdog `setTimeout`.
-2. **Kill-switch** : `VSG_DISABLE=1` → `exit 0` en 1re ligne de chaque hook.
+2. **Kill-switch** : `PMZ_DISABLE=1` → `exit 0` en 1re ligne de chaque hook.
 3. **Pas d'écriture auto** hors repo git initialisé ; **jamais d'écrasement** ; init après confirmation.
 4. **PreToolUse étroit** : `deny`/`ask` sur denylist destructive ancrée + whitelist large ;
    aucun `ask` sur Read/Edit (respect `acceptEdits`).
@@ -42,7 +42,7 @@ dans le champ `command` de `settings.json`). Stdin = JSON ; sortie = JSON sur st
 
 - **Occupation contexte** (`lib/occupancy.js`) : lit la dernière ligne `usage` du transcript
   (`input + cache_read + cache_creation`), compare aux paliers `[150k, 300k, 500k, 750k]`,
-  anti-spam par session dans `~/.claude/vibe-session-governor/state/<sid>`. Aucune dépendance aux
+  anti-spam par session dans `~/.claude/promptimizer/state/<sid>`. Aucune dépendance aux
   ledgers projet. → C'est la méthode reprise de l'ancien `context-guard.py`.
 - **Ledgers projet** (`.vibe-agent/{read,context}-ledger.json`) : maintenus par `post-tool-use.js`
   (atomique `tmp`+`rename`, cap FIFO). Servent l'advisory `/check-context`. Granularité
@@ -53,7 +53,7 @@ dans le champ `command` de `settings.json`). Stdin = JSON ; sortie = JSON sur st
 ## Mapping source → cible & installation
 
 `merge-settings.js` : parse strict (échec → **abort**), backup horodaté vérifié, fusion
-**append-only par event** taguée par le chemin `vibe-session-governor/hooks/` (idempotente),
+**append-only par event** taguée par le chemin `promptimizer/hooks/` (idempotente),
 préserve `permissions`/`statusLine`/`enabledPlugins`. Prise de relais de `context-guard.py`
 (`--takeover`) : commente/retire son entrée `Stop`, **réversible** (`--remove` restaure le
 backup). Écriture atomique, perms 0600.
@@ -61,7 +61,7 @@ backup). Écriture atomique, perms 0600.
 ## Décisions & pourquoi
 
 - **Occupation-tokens plutôt que compteur de tours** (vs spec) : signal réel, déjà éprouvé par
-  `context-guard.py` ; VSG le reprend à son compte (système standalone unifié).
+  `context-guard.py` ; PMZ le reprend à son compte (système standalone unifié).
 - **Stop non bloquant** : un Stop bloquant risque la boucle (cap 8) et gonfle le contexte ;
   `systemMessage` informe sans bloquer.
 - **PreToolUse limité à `Bash`** : `acceptEdits` montre que l'utilisateur veut peu de

@@ -1,7 +1,7 @@
 # Delta Codex
 
-Codex **n'est pas** la cible principale de Vibe Session Governor. L'auto-activation complète
-(hooks globaux + skill + bootstrap) reste portée par **Claude Code**. Pour Codex, VSG fournit un
+Codex **n'est pas** la cible principale de Promptimizer. L'auto-activation complète
+(hooks globaux + skill + bootstrap) reste portée par **Claude Code**. Pour Codex, PMZ fournit un
 **delta** : le même socle de règles via `AGENTS.md`.
 
 ## Stratégie
@@ -17,11 +17,11 @@ Code côté Codex.
 
 ## Mise en place
 
-1. **Par projet** : laisser Claude Code créer `AGENTS.md` (via `/vsg-init` ou bootstrap), puis
+1. **Par projet** : laisser Claude Code créer `AGENTS.md` (via `/pmz-init` ou bootstrap), puis
    ouvrir le projet dans Codex.
 2. **Global (optionnel)** : copier [`AGENTS.md`](AGENTS.md) vers `~/.codex/AGENTS.md`.
 3. **Wrapper (optionnel)** : placer [`codex-vsg`](codex-vsg) dans le `PATH` (`chmod +x`). Il
-   garantit un `AGENTS.md` projet avant de lancer `codex`, en s'appuyant sur le bootstrap VSG
+   garantit un `AGENTS.md` projet avant de lancer `codex`, en s'appuyant sur le bootstrap PMZ
    (repo git, jamais d'écrasement) ou, à défaut, sur le template.
 
 ## Usage recommandé

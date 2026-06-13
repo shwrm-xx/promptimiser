@@ -5,7 +5,7 @@ allowed-tools: Bash(node *), Bash(git *)
 
 Prépare une nouvelle session en minimisant le contexte.
 
-Produis un handoff court (modèle : `~/.claude/vibe-session-governor/templates/handoff-template.md`) :
+Produis un handoff court (modèle : `~/.claude/promptimizer/templates/handoff-template.md`) :
 
 ## Handoff session fraîche
 

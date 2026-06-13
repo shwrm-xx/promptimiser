@@ -9,8 +9,8 @@ const os = require('os');
 const crypto = require('crypto');
 
 const BUCKETS = [150000, 300000, 500000, 750000];
-const STATE_DIR = process.env.VSG_STATE_DIR ||
-  path.join(os.homedir(), '.claude', 'vibe-session-governor', 'state');
+const STATE_DIR = process.env.PMZ_STATE_DIR ||
+  path.join(os.homedir(), '.claude', 'promptimizer', 'state');
 
 function readLastOccupancy(transcriptPath, tailBytes) {
   const tail = tailBytes || 512 * 1024;

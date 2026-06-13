@@ -1,5 +1,5 @@
 agent:
-  name: vibe-session-governor
+  name: promptimizer
   primary_objective: reduce_context_reread_cost
   secondary_objective: close_batches_cleanly
 
