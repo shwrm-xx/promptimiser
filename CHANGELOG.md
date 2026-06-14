@@ -2,6 +2,14 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.4.1] — 2026-06-14
+
+Script d'export autonome.
+
+- **`promptimizer/install/package.command`** : génère un `.zip` daté sur le Bureau
+  contenant `promptimizer/` + `skills/promptimizer/` — prêt à transférer sur un autre Mac.
+  L'archive est autonome (pas de Git requis) ; décompresser → double-clic `install.command`.
+
 ## [0.4.0] — 2026-06-14
 
 Lot 5 de l'audit : items différés (robustesse fail-open, install, portabilité).
