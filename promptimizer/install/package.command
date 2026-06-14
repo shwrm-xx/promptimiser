@@ -36,18 +36,50 @@ chmod +x "$OUT/promptimizer/install/"*.command 2>/dev/null || true
 chmod +x "$OUT/promptimizer/hooks/"*.js "$OUT/promptimizer/scripts/"*.js 2>/dev/null || true
 chmod +x "$OUT/codex/install-codex.command" "$OUT/codex/pmz-codex" 2>/dev/null || true
 
-# Zip (dossier de base = $ARCHIVE_NAME pour que l'extraction soit propre)
-(cd "$WORK" && zip -qr "$DEST_ZIP" "$ARCHIVE_NAME")
+# Script de déblocage Gatekeeper (à lancer une seule fois sur l'autre ordi)
+DEBLOCK="$OUT/debloquer.command"
+cat > "$DEBLOCK" <<'DEBLOCK_EOF'
+#!/bin/bash
+# Retire l'attribut quarantine macOS sur tous les scripts Promptimizer.
+# À lancer UNE FOIS après avoir décompressé l'archive.
+DIR="$(cd "$(dirname "$0")" && pwd)"
+xattr -dr com.apple.quarantine "$DIR"
+echo "Quarantine retirée. Tu peux maintenant double-cliquer les scripts."
+echo "Appuie sur Entrée pour fermer."
+read -r _
+DEBLOCK_EOF
+chmod +x "$DEBLOCK"
+
+# README à la racine de l'archive
+cat > "$OUT/LIRE-MOI.txt" <<'README_EOF'
+Promptimizer — Installation
+============================
+
+macOS bloque les scripts reçus par transfert (message "logiciel malveillant").
+ÉTAPE 0 — À faire UNE SEULE FOIS avant tout :
+
+  Double-clic sur : debloquer.command
+  (ou clic droit → Ouvrir si macOS bloque aussi ce fichier)
+
+Ensuite :
+  Claude Code → double-clic : promptimizer/install/install.command
+  Codex (opt) → double-clic : codex/install-codex.command
+
+Prérequis : Node.js installé (nodejs.org).
+README_EOF
+
+# Zip sans attributs étendus (-X) pour limiter la propagation quarantine
+(cd "$WORK" && zip -qrX "$DEST_ZIP" "$ARCHIVE_NAME")
 rm -rf "$WORK"
 
 if [ -f "$DEST_ZIP" ]; then
   echo "Archive créée : $DEST_ZIP"
   echo
   echo "Sur l'autre ordi :"
-  echo "  1. Transfère le .zip et décompresse-le."
-  echo "  2. Claude Code → double-clic : ${ARCHIVE_NAME}/promptimizer/install/install.command"
+  echo "  0. Double-clic sur debloquer.command (déblocage Gatekeeper, une fois)"
+  echo "  1. Claude Code → double-clic : ${ARCHIVE_NAME}/promptimizer/install/install.command"
   echo "     (Prérequis : Node.js installé)"
-  echo "  3. Codex (optionnel) → double-clic : ${ARCHIVE_NAME}/codex/install-codex.command"
+  echo "  2. Codex (optionnel) → double-clic : ${ARCHIVE_NAME}/codex/install-codex.command"
 else
   echo "ERREUR : l'archive n'a pas été créée." >&2
   echo "Appuie sur Entrée pour fermer." ; read -r _ ; exit 1

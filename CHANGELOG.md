@@ -2,6 +2,15 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.4.3] — 2026-06-14
+
+Contournement Gatekeeper dans le zip d'export.
+
+- `package.command` génère `debloquer.command` à la racine du zip : retire `com.apple.quarantine`
+  sur tout le dossier en un double-clic (ou clic droit → Ouvrir si Gatekeeper bloque même lui).
+- Ajout `LIRE-MOI.txt` à la racine : procédure en 3 étapes clairement numérotées.
+- Zip compilé avec `-X` (sans attributs étendus) pour limiter la propagation de quarantine.
+
 ## [0.4.2] — 2026-06-14
 
 Delta Codex exportable.
