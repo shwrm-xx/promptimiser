@@ -9,8 +9,8 @@
     "mwn/vsg-03-howto-utilisateur.md": 1781425504032,
     "promptimizer/lib/output.js": 1781427216635,
     "promptimizer/install/merge-settings.js": 1781425968698,
-    "promptimizer/install/install.command": 1781425652166,
-    "promptimizer/install/uninstall.command": 1781425553616,
+    "promptimizer/install/install.command": 1781428827037,
+    "promptimizer/install/uninstall.command": 1781428830032,
     "promptimizer/install/pmz-doctor.command": 1781425579611,
     "codex/codex-vsg": 1781426051195,
     ".gitignore": 1781426078974,
@@ -32,24 +32,26 @@
     "promptimizer/scripts/audit-batch.js": 1781427416354,
     "promptimizer/scripts/close-batch.js": 1781427419293,
     "promptimizer/scripts/audit-context.js": 1781427425634,
-    "CLAUDE.md": 1781427688816
+    "CLAUDE.md": 1781427688816,
+    "promptimizer/lib/project.js": 1781428824139,
+    "promptimizer/hooks/post-tool-use.js": 1781428879137
   },
   "files_modified": {
-    "promptimizer/install/merge-settings.js": 1781426177676,
+    "promptimizer/install/merge-settings.js": 1781428948829,
     "codex/pmz-codex": 1781426064934,
     ".gitignore": 1781426082310,
     "promptimizer/templates/rules.yaml": 1781426088361,
     ".vibe-agent/rules.yaml": 1781426101445,
-    "promptimizer/hooks/pre-tool-use.js": 1781427949115,
-    "CHANGELOG.md": 1781427678668,
+    "promptimizer/hooks/pre-tool-use.js": 1781428977080,
+    "CHANGELOG.md": 1781429201543,
     "promptimizer/lib/fsjson.js": 1781427288216,
     "promptimizer/lib/ledger.js": 1781427295966,
     "promptimizer/lib/state.js": 1781427304054,
     "promptimizer/lib/occupancy.js": 1781427326888,
-    "promptimizer/hooks/session-start.js": 1781427350519,
+    "promptimizer/hooks/session-start.js": 1781428866183,
     "promptimizer/lib/messages.js": 1781427376969,
-    "promptimizer/hooks/user-prompt-submit.js": 1781427382078,
-    "promptimizer/hooks/stop.js": 1781427394884,
+    "promptimizer/hooks/user-prompt-submit.js": 1781428900394,
+    "promptimizer/hooks/stop.js": 1781428905039,
     "promptimizer/templates/session-state.json": 1781427403056,
     "promptimizer/lib/cli.js": 1781427430530,
     "promptimizer/scripts/detect-project.js": 1781427445952,
@@ -58,11 +60,19 @@
     "promptimizer/scripts/close-batch.js": 1781427462151,
     "promptimizer/scripts/audit-context.js": 1781427466862,
     "README.md": 1781427475151,
-    "ARCHITECTURE.md": 1781427506771,
-    "test/run-tests.js": 1781428010321,
+    "ARCHITECTURE.md": 1781429218644,
+    "test/run-tests.js": 1781429059618,
     "test/run-tests.command": 1781427685406,
     "CLAUDE.md": 1781427696474,
-    "/tmp/pmz-commit-msg.txt": 1781428109327
+    "/tmp/pmz-commit-msg.txt": 1781428109327,
+    "promptimizer/lib/timeouts.js": 1781428839321,
+    "promptimizer/lib/guard.js": 1781428846437,
+    "promptimizer/hooks/post-tool-use.js": 1781428884104,
+    "promptimizer/lib/env.js": 1781428922367,
+    "promptimizer/lib/project.js": 1781428928020,
+    "promptimizer/install/install.command": 1781428997203,
+    "promptimizer/install/uninstall.command": 1781429007710,
+    "/tmp/pmz-lot5-msg.txt": 1781429247010
   },
   "repeated_reads": [
     {
@@ -100,6 +110,10 @@
     {
       "path": "promptimizer/hooks/pre-tool-use.js",
       "at": 1781427010738
+    },
+    {
+      "path": "promptimizer/install/install.command",
+      "at": 1781428827037
     }
   ],
   "estimated_context_waste": null,

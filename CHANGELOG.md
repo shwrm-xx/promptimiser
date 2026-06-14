@@ -2,6 +2,38 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.4.0] — 2026-06-14
+
+Lot 5 de l'audit : items différés (robustesse fail-open, install, portabilité).
+
+### Fail-open renforcé
+- **Préambule** `process.on('uncaughtException'/'unhandledRejection', exit 0)` placé **avant tout
+  `require`** dans les 5 hooks : même un `require` qui échoue (module corrompu/absent) sort en
+  `exit 0` (la fenêtre du `require('guard')` n'était pas protégée). Couvert par un test (guard.js
+  corrompu → exit 0).
+- Watchdog `setTimeout(...).unref()` : filet de sécurité, plus facteur de latence.
+- Délais **centralisés** dans `lib/timeouts.js` (source unique) — fin de la dérive possible entre
+  le timeout `settings.json` (10/5 s) et le watchdog interne (9500/4500 ms, marge 500 ms).
+
+### Install / désinstall
+- `install.command` **purge les fichiers obsolètes** d'une version précédente avant copie
+  (un `cp -R` fusionnait sans supprimer) — **préserve `state/`** (sidecar de prise de relais).
+- `uninstall.command` : garde explicite si `node` est absent (plus de faux « retiré » silencieux).
+- `xattr` (déquarantaine) étendu à la skill et aux commands, et gardé par `command -v xattr`.
+
+### Portabilité
+- Hooks câblés en **chemin absolu** dans `settings.json` (plus de dépendance à l'expansion du `~`).
+- `git` résolu en **chemin absolu** (`resolveTool`) — même angle mort PATH que `node` sous les
+  apps GUI macOS.
+
+### Sûreté Bash (résidu Lot 2)
+- `find -delete`, `xargs … rm`, `curl|wget … | sh` désormais **ancrés en position de commande** :
+  un message de commit mentionnant ces motifs en prose ne déclenche plus de `ask`.
+
+### Tests
+- Harnais étendu à **107 assertions** (préambule fail-open sur module corrompu, cohérence des
+  timeouts, non-régression prose `find`/`xargs`/`curl`).
+
 ## [0.3.0] — 2026-06-14
 
 Lots 2-3-4 de l'audit : sûreté Bash, robustesse logique cœur, UX, fonctions mortes, tests.

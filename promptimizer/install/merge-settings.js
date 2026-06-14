@@ -14,8 +14,10 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { SETTINGS_TIMEOUT_S } = require('../lib/timeouts');
 
-const HOOK_BASE = '~/.claude/promptimizer/hooks';
+// Chemin ABSOLU (plus de dépendance à l'expansion du ~ par Claude Code dans le champ command).
+const HOOK_BASE = path.join(os.homedir(), '.claude', 'promptimizer', 'hooks');
 // Tags reconnus comme « hooks PMZ à nous » : courant + héritage (ancien nom du paquet).
 // Permet à stripVsg() de purger les entrées orphelines d'une version précédente
 // (sinon un renommage du paquet laisse des hooks fantômes => double-firing).
@@ -44,12 +46,13 @@ const STATE_DIR = process.env.PMZ_STATE_DIR ||
   path.join(os.homedir(), '.claude', 'promptimizer', 'state');
 const SIDECAR = path.join(STATE_DIR, 'taken-over.json');
 
+const T = SETTINGS_TIMEOUT_S;
 const PMZ_HOOKS = {
-  SessionStart: [{ matcher: 'startup|resume', hooks: [cmd('session-start.js', 10)] }],
-  UserPromptSubmit: [{ hooks: [cmd('user-prompt-submit.js', 5)] }],
-  PreToolUse: [{ matcher: 'Bash', hooks: [cmd('pre-tool-use.js', 5)] }],
-  PostToolUse: [{ matcher: 'Read|Edit|Write', hooks: [cmd('post-tool-use.js', 5)] }],
-  Stop: [{ hooks: [cmd('stop.js', 5)] }],
+  SessionStart: [{ matcher: 'startup|resume', hooks: [cmd('session-start.js', T.sessionStart)] }],
+  UserPromptSubmit: [{ hooks: [cmd('user-prompt-submit.js', T.default)] }],
+  PreToolUse: [{ matcher: 'Bash', hooks: [cmd('pre-tool-use.js', T.default)] }],
+  PostToolUse: [{ matcher: 'Read|Edit|Write', hooks: [cmd('post-tool-use.js', T.default)] }],
+  Stop: [{ hooks: [cmd('stop.js', T.default)] }],
 };
 
 function cmd(name, timeout) {

@@ -22,6 +22,13 @@ fi
 mkdir -p "$DEST" "$DEST/skills" "$DEST/commands" || { echo "ERREUR : création des dossiers."; read -r _; exit 1; }
 
 # 3. Copie du package, de la skill et des slash commands
+# Purge des fichiers obsolètes d'une version précédente (un cp -R fusionne sans supprimer).
+# On NE touche PAS à state/ (sidecar de prise de relais context-guard.py).
+if [ -d "$DEST/promptimizer" ]; then
+  for sub in hooks lib scripts install templates commands; do
+    rm -rf "$DEST/promptimizer/$sub"
+  done
+fi
 cp -R "$PMZ_SRC" "$DEST/" || { echo "ERREUR : copie du package."; read -r _; exit 1; }
 if [ -d "$REPO/skills/promptimizer" ]; then
   cp -R "$REPO/skills/promptimizer" "$DEST/skills/"
@@ -34,7 +41,9 @@ echo "Fichiers copiés."
 # 4. Permissions + quarantine
 chmod +x "$DEST/promptimizer/install/"*.command 2>/dev/null || true
 chmod +x "$DEST/promptimizer/hooks/"*.js "$DEST/promptimizer/scripts/"*.js 2>/dev/null || true
-xattr -dr com.apple.quarantine "$DEST/promptimizer" 2>/dev/null || true
+if command -v xattr >/dev/null 2>&1; then
+  xattr -dr com.apple.quarantine "$DEST/promptimizer" "$DEST/skills/promptimizer" "$DEST/commands" 2>/dev/null || true
+fi
 
 # 5. Fusion settings.json (backup + idempotent + réversible)
 MS="$DEST/promptimizer/install/merge-settings.js"

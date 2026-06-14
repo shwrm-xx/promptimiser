@@ -2,8 +2,11 @@
 'use strict';
 // PreToolUse (matcher Bash) : deny catastrophique, ask destructif, sinon allow.
 // N'agit QUE sur Bash : aucune friction sur Read/Edit/Write (respect du mode acceptEdits).
+process.on('uncaughtException', () => process.exit(0));
+process.on('unhandledRejection', () => process.exit(0));
 const { armFailOpen } = require('../lib/guard');
-armFailOpen(4500);
+const { SETTINGS_TIMEOUT_S, watchdogMs } = require('../lib/timeouts');
+armFailOpen(watchdogMs(SETTINGS_TIMEOUT_S.default));
 const { disabled } = require('../lib/env');
 if (disabled()) process.exit(0);
 
@@ -58,10 +61,12 @@ const DESTRUCTIVE = [
   /\bchmod\s+-R\b/,
   // truncate en tête de commande suivi d'un flag (évite « grep truncate », « npm run truncate-x »).
   /(?:^|[\n;&|]\s*|\bsudo\s+|\bxargs\s+)truncate\s+-/,
-  // exécution de code distant : curl/wget piped vers un interpréteur.
-  /\b(curl|wget)\b[^\n|]*\|\s*(sudo\s+)?(sh|bash|zsh|python3?|perl|ruby|node)\b/,
-  /\bfind\b[^\n]*\s-delete\b/,                                // suppression de masse
-  /\bxargs\b[^\n]*\brm\b/,
+  // exécution de code distant : curl/wget (en tête de commande) piped vers un interpréteur.
+  /(?:^|[\n;&|(`])[ \t]*(?:sudo[ \t]+)?(?:curl|wget)\b[^\n|]*\|[ \t]*(?:sudo[ \t]+)?(?:sh|bash|zsh|python3?|perl|ruby|node)\b/,
+  // find (en tête de commande) avec suppression de masse
+  /(?:^|[\n;&|(`])[ \t]*(?:sudo[ \t]+)?find\b[^\n;&|()`]*\s-delete\b/,
+  // xargs (en tête, typiquement après un pipe) invoquant rm
+  /(?:^|[\n;&|(`])[ \t]*(?:sudo[ \t]+)?xargs\b[^\n;&|()`]*\brm\b/,
   />\s*\/(etc|usr|bin|sbin|boot|System|Library)\//,           // écrasement de fichier système
   /\bmv\b[^\n]+\s\/dev\/null(\s|$)/,                          // mv vers /dev/null = perte de données
 ];

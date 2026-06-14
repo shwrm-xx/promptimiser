@@ -36,4 +36,21 @@ function resolveNode() {
   return 'node';
 }
 
-module.exports = { disabled, hasTool, resolveNode };
+// Chemin absolu d'un outil (PATH + dirs Homebrew/usuels). Repli : le nom nu (PATH le résout).
+// Utile car les hooks lancés par Claude Code héritent parfois d'un PATH épuré (apps GUI macOS).
+function resolveTool(name) {
+  const fromPath = (process.env.PATH || '').split(path.delimiter);
+  for (const dir of [...fromPath, ...EXTRA_DIRS]) {
+    if (!dir) continue;
+    const cand = path.join(dir, name);
+    try {
+      fs.accessSync(cand, fs.constants.X_OK);
+      return cand;
+    } catch (_) {
+      /* continue */
+    }
+  }
+  return name;
+}
+
+module.exports = { disabled, hasTool, resolveNode, resolveTool };

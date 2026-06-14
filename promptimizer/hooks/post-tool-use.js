@@ -2,8 +2,11 @@
 'use strict';
 // PostToolUse (Read|Edit|Write) : INFORMATIF uniquement. Met à jour les ledgers projet.
 // Court-circuit immédiat si projet non initialisé. Ne bloque jamais, aucune décision.
+process.on('uncaughtException', () => process.exit(0));
+process.on('unhandledRejection', () => process.exit(0));
 const { armFailOpen } = require('../lib/guard');
-armFailOpen(4500);
+const { SETTINGS_TIMEOUT_S, watchdogMs } = require('../lib/timeouts');
+armFailOpen(watchdogMs(SETTINGS_TIMEOUT_S.default));
 const { disabled } = require('../lib/env');
 if (disabled()) process.exit(0);
 

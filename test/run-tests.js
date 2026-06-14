@@ -80,6 +80,24 @@ ok(bashVerdict.call(null, 'x') !== undefined, 'pre-tool-use répond');
   const r = runHook('pre-tool-use.js', { tool_name: 'Read', tool_input: { file_path: 'x' } });
   ok(r.code === 0 && !r.out.trim(), 'pre-tool-use : tool Read → passThrough (aucune décision)');
 }
+// Préambule fail-open : si le require(guard) échoue (module corrompu), exit 0 quand même.
+{
+  const fh = path.join(SANDBOX, 'fakehook');
+  fs.mkdirSync(path.join(fh, 'hooks'), { recursive: true });
+  fs.cpSync(path.join(PKG, 'lib'), path.join(fh, 'lib'), { recursive: true });
+  fs.writeFileSync(path.join(fh, 'lib', 'guard.js'), 'ceci }{ n est pas du javascript valide');
+  fs.copyFileSync(path.join(HOOKS, 'session-start.js'), path.join(fh, 'hooks', 'session-start.js'));
+  let code;
+  try { execFileSync(process.execPath, [path.join(fh, 'hooks', 'session-start.js')], { input: '{}', encoding: 'utf8' }); code = 0; }
+  catch (e) { code = e.status == null ? 1 : e.status; }
+  ok(code === 0, 'guard.js corrompu → le hook sort en exit 0 (préambule avant require)');
+}
+// Timeouts : source unique cohérente (watchdog < timeout settings, marge 500 ms).
+{
+  const t = require(path.join(PKG, 'lib', 'timeouts'));
+  ok(t.watchdogMs(10) === 9500 && t.watchdogMs(5) === 4500, 'timeouts : watchdog 9500/4500');
+  ok(t.SETTINGS_TIMEOUT_S.sessionStart === 10 && t.SETTINGS_TIMEOUT_S.default === 5, 'timeouts : settings 10/5 s');
+}
 
 // ============================ B. PRETOOLUSE ============================
 section('PreToolUse — DENY (catastrophique)');
@@ -113,6 +131,9 @@ const ALLOW = [
   'git commit -m "refactor: simplify rm -rf cleanup in build script"',
   'git commit -m "détection rm récursive robuste (-rf/-fr/-r -f/--recursive)"',
   'echo "danger: rm -rf / would wipe everything"', // rm dans une chaîne echo
+  // find/xargs/curl en PROSE -> allow (ancrés en position de commande) :
+  'git commit -m "add find -delete and xargs rm patterns to denylist"',
+  'git commit -m "detect curl|sh remote exec piping"',
 ];
 for (const c of ALLOW) ok(bashVerdict(c) === 'allow', `allow: ${c}`);
 

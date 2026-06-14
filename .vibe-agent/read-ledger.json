@@ -12,8 +12,8 @@
     },
     {
       "path": "promptimizer/install/install.command",
-      "read_at": 1781425652166,
-      "partial": true
+      "read_at": 1781428827037,
+      "partial": false
     },
     {
       "path": "codex/codex-vsg",
@@ -139,11 +139,27 @@
       "path": "CLAUDE.md",
       "read_at": 1781427688816,
       "partial": true
+    },
+    {
+      "path": "promptimizer/lib/project.js",
+      "read_at": 1781428824139,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/install/uninstall.command",
+      "read_at": 1781428830032,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/hooks/post-tool-use.js",
+      "read_at": 1781428879137,
+      "partial": false
     }
   ],
   "summaries": {},
   "avoid_reread_notes": [
     "promptimizer/install/merge-settings.js",
-    "promptimizer/hooks/pre-tool-use.js"
+    "promptimizer/hooks/pre-tool-use.js",
+    "promptimizer/install/install.command"
   ]
 }

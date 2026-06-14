@@ -3,10 +3,14 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { resolveTool } = require('./env');
+
+// Chemin absolu de git résolu une fois (même angle mort PATH que node sous les apps GUI macOS).
+const GIT = resolveTool('git');
 
 function git(args, cwd) {
   try {
-    return execFileSync('git', args, {
+    return execFileSync(GIT, args, {
       cwd: cwd || process.cwd(),
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],

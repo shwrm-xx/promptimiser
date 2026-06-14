@@ -32,7 +32,9 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
 
 ### Invariants NON négociables
 1. **Fail-open** : toute erreur/timeout/JSON → `exit 0` ; jamais `exit 2` ; doute → `allow`.
-   `try/catch` global + `uncaughtException`/`unhandledRejection` + watchdog `setTimeout`.
+   Préambule `process.on('uncaughtException'/'unhandledRejection', exit 0)` **avant tout
+   `require`** (couvre l'échec d'un `require`) + watchdog `setTimeout(...).unref()`. Délais
+   centralisés dans `lib/timeouts.js` (watchdog < timeout settings, marge 500 ms).
 2. **Kill-switch** : `PMZ_DISABLE=1` → `exit 0` en 1re ligne de chaque hook.
 3. **Pas d'écriture auto** hors repo git initialisé ; **jamais d'écrasement** ; init après confirmation.
 4. **PreToolUse étroit** : `deny`/`ask` sur denylist destructive ancrée + whitelist large ;
@@ -74,7 +76,7 @@ restauration) et **signale** un sidecar corrompu au lieu de l'avaler. Écriture 
   `systemMessage` informe sans bloquer.
 - **PreToolUse limité à `Bash`** : `acceptEdits` montre que l'utilisateur veut peu de
   confirmations ; on ne gêne pas Read/Edit.
-- **Zéro dépendance / `node` en chemin absolu** : `node` nu échouait (`exit 127`) sous le PATH
-  épuré des apps GUI macOS ; le chemin absolu est désormais figé à l'install (symlink stable de
-  préférence). Si malgré tout `node` est introuvable, le hook ne démarre pas → dégradation
-  fail-open (la session continue sans PMZ).
+- **Zéro dépendance / `node` et `git` en chemin absolu** : `node` nu échouait (`exit 127`) sous le
+  PATH épuré des apps GUI macOS ; `node` est figé à l'install (symlink stable de préférence) et
+  `git` est résolu en chemin absolu au runtime (`lib/env.js resolveTool`). Si malgré tout un outil
+  est introuvable, le hook dégrade en fail-open (la session continue sans PMZ).

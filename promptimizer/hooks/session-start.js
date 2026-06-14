@@ -2,8 +2,13 @@
 'use strict';
 // SessionStart (startup|resume) : détecte le projet, propose l'init, rappel court.
 // Ne crée RIEN automatiquement, ne scanne jamais le repo.
+// Préambule fail-open AVANT tout require : si un require échoue (module corrompu/absent),
+// l'exception est captée et on sort en exit 0 (jamais exit non-0 qui bruiterait la session).
+process.on('uncaughtException', () => process.exit(0));
+process.on('unhandledRejection', () => process.exit(0));
 const { armFailOpen } = require('../lib/guard');
-armFailOpen(9500);
+const { SETTINGS_TIMEOUT_S, watchdogMs } = require('../lib/timeouts');
+armFailOpen(watchdogMs(SETTINGS_TIMEOUT_S.sessionStart));
 const { disabled } = require('../lib/env');
 if (disabled()) process.exit(0);
 

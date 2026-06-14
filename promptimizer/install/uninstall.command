@@ -14,6 +14,13 @@ if [ ! -f "$MS" ]; then
   echo "Appuie sur Entrée pour fermer." ; read -r _ ; exit 1
 fi
 
+if ! command -v node >/dev/null 2>&1; then
+  echo "ERREUR : 'node' introuvable dans le PATH — impossible de modifier settings.json automatiquement." >&2
+  echo "Retire à la main les entrées dont la commande contient 'promptimizer/hooks/' dans :" >&2
+  echo "  $SETTINGS" >&2
+  echo "Appuie sur Entrée pour fermer." ; read -r _ ; exit 1
+fi
+
 # 1. Retirer les hooks PMZ (backup + restauration de context-guard.py si applicable)
 if node "$MS" "$SETTINGS" --remove; then
   echo "Hooks PMZ retirés de settings.json (sauvegarde créée)."
