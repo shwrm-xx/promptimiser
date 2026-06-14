@@ -2,6 +2,17 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.4.4] — 2026-06-14
+
+AGENTS.md enrichi — équivalent textuel des hooks PMZ pour Codex.
+
+- `codex/AGENTS.md` réécrit (136 lignes) : 8 sections couvrant démarrage de session,
+  économie de contexte, surveillance auto-déclarative des paliers (≈150k/300k/500k tokens),
+  détection demande large, sûreté Bash, protocole de clôture complet, session fraîche,
+  initialisation de projet, définition de « fini ».
+- `promptimizer/templates/AGENTS.md` (template projet) mis à jour dans le même esprit,
+  version condensée pour les dépôts applicatifs.
+
 ## [0.4.3] — 2026-06-14
 
 Contournement Gatekeeper dans le zip d'export.
