@@ -15,8 +15,31 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const PMZ_TAG = 'promptimizer/hooks/';
 const HOOK_BASE = '~/.claude/promptimizer/hooks';
+// Tags reconnus comme « hooks PMZ à nous » : courant + héritage (ancien nom du paquet).
+// Permet à stripVsg() de purger les entrées orphelines d'une version précédente
+// (sinon un renommage du paquet laisse des hooks fantômes => double-firing).
+const PMZ_TAGS = ['promptimizer/hooks/', 'vibe-session-governor/hooks/'];
+// Chemin absolu de node figé dans settings.json. Évite « node: command not found »
+// (exit 127) quand Claude Code lance les hooks via sh -c avec un PATH épuré
+// (cas réel des apps GUI macOS : pas de /opt/homebrew/bin). On préfère un symlink
+// stable (ex. /opt/homebrew/bin/node) au chemin versionné de process.execPath
+// (ex. .../Cellar/node/25.9.0/...) QUI casserait à chaque `brew upgrade node` —
+// mais seulement s'il pointe sur le MÊME binaire, sinon repli sur process.execPath.
+function resolveNodeBin() {
+  const exec = process.execPath;
+  let execReal;
+  try { execReal = fs.realpathSync(exec); } catch (_) { execReal = exec; }
+  for (const dir of ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin']) {
+    const cand = path.join(dir, 'node');
+    try {
+      fs.accessSync(cand, fs.constants.X_OK);
+      if (fs.realpathSync(cand) === execReal) return cand;
+    } catch (_) { /* continue */ }
+  }
+  return exec;
+}
+const NODE_BIN = resolveNodeBin();
 const STATE_DIR = process.env.PMZ_STATE_DIR ||
   path.join(os.homedir(), '.claude', 'promptimizer', 'state');
 const SIDECAR = path.join(STATE_DIR, 'taken-over.json');
@@ -30,13 +53,15 @@ const PMZ_HOOKS = {
 };
 
 function cmd(name, timeout) {
-  return { type: 'command', command: `node ${HOOK_BASE}/${name}`, timeout };
+  // node entre guillemets (chemin absolu) ; ~ laissé nu pour expansion par le shell.
+  return { type: 'command', command: `"${NODE_BIN}" ${HOOK_BASE}/${name}`, timeout };
 }
 function clone(x) { return JSON.parse(JSON.stringify(x)); }
 
 function isVsgEntry(entry) {
   return !!(entry && Array.isArray(entry.hooks) &&
-    entry.hooks.some((h) => h && typeof h.command === 'string' && h.command.includes(PMZ_TAG)));
+    entry.hooks.some((h) => h && typeof h.command === 'string' &&
+      PMZ_TAGS.some((t) => h.command.includes(t))));
 }
 function hasContextGuard(entry) {
   return !!(entry && Array.isArray(entry.hooks) &&
@@ -77,16 +102,24 @@ function takeover(hooks) {
   return taken;
 }
 function restore(hooks) {
-  let taken = [];
-  try { taken = JSON.parse(fs.readFileSync(SIDECAR, 'utf8')); } catch (_) { taken = []; }
-  if (!Array.isArray(taken) || !taken.length) return [];
+  // Distingue 3 cas : pas de sidecar (rien à faire), sidecar corrompu (réversibilité
+  // rompue -> on le signale au lieu de l'avaler), sidecar valide (on restaure).
+  if (!fs.existsSync(SIDECAR)) return { restored: [], corrupted: false };
+  let taken;
+  try { taken = JSON.parse(fs.readFileSync(SIDECAR, 'utf8')); }
+  catch (_) { return { restored: [], corrupted: true }; }
+  if (!Array.isArray(taken) || !taken.length) {
+    try { fs.unlinkSync(SIDECAR); } catch (_) { /* ignore */ }
+    return { restored: [], corrupted: false };
+  }
+  const restored = [];
   for (const t of taken) {
     if (!t || !t.event || !t.entry) continue;
     if (!Array.isArray(hooks[t.event])) hooks[t.event] = [];
-    if (!hooks[t.event].some((e) => hasContextGuard(e))) hooks[t.event].push(t.entry);
+    if (!hooks[t.event].some((e) => hasContextGuard(e))) { hooks[t.event].push(t.entry); restored.push(t); }
   }
   try { fs.unlinkSync(SIDECAR); } catch (_) { /* ignore */ }
-  return taken;
+  return { restored, corrupted: false };
 }
 
 function pad(n) { return String(n).padStart(2, '0'); }
@@ -96,8 +129,14 @@ function timestamp() {
 }
 function backup(settingsPath) {
   if (!fs.existsSync(settingsPath)) return null;
-  const dest = settingsPath.replace(/\.json$/, '') + `.pmz-backup-${timestamp()}.json`;
+  // Garde anti-collision : timestamp() a une granularité d'1 s ; deux runs dans
+  // la même seconde écraseraient le backup précédent. Suffixe -1, -2… si besoin.
+  const base = settingsPath.replace(/\.json$/, '') + `.pmz-backup-${timestamp()}`;
+  let dest = base + '.json';
+  let n = 1;
+  while (fs.existsSync(dest)) dest = `${base}-${n++}.json`;
   fs.copyFileSync(settingsPath, dest);
+  try { fs.chmodSync(dest, 0o600); } catch (_) { /* best-effort : copyFileSync hérite des perms source */ }
   if (!fs.existsSync(dest) || fs.statSync(dest).size === 0) throw new Error('sauvegarde vide/échouée');
   return dest;
 }
@@ -160,8 +199,12 @@ function main() {
     addVsg(hooks);
   } else { // remove
     stripVsg(hooks);
-    const restored = restore(hooks);
-    if (restored.length) note = `Restauration : ${restored.length} hook(s) context-guard.py réactivé(s).`;
+    const res = restore(hooks);
+    if (res.corrupted) {
+      note = `ATTENTION : ${SIDECAR} corrompu — context-guard.py n'a PAS pu être restauré automatiquement. Réactive-le à la main dans settings.json (backup : ${bkp}).`;
+    } else if (res.restored.length) {
+      note = `Restauration : ${res.restored.length} hook(s) context-guard.py réactivé(s).`;
+    }
     if (Object.keys(hooks).length === 0) delete settings.hooks;
   }
 

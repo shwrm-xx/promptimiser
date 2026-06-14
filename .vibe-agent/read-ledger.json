@@ -1,5 +1,58 @@
 {
-  "reads": [],
+  "reads": [
+    {
+      "path": "promptimizer/install/merge-settings.js",
+      "read_at": 1781425968698,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/install/pmz-doctor.command",
+      "read_at": 1781425579611,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/install/install.command",
+      "read_at": 1781425652166,
+      "partial": true
+    },
+    {
+      "path": "codex/codex-vsg",
+      "read_at": 1781426051195,
+      "partial": false
+    },
+    {
+      "path": ".gitignore",
+      "read_at": 1781426078974,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/templates/rules.yaml",
+      "read_at": 1781426084712,
+      "partial": false
+    },
+    {
+      "path": ".vibe-agent/rules.yaml",
+      "read_at": 1781426091424,
+      "partial": true
+    },
+    {
+      "path": "promptimizer/hooks/pre-tool-use.js",
+      "read_at": 1781426105036,
+      "partial": true
+    },
+    {
+      "path": "promptimizer/lib/env.js",
+      "read_at": 1781426152294,
+      "partial": false
+    },
+    {
+      "path": "CHANGELOG.md",
+      "read_at": 1781426278068,
+      "partial": false
+    }
+  ],
   "summaries": {},
-  "avoid_reread_notes": []
+  "avoid_reread_notes": [
+    "promptimizer/install/merge-settings.js"
+  ]
 }

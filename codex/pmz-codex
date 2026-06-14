@@ -1,11 +1,11 @@
 #!/bin/bash
-# codex-vsg — lance Codex en garantissant un AGENTS.md projet (socle VSG) au préalable.
-# Installation : copier dans un dossier du PATH (ex. ~/bin/codex-vsg), chmod +x.
+# pmz-codex — lance Codex en garantissant un AGENTS.md projet (socle Promptimizer) au préalable.
+# Installation : copier dans un dossier du PATH (ex. ~/bin/pmz-codex), chmod +x.
 set -u
 
 HERE="$(pwd)"
-TPL="$HOME/.claude/vibe-session-governor/templates/AGENTS.md"
-BOOT="$HOME/.claude/vibe-session-governor/scripts/bootstrap-project.js"
+TPL="$HOME/.claude/promptimizer/templates/AGENTS.md"
+BOOT="$HOME/.claude/promptimizer/scripts/bootstrap-project.js"
 
 if [ ! -f "$HERE/AGENTS.md" ]; then
   # Repo git : bootstrap prudent (jamais d'écrasement). Sinon : copie directe du template.
@@ -14,12 +14,12 @@ if [ ! -f "$HERE/AGENTS.md" ]; then
   fi
   if [ ! -f "$HERE/AGENTS.md" ] && [ -f "$TPL" ]; then
     cp "$TPL" "$HERE/AGENTS.md"
-    echo "codex-vsg : AGENTS.md créé depuis le template VSG."
+    echo "pmz-codex : AGENTS.md créé depuis le template Promptimizer."
   fi
 fi
 
 if ! command -v codex >/dev/null 2>&1; then
-  echo "codex-vsg : binaire 'codex' introuvable dans le PATH." >&2
+  echo "pmz-codex : binaire 'codex' introuvable dans le PATH." >&2
   exit 127
 fi
 exec codex "$@"

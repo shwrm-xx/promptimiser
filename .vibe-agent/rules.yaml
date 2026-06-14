@@ -1,5 +1,5 @@
 agent:
-  name: vibe-session-governor
+  name: promptimizer
   primary_objective: reduce_context_reread_cost
   secondary_objective: close_batches_cleanly
 
@@ -15,7 +15,7 @@ context_policy:
   prefer:
     - git_status
     - git_diff
-    - rg_search
+    - git_grep
     - partial_read
     - local_summary
   avoid:

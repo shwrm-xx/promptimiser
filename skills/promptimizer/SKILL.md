@@ -41,4 +41,4 @@ handoff court · session fraîche recommandée.
 ## Delta Codex
 Codex utilise `AGENTS.md` comme instructions persistantes (même socle de règles). Pas de hooks
 côté Codex : l'auto-activation complète reste portée par Claude Code. Voir le wrapper optionnel
-`codex-vsg`.
+`pmz-codex`.

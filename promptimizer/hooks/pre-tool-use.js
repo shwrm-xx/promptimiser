@@ -52,7 +52,7 @@ function main() {
     return preToolDecision('deny', 'Commande catastrophique bloquée par Promptimizer : ' + short);
   }
   if (verdict === 'ask') {
-    return preToolDecision('ask', 'Commande destructive — confirmer avant exécution (PMZ) : ' + short);
+    return preToolDecision('ask', 'Commande destructive — confirmer avant exécution (Promptimizer) : ' + short);
   }
   return passThrough();
 }

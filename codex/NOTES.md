@@ -20,7 +20,7 @@ Code côté Codex.
 1. **Par projet** : laisser Claude Code créer `AGENTS.md` (via `/pmz-init` ou bootstrap), puis
    ouvrir le projet dans Codex.
 2. **Global (optionnel)** : copier [`AGENTS.md`](AGENTS.md) vers `~/.codex/AGENTS.md`.
-3. **Wrapper (optionnel)** : placer [`codex-vsg`](codex-vsg) dans le `PATH` (`chmod +x`). Il
+3. **Wrapper (optionnel)** : placer [`pmz-codex`](pmz-codex) dans le `PATH` (`chmod +x`). Il
    garantit un `AGENTS.md` projet avant de lancer `codex`, en s'appuyant sur le bootstrap PMZ
    (repo git, jamais d'écrasement) ou, à défaut, sur le template.
 

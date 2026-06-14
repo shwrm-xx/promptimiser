@@ -15,7 +15,7 @@ context_policy:
   prefer:
     - git_status
     - git_diff
-    - rg_search
+    - git_grep
     - partial_read
     - local_summary
   avoid:
