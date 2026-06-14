@@ -33,7 +33,6 @@ function main() {
   const initialized = isInitialized(root);
   const sid = input.session_id || null;
   const st = loadSessionState(root, sid);
-  st.turn_count_estimate = (st.turn_count_estimate || 0) + 1;
 
   let msg = null;
   let key = null;

@@ -1,12 +1,13 @@
 {
   "session_id": "6b598b56-4b1c-4dad-b6ed-f9e476351471",
   "current_batch": null,
-  "turn_count_estimate": 5,
   "batch_status": "not_started",
   "verification_status": "not_checked",
-  "fresh_session_recommended": false,
+  "session_start_reminded": true,
   "closure_reminded_for_batch": true,
   "prompt_reminders": {
     "broad": true
-  }
+  },
+  "turn_count_estimate": 7,
+  "fresh_session_recommended": false
 }

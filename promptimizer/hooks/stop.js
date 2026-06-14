@@ -12,8 +12,9 @@ const { parseHookInput } = require('../lib/stdin');
 const { systemMessage, passThrough } = require('../lib/output');
 const { gitRoot, isInitialized, gitStatusPorcelain } = require('../lib/project');
 const { loadSessionState, saveSessionState } = require('../lib/state');
+const { loadContextLedger } = require('../lib/ledger');
 const occupancy = require('../lib/occupancy');
-const { MSG_CLOTURE, occupancyMessage } = require('../lib/messages');
+const { MSG_CLOTURE, MSG_LECTURE, occupancyMessage } = require('../lib/messages');
 
 function main() {
   const input = parseHookInput();
@@ -35,6 +36,12 @@ function main() {
     const st = loadSessionState(root, sid);
     if (open && !st.closure_reminded_for_batch) {
       parts.push(MSG_CLOTURE);
+      // Relectures évitables du lot (ledger context) -> note concrète (spirit de MSG_LECTURE).
+      const cl = loadContextLedger(root);
+      const rereads = Array.from(new Set((cl.repeated_reads || []).map((r) => r && r.path).filter(Boolean))).slice(0, 5);
+      if (rereads.length) {
+        parts.push(MSG_LECTURE + '\nRelectures évitables ce lot : ' + rereads.join(', ') + '.');
+      }
       st.closure_reminded_for_batch = true;
       saveSessionState(root, st);
     } else if (!open && st.closure_reminded_for_batch) {

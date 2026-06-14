@@ -6,16 +6,11 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { gitRoot, vibeDir } = require('../lib/project');
+const { parseCwd } = require('../lib/cli');
 
 const TEMPLATES = path.join(__dirname, '..', 'templates');
 const FORBIDDEN = ['/', '/tmp', '/var', '/usr', '/etc', '/opt', '/Applications', '/System', '/Library', os.homedir()]
   .map((p) => path.resolve(p));
-
-function parseCwd() {
-  const i = process.argv.indexOf('--cwd');
-  if (i !== -1 && process.argv[i + 1]) return process.argv[i + 1];
-  return process.cwd();
-}
 
 function copyIfAbsent(srcName, destPath, created, skipped) {
   try {

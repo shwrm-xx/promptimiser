@@ -2,12 +2,7 @@
 'use strict';
 // Checklist de clôture (format spec). Pré-rempli via audit-batch quand détectable.
 const { compute } = require('./audit-batch');
-
-function parseCwd() {
-  const i = process.argv.indexOf('--cwd');
-  if (i !== -1 && process.argv[i + 1]) return process.argv[i + 1];
-  return process.cwd();
-}
+const { parseCwd } = require('../lib/cli');
 
 function yn(v) { return v ? 'oui' : 'non'; }
 

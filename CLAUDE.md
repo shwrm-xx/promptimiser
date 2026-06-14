@@ -36,3 +36,7 @@ Un lot de retours = une entrée datée dans [CHANGELOG.md](CHANGELOG.md) + un co
 résumé + puces). Tenir [README.md](README.md) et [ARCHITECTURE.md](ARCHITECTURE.md) à jour à
 chaque lot. Vérifier les scripts en **bac à sable** (dossier temp) avant d'annoncer « fait » ;
 ne jamais toucher au `~/.claude` réel sans demande explicite.
+
+**Tests** : `node test/run-tests.js` (zéro-dépendance, bac à sable auto, exit 0 si tout passe) —
+couvre fail-open, verdicts `pre-tool-use`, occupation, `merge-settings`, bootstrap. À lancer
+avant tout commit touchant `lib/`, `hooks/` ou `install/`.

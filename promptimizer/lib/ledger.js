@@ -1,9 +1,9 @@
 'use strict';
 // Ledgers projet (.vibe-agent/read-ledger.json + context-ledger.json).
 // Maintenus par post-tool-use.js. Écriture atomique, lecture défensive, cap FIFO.
-const fs = require('fs');
 const path = require('path');
 const { vibeDir, isInitialized } = require('./project');
+const { writeAtomic, readJson } = require('./fsjson');
 
 const MAX_READS = 200;
 const MAX_MODIFIED = 200;
@@ -11,26 +11,6 @@ const MAX_REPEATED = 200;
 
 function readLedgerFile(root) { return path.join(vibeDir(root), 'read-ledger.json'); }
 function contextLedgerFile(root) { return path.join(vibeDir(root), 'context-ledger.json'); }
-
-function writeAtomic(file, obj) {
-  try {
-    const tmp = file + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
-    fs.renameSync(tmp, file);
-    return true;
-  } catch (_) {
-    return false;
-  }
-}
-
-function readJson(file, fallback) {
-  try {
-    const v = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return v && typeof v === 'object' ? v : fallback;
-  } catch (_) {
-    return fallback;
-  }
-}
 
 function loadReadLedger(root) {
   const rl = readJson(readLedgerFile(root), null) || {};

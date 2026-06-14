@@ -4,12 +4,7 @@
 // Le signal de COÛT (occupation par tokens) vient des alertes de palier du hook Stop.
 const { gitRoot, isInitialized } = require('../lib/project');
 const { loadReadLedger, loadContextLedger } = require('../lib/ledger');
-
-function parseCwd() {
-  const i = process.argv.indexOf('--cwd');
-  if (i !== -1 && process.argv[i + 1]) return process.argv[i + 1];
-  return process.cwd();
-}
+const { parseCwd } = require('../lib/cli');
 
 function main() {
   const root = gitRoot(parseCwd());

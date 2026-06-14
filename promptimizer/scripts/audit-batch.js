@@ -4,12 +4,7 @@
 const {
   gitRoot, gitStatusPorcelain, changelogTouched, hasAnyCommit, lastCommitEpoch,
 } = require('../lib/project');
-
-function parseCwd() {
-  const i = process.argv.indexOf('--cwd');
-  if (i !== -1 && process.argv[i + 1]) return process.argv[i + 1];
-  return process.cwd();
-}
+const { parseCwd } = require('../lib/cli');
 
 function compute(cwd) {
   const root = gitRoot(cwd);

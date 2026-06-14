@@ -2,12 +2,7 @@
 'use strict';
 // Détection projet -> JSON sur stdout. Ne lit jamais tout le repo.
 const { gitRoot, isInitialized, exists, detectStack } = require('../lib/project');
-
-function parseCwd() {
-  const i = process.argv.indexOf('--cwd');
-  if (i !== -1 && process.argv[i + 1]) return process.argv[i + 1];
-  return process.cwd();
-}
+const { parseCwd } = require('../lib/cli');
 
 function main() {
   const cwd = parseCwd();

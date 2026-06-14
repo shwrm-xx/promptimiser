@@ -17,8 +17,10 @@ Promptimizer
 
 ## Contrat des hooks (source de vérité)
 
-Hooks invoqués via `node ~/.claude/promptimizer/hooks/<x>.js` (le `~` est développé
-dans le champ `command` de `settings.json`). Stdin = JSON ; sortie = JSON sur stdout, exit 0.
+Hooks invoqués via `"<node-absolu>" ~/.claude/promptimizer/hooks/<x>.js`. Le chemin **absolu**
+de `node` est figé à l'install (résolu vers un symlink stable, ex. `/opt/homebrew/bin/node`),
+pour éviter `exit 127` quand Claude Code lance les hooks via `sh -c` avec un PATH épuré (apps
+GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON sur stdout, exit 0.
 
 | Hook | Event / matcher | Lit (stdin) | Émet | Rôle |
 |------|-----------------|-------------|------|------|
@@ -41,9 +43,12 @@ dans le champ `command` de `settings.json`). Stdin = JSON ; sortie = JSON sur st
 ## Flux de données
 
 - **Occupation contexte** (`lib/occupancy.js`) : lit la dernière ligne `usage` du transcript
-  (`input + cache_read + cache_creation`), compare aux paliers `[150k, 300k, 500k, 750k]`,
-  anti-spam par session dans `~/.claude/promptimizer/state/<sid>`. Aucune dépendance aux
-  ledgers projet. → C'est la méthode reprise de l'ancien `context-guard.py`.
+  (`input + cache_read + cache_creation`) par **fenêtre croissante depuis la fin** (512 KB → 2 MB
+  → 8 MB max, pour ne pas rater une ligne `usage` repoussée par de gros `tool_result`), compare
+  aux paliers `[150k, 300k, 500k, 750k]`. Anti-spam par session dans
+  `~/.claude/promptimizer/state/<sha1(sid)>` : palier persisté **monotone croissant** (une seule
+  alerte par palier ; pas de redescente intra-session — un vrai reset = nouvelle `session_id`).
+  Aucune dépendance aux ledgers projet. → Méthode reprise de l'ancien `context-guard.py`.
 - **Ledgers projet** (`.vibe-agent/{read,context}-ledger.json`) : maintenus par `post-tool-use.js`
   (atomique `tmp`+`rename`, cap FIFO). Servent l'advisory `/check-context`. Granularité
   **per-fichier**, distincte de l'occupation globale.
@@ -52,11 +57,14 @@ dans le champ `command` de `settings.json`). Stdin = JSON ; sortie = JSON sur st
 
 ## Mapping source → cible & installation
 
-`merge-settings.js` : parse strict (échec → **abort**), backup horodaté vérifié, fusion
-**append-only par event** taguée par le chemin `promptimizer/hooks/` (idempotente),
-préserve `permissions`/`statusLine`/`enabledPlugins`. Prise de relais de `context-guard.py`
-(`--takeover`) : commente/retire son entrée `Stop`, **réversible** (`--remove` restaure le
-backup). Écriture atomique, perms 0600.
+`merge-settings.js` : parse strict (échec → **abort**), backup horodaté vérifié (suffixe `-N`
+anti-collision, perms 0600), fusion **append-only par event** taguée (idempotente). La purge
+reconnaît les tags **courant + hérités** (`PMZ_TAGS`) → un renommage du paquet ne laisse pas de
+hooks orphelins (sinon double-firing). Préserve `permissions`/`statusLine`/`enabledPlugins` et
+tout hook tiers. Prise de relais de `context-guard.py` (`--takeover`) : ses entrées `Stop`
+retirées sont sérialisées dans le **sidecar** `state/taken-over.json` ; `--remove` **restaure
+depuis ce sidecar** (le backup horodaté n'est qu'un filet de secours, pas la source de
+restauration) et **signale** un sidecar corrompu au lieu de l'avaler. Écriture atomique, perms 0600.
 
 ## Décisions & pourquoi
 
@@ -66,5 +74,7 @@ backup). Écriture atomique, perms 0600.
   `systemMessage` informe sans bloquer.
 - **PreToolUse limité à `Bash`** : `acceptEdits` montre que l'utilisateur veut peu de
   confirmations ; on ne gêne pas Read/Edit.
-- **Zéro dépendance / `node` via PATH** : précédent `python3` bare déjà fonctionnel dans les
-  hooks de la machine ; fallback fail-open si `node` introuvable.
+- **Zéro dépendance / `node` en chemin absolu** : `node` nu échouait (`exit 127`) sous le PATH
+  épuré des apps GUI macOS ; le chemin absolu est désormais figé à l'install (symlink stable de
+  préférence). Si malgré tout `node` est introuvable, le hook ne démarre pas → dégradation
+  fail-open (la session continue sans PMZ).

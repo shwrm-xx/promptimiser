@@ -37,8 +37,8 @@
     },
     {
       "path": "promptimizer/hooks/pre-tool-use.js",
-      "read_at": 1781426105036,
-      "partial": true
+      "read_at": 1781427010738,
+      "partial": false
     },
     {
       "path": "promptimizer/lib/env.js",
@@ -49,10 +49,101 @@
       "path": "CHANGELOG.md",
       "read_at": 1781426278068,
       "partial": false
+    },
+    {
+      "path": "promptimizer/lib/occupancy.js",
+      "read_at": 1781427017139,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/lib/ledger.js",
+      "read_at": 1781427019609,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/lib/state.js",
+      "read_at": 1781427023048,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/hooks/session-start.js",
+      "read_at": 1781427027365,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/lib/messages.js",
+      "read_at": 1781427029635,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/hooks/user-prompt-submit.js",
+      "read_at": 1781427035467,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/hooks/stop.js",
+      "read_at": 1781427037702,
+      "partial": false
+    },
+    {
+      "path": "README.md",
+      "read_at": 1781427041509,
+      "partial": false
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "read_at": 1781427044192,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/scripts/detect-project.js",
+      "read_at": 1781427047212,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/lib/output.js",
+      "read_at": 1781427216635,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/lib/guard.js",
+      "read_at": 1781427220712,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/templates/session-state.json",
+      "read_at": 1781427398557,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/scripts/bootstrap-project.js",
+      "read_at": 1781427412294,
+      "partial": true
+    },
+    {
+      "path": "promptimizer/scripts/audit-batch.js",
+      "read_at": 1781427416354,
+      "partial": true
+    },
+    {
+      "path": "promptimizer/scripts/close-batch.js",
+      "read_at": 1781427419293,
+      "partial": true
+    },
+    {
+      "path": "promptimizer/scripts/audit-context.js",
+      "read_at": 1781427425634,
+      "partial": true
+    },
+    {
+      "path": "CLAUDE.md",
+      "read_at": 1781427688816,
+      "partial": true
     }
   ],
   "summaries": {},
   "avoid_reread_notes": [
-    "promptimizer/install/merge-settings.js"
+    "promptimizer/install/merge-settings.js",
+    "promptimizer/hooks/pre-tool-use.js"
   ]
 }

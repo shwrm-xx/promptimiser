@@ -53,6 +53,14 @@ Statut : vert
 
 `/pmz-init` · `/budget` · `/check-context` · `/close-batch` · `/fresh-session`
 
+## Pause / désactivation
+
+- **Mettre PMZ en pause** sans désinstaller : exporte `PMZ_DISABLE=1` dans l'environnement
+  d'où tu lances Claude Code — chaque hook sort immédiatement (`exit 0`) en première ligne.
+  Retire la variable pour réactiver.
+- Les hooks sont chargés au **démarrage** de Claude Code : après (dés)installation, **redémarre**
+  l'app pour appliquer les changements.
+
 ## Désinstallation
 
 Double-clique sur `promptimizer/install/uninstall.command` (retire **uniquement** les

@@ -2,6 +2,44 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.3.0] — 2026-06-14
+
+Lots 2-3-4 de l'audit : sûreté Bash, robustesse logique cœur, UX, fonctions mortes, tests.
+
+### Sûreté commandes Bash (`pre-tool-use.js`)
+- Détection `rm` récursive **robuste** (ordre des flags indifférent : `-rf`, `-fr`, `-r -f`,
+  `--recursive --force`) ; catastrophique réservé aux cibles racine/home « nues » (`/`, `/*`,
+  `~`, `$HOME`), le reste des `rm` récursifs passe en `ask`.
+- Nouveaux `deny` : devices macOS (`> /dev/disk|rdisk|sd…`). Nouveaux `ask` : `curl|wget … | sh`,
+  `find … -delete`, `xargs … rm`, écrasement de fichier système (`> /etc|usr|bin…`),
+  `mv … /dev/null`.
+- Faux positifs corrigés : `truncate` ancré en tête de commande (plus de friction sur
+  `grep truncate`/`npm run truncate-x`) ; `git push --force-with-lease` (variante sûre) **autorisé**.
+
+### Robustesse logique cœur
+- `occupancy` : lecture du transcript par **fenêtre croissante** (512 KB → 2 MB → 8 MB) pour ne
+  pas rater une ligne `usage` repoussée par de gros `tool_result` ; palier persisté **monotone
+  croissant** (plus de réarmement d'alerte sur une ligne `usage` « maigre »).
+- `ledger`/`state` : écriture atomique mutualisée dans **`lib/fsjson.js`** avec `tmp` **unique**
+  (pid + horodatage) → plus de course entre `PostToolUse` concurrents.
+
+### UX & fonctions mortes
+- Rappel `SessionStart` (`MSG_ACTIF`) : **anti-spam 1×/session**, plus de réinjection au
+  `resume`/`compact` (économie de contexte à la reprise).
+- Alerte de palier : repère **relatif au plafond** (« prochain palier ~Xk ») au lieu de
+  « palier N » brut.
+- Compteur de tours **mort** retiré (`turn_count_estimate`, `fresh_session_recommended`) — le
+  signal d'occupation par tokens le remplace.
+- `MSG_LECTURE` (jamais émis) désormais **émis dans le rappel de clôture** avec la liste des
+  relectures évitables du lot (issue du context-ledger).
+
+### Maintenabilité & doc
+- `parseCwd` dédupliqué (5 scripts → **`lib/cli.js`**) ; `writeAtomic`/`readJson` → `lib/fsjson.js`.
+- **`test/run-tests.js`** : harnais zéro-dépendance (95 assertions) — fail-open, verdicts Bash,
+  occupation, `merge-settings`, bootstrap. `test/run-tests.command` pour double-clic.
+- `ARCHITECTURE.md` corrigé (restauration depuis le **sidecar**, pas le backup ; node absolu ;
+  occupation par blocs/monotone) ; README documente le kill-switch `PMZ_DISABLE`.
+
 ## [0.2.0] — 2026-06-14
 
 Lot 1 de l'audit multi-dimensions (43 pistes confirmées) : bug actif + correctifs critiques.

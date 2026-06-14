@@ -4,31 +4,20 @@
 const fs = require('fs');
 const path = require('path');
 const { vibeDir, isInitialized } = require('./project');
+const { writeAtomic } = require('./fsjson');
 
 const DEFAULT_STATE = {
   session_id: null,
   current_batch: null,
-  turn_count_estimate: 0,
   batch_status: 'not_started',
   verification_status: 'not_checked',
-  fresh_session_recommended: false,
+  session_start_reminded: false, // anti-spam du rappel SessionStart (1×/session)
   closure_reminded_for_batch: false,
   prompt_reminders: {}, // anti-spam des rappels UserPromptSubmit (clé -> true)
 };
 
 function stateFile(root) {
   return path.join(vibeDir(root), 'session-state.json');
-}
-
-function writeAtomic(file, obj) {
-  try {
-    const tmp = file + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
-    fs.renameSync(tmp, file);
-    return true;
-  } catch (_) {
-    return false;
-  }
 }
 
 function loadSessionState(root, sessionId) {
