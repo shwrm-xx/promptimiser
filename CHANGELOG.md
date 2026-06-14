@@ -2,6 +2,14 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.4.2] — 2026-06-14
+
+Delta Codex exportable.
+
+- **`codex/install-codex.command`** : installe `~/.codex/AGENTS.md` + wrapper `~/bin/pmz-codex`
+  (optionnel), avec backup de l'existant et vérif PATH. Double-clic macOS.
+- **`package.command`** mis à jour : inclut `codex/` dans le zip + mentionne les deux installeurs.
+
 ## [0.4.1] — 2026-06-14
 
 Script d'export autonome.
