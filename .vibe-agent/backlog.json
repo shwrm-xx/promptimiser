@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "next_id": 12,
+  "created_at": "2026-07-10T19:22:52+02:00",
+  "updated_at": "2026-07-10T20:35:55.815Z",
+  "lots": [
+    {
+      "id": 1,
+      "title": "Lot A0 — correctifs socle",
+      "scope": "fait quand : matchers clear/compact+TodoWrite OK, audit-batch aligné, champs morts retirés",
+      "status": "done",
+      "closed_commit": "1652942",
+      "closed_at": "2026-07-10T19:22:52+02:00",
+      "started_at": null,
+      "lot_number": null,
+      "note": null
+    },
+    {
+      "id": 2,
+      "title": "Lot A1 — noyau backlog (plan de lots persistant)",
+      "scope": "fait quand : .vibe-agent/backlog.json + lib/backlog.js + CLI opérationnels",
+      "status": "done",
+      "closed_commit": "48161e5",
+      "closed_at": "2026-07-10T19:26:55+02:00",
+      "started_at": null,
+      "lot_number": null,
+      "note": null
+    },
+    {
+      "id": 3,
+      "title": "Lot A2 — capture passive TodoWrite",
+      "scope": "fait quand : .vibe-agent/todo-snapshot.json écrit à chaque TodoWrite",
+      "status": "done",
+      "closed_commit": "ea397af",
+      "closed_at": "2026-07-10T19:29:12+02:00",
+      "started_at": null,
+      "lot_number": null,
+      "note": null
+    },
+    {
+      "id": 4,
+      "title": "Lot A3 — suivi passif du plan de lots",
+      "scope": "fait quand : handoff enrichi + auto-clôture du lot au Stop",
+      "status": "done",
+      "closed_commit": "7389441",
+      "closed_at": "2026-07-10T19:32:45+02:00",
+      "started_at": null,
+      "lot_number": null,
+      "note": null
+    },
+    {
+      "id": 5,
+      "title": "Lot A4 — continuité (compaction)",
+      "scope": "fait quand : hook PreCompact + réinjection compact + filet sans handoff",
+      "status": "done",
+      "closed_commit": "3942e9b",
+      "closed_at": "2026-07-10T19:53:11+02:00",
+      "started_at": null,
+      "lot_number": null,
+      "note": null
+    },
+    {
+      "id": 6,
+      "title": "Lot A5 — couche explicite du lotissement",
+      "scope": "fait quand : /pmz-scope + MSG_LARGE v2 + close-batch avec plan",
+      "status": "done",
+      "closed_commit": "de8b24d",
+      "closed_at": "2026-07-10T19:57:29+02:00",
+      "started_at": null,
+      "lot_number": null,
+      "note": null
+    },
+    {
+      "id": 7,
+      "title": "Lot B1 — coût par fichier + gaspillage réel de relecture",
+      "scope": "fait quand : coût/octets par Read + estimation du gaspillage de relecture",
+      "status": "done",
+      "closed_commit": "736a53e",
+      "closed_at": "2026-07-10T22:03:05+02:00",
+      "started_at": null,
+      "lot_number": null,
+      "note": "Reconstruit depuis git le 2026-07-10 — backlog.json avait disparu ; lots à venir non récupérables."
+    },
+    {
+      "id": 8,
+      "title": "Lot B2 — métrologie par tour (lib/turnstats.js)",
+      "scope": "fait quand : lib/turnstats.js mesure par tour (delta occupation, tokens sortie, ratio cache, cache-bust distinguant pause 1re requête vs bust intra-tour) via offset octets stocké au Stop dans <sha1>-turns.json ; stop.js émet systemMessage (tour >=+50k anti-spam 3 tours, bust, pause 1x/session) + resync palier si delta<-100k ; miroir cl.occupancy ; tests fixtures usageLine verts.",
+      "status": "todo",
+      "closed_commit": null,
+      "closed_at": null,
+      "started_at": null,
+      "lot_number": null,
+      "note": null
+    },
+    {
+      "id": 9,
+      "title": "Lot B3 — /budget et /check-context chiffres en tokens",
+      "scope": "fait quand : audit-context.js rend un statut vert/orange/rouge calcule en tokens reels (occupation courante + waste B1) au lieu du comptage de relectures ; fallback comptage annonce si donnees absentes ; /budget et /check-context refletent le chiffre ; tests des 3 statuts + fallback verts.",
+      "status": "todo",
+      "closed_commit": null,
+      "closed_at": null,
+      "started_at": null,
+      "lot_number": null,
+      "note": null
+    },
+    {
+      "id": 10,
+      "title": "Lot B4 — advisory intra-tour (relecture redondante)",
+      "scope": "fait quand : PostToolUse emet additionalContext (~60 tokens) sur relecture COMPLETE d'un fichier >=16 KB deja lu et inchange (mtime + hors files_modified) ; plafond 1x/fichier ET 3x/session (etat <sha1>-advisory) ; opt-out PMZ_NO_ADVISORY=1 ; jamais deny/ask sur Read ; nouvelle sortie postToolContext dans lib/output.js ; tests verts.",
+      "status": "todo",
+      "closed_commit": null,
+      "closed_at": null,
+      "started_at": null,
+      "lot_number": null,
+      "note": null
+    },
+    {
+      "id": 11,
+      "title": "Lot B5 — nudges haute occupation",
+      "scope": "fait quand : UserPromptSubmit injecte additionalContext 2 lignes si occ>=500k (1x/palier, cle occ_<bucket> dans prompt_reminders) ; SessionStart source=resume si occ>=300k emet systemMessage (zero token injecte) ; tests injection 1x + silence sous seuil + resume systemMessage + non-regression startup verts.",
+      "status": "todo",
+      "closed_commit": null,
+      "closed_at": null,
+      "started_at": null,
+      "lot_number": null,
+      "note": null
+    }
+  ]
+}

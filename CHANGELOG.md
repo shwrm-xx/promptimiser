@@ -2,6 +2,20 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.5.6] — 2026-07-10 (sécurisation du backlog — lots B2 à B5 détaillés)
+
+`.vibe-agent/backlog.json` n'était pas versionné dans ce dépôt : il avait disparu entre deux
+sessions et les lots B2-B5 avaient dû être reconstruits à la volée depuis git (note sur #7).
+Committer le fichier corrige ce trou — le plan ne dépend plus de la mémoire de l'assistant.
+
+- **Backlog commité** : 7/11 faits (A0-A5, B1), 4 lots restants détaillés avec un critère
+  « fait quand » complet (mécanisme, fichiers, seuils, tests attendus) — repris du plan
+  approuvé : #8 B2 métrologie par tour, #9 B3 `/budget` chiffré, #10 B4 advisory intra-tour,
+  #11 B5 nudges haute occupation. Aucun lot démarré : le choix du prochain lot revient à la
+  session suivante.
+- **Tests** : suite complète relancée (252 OK, 0 échec) — aucune régression, ce lot est
+  purement administratif (backlog + changelog).
+
 ## [0.5.5] — 2026-07-10 (lot B1 — coût par fichier + gaspillage réel)
 
 Premier lot du chantier B « économie de tokens » : le stub mort `estimated_context_waste`
