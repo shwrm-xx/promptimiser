@@ -22,10 +22,24 @@ function main() {
   const avoidable = (rl.avoid_reread_notes || []).slice(0, 20);
   const known = Object.keys(cl.files_read || {}).slice(0, 20);
 
+  const wasteTotal = cl.estimated_context_waste || 0;
+  const wasteEntries = Object.entries(cl.waste_by_file || {})
+    .filter(([, t]) => t > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const fmtK = (t) => `${(t / 1000).toFixed(1)}k`;
+
   const lines = [];
   lines.push('## Économie de contexte');
   lines.push('');
   lines.push(`Statut : ${statut}`);
+  lines.push('');
+  lines.push('Gaspillage estimé :');
+  if (wasteEntries.length) {
+    lines.push(`- ≈ ${fmtK(wasteTotal)} tokens sur ${wasteEntries.length} fichier(s)`);
+    wasteEntries.slice(0, 20).forEach(([f, t]) => lines.push(`  - ${f} ≈ ${fmtK(t)}`));
+  } else {
+    lines.push('- (aucun détecté)');
+  }
   lines.push('');
   lines.push('Lectures évitables :');
   if (avoidable.length) avoidable.forEach((f) => lines.push(`- ${f}`));

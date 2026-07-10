@@ -2,6 +2,28 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.5.5] — 2026-07-10 (lot B1 — coût par fichier + gaspillage réel)
+
+Premier lot du chantier B « économie de tokens » : le stub mort `estimated_context_waste`
+devient une mesure réelle du gaspillage de relecture.
+
+- **Coût par fichier** : `post-tool-use.js` capture le `statSync` (octets + mtime) de chaque
+  `Read` ; `recordRead` mémorise `bytes`/`mtime` par entrée et estime le coût ≈ `bytes / 4`
+  tokens.
+- **Gaspillage réel** : une relecture **complète** (`!partial`) d'un fichier **inchangé**
+  (mtime identique à la dernière lecture) incrémente `estimated_context_waste` (total) et le
+  nouveau `waste_by_file[path]` (ventilé). Une lecture partielle ou un fichier modifié
+  entre-temps reste un coût justifié — non compté.
+- **`/check-context`** (`audit-context.js`) : nouvelle section « Gaspillage estimé » —
+  « ≈ Xk tokens sur N fichier(s) » + liste triée par coût décroissant ; « (aucun détecté) »
+  sinon.
+- **Nettoyage** : bloc `budget:` de `templates/rules.yaml` (documentaire, aucun parseur YAML
+  ne le lit) débarrassé des seuils par tours morts — pointe désormais vers les vrais paliers
+  tokens de `lib/occupancy.js`.
+- **Tests** : section S (5 cas) — 1re lecture non comptée, 2 relectures inchangées = 2000,
+  ventilation `waste_by_file`, relecture partielle non comptée, fichier modifié non compté,
+  rendu audit trié + « aucun détecté ». `node test/run-tests.js` : 252 OK.
+
 ## [0.5.4] — 2026-07-10 (lot A5 — couche explicite du lotissement + docs)
 
 Les points d'entrée explicites du plan de lots, par-dessus la couche passive (A1-A4).

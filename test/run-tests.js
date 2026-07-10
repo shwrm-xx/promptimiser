@@ -963,6 +963,61 @@ section('Couche explicite — MSG_LARGE v2, audit/close-batch avec plan de lots'
   ok(!/Plan de lots/.test(rC2.out) && /Clôture du lot/.test(rC2.out), 'close-batch sans plan : sortie historique');
 }
 
+// ============================ S. COÛT PAR FICHIER + GASPILLAGE RÉEL (B1) ============================
+section('Coût par fichier — gaspillage réel (relecture complète d\'un fichier inchangé)');
+const AUDIT_CTX = path.join(PKG, 'scripts', 'audit-context.js');
+{
+  const repo = path.join(SANDBOX, 'repo-waste');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  const big = path.join(repo, 'big.js');
+  fs.writeFileSync(big, 'x'.repeat(4000)); // 4000 octets → est_tokens ≈ 1000
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+
+  const readBig = (extra) => runHook('post-tool-use.js', {
+    tool_name: 'Read', tool_input: Object.assign({ file_path: big }, extra || {}), cwd: repo,
+  });
+  const ctxLedger = () => JSON.parse(fs.readFileSync(path.join(repo, '.vibe-agent', 'context-ledger.json'), 'utf8'));
+
+  readBig(); // 1re lecture : coût justifié, aucun gaspillage
+  ok((ctxLedger().estimated_context_waste || 0) === 0, 'B1 : 1re lecture complète → aucun gaspillage');
+
+  readBig(); // 2e lecture complète, fichier inchangé → gaspillage
+  readBig(); // 3e idem
+  const cl1 = ctxLedger();
+  ok(cl1.estimated_context_waste === 2000, 'B1 : 2 relectures complètes inchangées → waste = 2000 (2×1000)');
+  const wasteKeys = Object.entries(cl1.waste_by_file || {}).filter(([k]) => /big\.js$/.test(k));
+  ok(wasteKeys.length === 1 && wasteKeys[0][1] === 2000, 'B1 : waste_by_file ventilé par fichier (2000 sur big.js)');
+
+  readBig({ offset: 1 }); // relecture PARTIELLE → coût justifié, pas de gaspillage
+  ok(ctxLedger().estimated_context_waste === 2000, 'B1 : relecture partielle → pas de gaspillage ajouté');
+
+  // Fichier MODIFIÉ entre deux lectures : mtime différent → relecture justifiée.
+  const future = new Date(Date.now() + 60000);
+  fs.writeFileSync(big, 'y'.repeat(4000));
+  fs.utimesSync(big, future, future);
+  readBig();
+  ok(ctxLedger().estimated_context_waste === 2000, 'B1 : fichier modifié (mtime≠) → pas de gaspillage');
+
+  // audit-context.js affiche le gaspillage trié par coût.
+  const audit = runNode(AUDIT_CTX, ['--cwd', repo]);
+  ok(/Gaspillage estimé/.test(audit.out), 'B1 : audit affiche la section « Gaspillage estimé »');
+  ok(/≈ 2\.0k tokens sur 1 fichier/.test(audit.out), 'B1 : audit affiche le total ≈ 2.0k sur 1 fichier');
+  ok(/big\.js ≈ 2\.0k/.test(audit.out), 'B1 : audit liste big.js avec son coût');
+
+  // Projet sans gaspillage : mention « aucun détecté ».
+  const repoClean = path.join(SANDBOX, 'repo-waste-clean');
+  fs.mkdirSync(repoClean, { recursive: true });
+  execFileSync('git', ['init', '-q', repoClean]);
+  fs.writeFileSync(path.join(repoClean, 'a.txt'), 'a');
+  execFileSync('git', ['-C', repoClean, 'add', '.']);
+  execFileSync('git', ['-C', repoClean, 'commit', '-q', '-m', 'init']);
+  runHook('post-tool-use.js', { tool_name: 'Read', tool_input: { file_path: path.join(repoClean, 'a.txt') }, cwd: repoClean });
+  const auditClean = runNode(AUDIT_CTX, ['--cwd', repoClean]);
+  ok(/Gaspillage estimé :\n- \(aucun détecté\)/.test(auditClean.out), 'B1 : sans gaspillage → « aucun détecté »');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

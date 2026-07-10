@@ -13,6 +13,7 @@ armFailOpen(watchdogMs(SETTINGS_TIMEOUT_S.default));
 const { disabled } = require('../lib/env');
 if (disabled()) process.exit(0);
 
+const fs = require('fs');
 const path = require('path');
 const { parseHookInput } = require('../lib/stdin');
 const { passThrough } = require('../lib/output');
@@ -49,7 +50,12 @@ function main() {
   if (tool === 'Read') {
     const ti = input.tool_input || {};
     const partial = ti.offset != null || ti.limit != null;
-    recordRead(root, rel, sid, partial);
+    let stat = null;
+    try {
+      const st = fs.statSync(fp);
+      stat = { bytes: st.size, mtimeMs: st.mtimeMs };
+    } catch (_) { /* fichier disparu/inaccessible : coût inconnu, pas de gaspillage */ }
+    recordRead(root, rel, sid, partial, stat);
   } else if (tool === 'Edit' || tool === 'Write') {
     recordModify(root, rel, sid);
   }

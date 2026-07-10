@@ -75,7 +75,12 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
 - **Ledgers projet** (`.vibe-agent/{read,context}-ledger.json`) : auto-créés par
   `ensureLedger` (tout hook qui touche au projet) puis maintenus par `post-tool-use.js`
   (atomique `tmp`+`rename`, cap FIFO). Servent l'advisory `/check-context`. Granularité
-  **per-fichier**, distincte de l'occupation globale.
+  **per-fichier**, distincte de l'occupation globale. `post-tool-use.js` capture aussi le
+  `statSync` (octets/mtime) de chaque `Read` : coût estimé ≈ `bytes / 4` tokens. Une relecture
+  **complète** (`!partial`) d'un fichier **inchangé** (mtime identique à la dernière lecture)
+  incrémente `estimated_context_waste` (total) et `waste_by_file[path]` (ventilé) — une lecture
+  partielle ou un fichier modifié entre-temps est un coût justifié, pas du gaspillage.
+  `audit-context.js` en tire la ligne « Gaspillage ≈ Xk sur N fichiers » + liste triée par coût.
 - **État de clôture** (`.vibe-agent/session-state.json`) : keyé par `session_id` ; flag
   anti-spam du rappel de clôture par lot. À la fermeture d'un lot (working tree qui redevient
   propre), `stop.js` incrémente aussi le **compteur de lot** (`.vibe-agent/lot-counter.json`,

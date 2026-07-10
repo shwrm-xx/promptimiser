@@ -4,12 +4,10 @@ agent:
   secondary_objective: close_batches_cleanly
 
 budget:
-  warn_after_session_turns: 12
-  recommend_fresh_session_after_turns: 20
-  max_repeated_reads_per_file: 1
-  max_handoff_tokens: 800
-  max_claude_md_tokens: 1200
-  max_agents_md_tokens: 1200
+  # Bloc documentaire (aucun parseur YAML ne le lit). Le vrai signal de coût est
+  # l'occupation du contexte en TOKENS — paliers dans lib/occupancy.js
+  # (150k/300k/500k/750k puis +250k) — et non un compteur de tours.
+  max_repeated_reads_per_file: 1   # relecture complète d'un fichier inchangé = gaspillage
 
 context_policy:
   prefer:

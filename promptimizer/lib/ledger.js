@@ -26,6 +26,7 @@ function loadContextLedger(root) {
   cl.files_modified = cl.files_modified && typeof cl.files_modified === 'object' ? cl.files_modified : {};
   cl.repeated_reads = Array.isArray(cl.repeated_reads) ? cl.repeated_reads : [];
   if (!('estimated_context_waste' in cl)) cl.estimated_context_waste = null;
+  cl.waste_by_file = cl.waste_by_file && typeof cl.waste_by_file === 'object' ? cl.waste_by_file : {};
   cl.warnings = Array.isArray(cl.warnings) ? cl.warnings : [];
   return cl;
 }
@@ -37,7 +38,13 @@ function capObject(obj, max) {
   for (const k of sorted.slice(0, keys.length - max)) delete obj[k];
 }
 
-function recordRead(root, relPath, sessionId, partial) {
+// stat : { bytes, mtimeMs } capturé par le hook (statSync), ou null si indisponible.
+// Coût estimé d'un fichier ≈ bytes / 4 (heuristique tokens standard).
+function estTokens(stat) {
+  return stat && stat.bytes ? Math.round(stat.bytes / 4) : 0;
+}
+
+function recordRead(root, relPath, sessionId, partial, stat) {
   if (!isInitialized(root) || !relPath) return;
   const rl = loadReadLedger(root);
   const cl = loadContextLedger(root);
@@ -49,10 +56,21 @@ function recordRead(root, relPath, sessionId, partial) {
       cl.repeated_reads = cl.repeated_reads.slice(-MAX_REPEATED);
     }
     if (!rl.avoid_reread_notes.includes(relPath)) rl.avoid_reread_notes.push(relPath);
+    // Gaspillage réel : relecture COMPLÈTE (!partial) d'un fichier INCHANGÉ depuis
+    // la dernière lecture (mtime identique). Une lecture partielle ou un fichier
+    // modifié entre-temps est un coût justifié, pas du gaspillage.
+    if (!partial && stat && existing.mtime != null && stat.mtimeMs === existing.mtime) {
+      const est = estTokens(stat);
+      cl.estimated_context_waste = (cl.estimated_context_waste || 0) + est;
+      cl.waste_by_file[relPath] = (cl.waste_by_file[relPath] || 0) + est;
+    }
     existing.read_at = now;
     existing.partial = !!partial;
+    if (stat) { existing.bytes = stat.bytes; existing.mtime = stat.mtimeMs; }
   } else {
-    rl.reads.push({ path: relPath, read_at: now, partial: !!partial });
+    const entry = { path: relPath, read_at: now, partial: !!partial };
+    if (stat) { entry.bytes = stat.bytes; entry.mtime = stat.mtimeMs; }
+    rl.reads.push(entry);
     if (rl.reads.length > MAX_READS) rl.reads = rl.reads.slice(-MAX_READS);
   }
   cl.files_read[relPath] = now;
@@ -71,4 +89,4 @@ function recordModify(root, relPath, sessionId) {
   writeAtomic(contextLedgerFile(root), cl);
 }
 
-module.exports = { loadReadLedger, loadContextLedger, recordRead, recordModify };
+module.exports = { loadReadLedger, loadContextLedger, recordRead, recordModify, estTokens };
