@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "next_id": 12,
+  "next_id": 13,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-10T22:23:08.448Z",
+  "updated_at": "2026-07-10T22:26:56.425Z",
   "lots": [
     {
       "id": 1,
@@ -118,6 +118,17 @@
       "id": 11,
       "title": "Lot B5 — nudges haute occupation",
       "scope": "fait quand : UserPromptSubmit injecte additionalContext 2 lignes si occ>=500k (1x/palier, cle occ_<bucket> dans prompt_reminders) ; SessionStart source=resume si occ>=300k emet systemMessage (zero token injecte) ; tests injection 1x + silence sous seuil + resume systemMessage + non-regression startup verts.",
+      "status": "todo",
+      "closed_commit": null,
+      "closed_at": null,
+      "started_at": null,
+      "lot_number": null,
+      "note": null
+    },
+    {
+      "id": 12,
+      "title": "Lot B6 — préconisation de modèle par lot",
+      "scope": "fait quand : pmz-scope.md impose une préconisation de modèle (ex. sonnet/opus) par lot au moment du découpage ; le champ est persisté dans backlog.json (lots[].model_hint) ; il est réaffiché à chaque node backlog.js show/start et dans le handoff auto — jamais perdu silencieusement.",
       "status": "todo",
       "closed_commit": null,
       "closed_at": null,
