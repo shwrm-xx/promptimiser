@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 13,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-10T22:30:36.029Z",
+  "updated_at": "2026-07-10T22:39:31.015Z",
   "lots": [
     {
       "id": 1,
@@ -107,11 +107,11 @@
       "id": 10,
       "title": "Lot B4 — advisory intra-tour (relecture redondante)",
       "scope": "fait quand : PostToolUse emet additionalContext (~60 tokens) sur relecture COMPLETE d'un fichier >=16 KB deja lu et inchange (mtime + hors files_modified) ; plafond 1x/fichier ET 3x/session (etat <sha1>-advisory) ; opt-out PMZ_NO_ADVISORY=1 ; jamais deny/ask sur Read ; nouvelle sortie postToolContext dans lib/output.js ; tests verts.",
-      "status": "in_progress",
-      "closed_commit": null,
-      "closed_at": null,
+      "status": "done",
+      "closed_commit": "bbf54ebdeaaf870aba80013b6bcdbdcf6efb54fe",
+      "closed_at": "2026-07-10T22:39:31.014Z",
       "started_at": "2026-07-10T22:30:36.028Z",
-      "lot_number": null,
+      "lot_number": 3,
       "note": null
     },
     {
