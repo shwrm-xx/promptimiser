@@ -76,6 +76,18 @@ function autoInitMessage({ gitInitDone, committed }) {
   return lines.join('\n');
 }
 
+// Annonce d'auto-clôture d'un lot du backlog (stop.js, systemMessage — jamais injecté).
+function lotClosedMessage(lot, next, prog) {
+  const lines = [`Lot « ${lot.title} » clos (${prog.done}/${prog.total}).`];
+  if (next) {
+    lines.push(`Suivant : « ${next.title} »${next.scope ? ` — ${String(next.scope).slice(0, 100)}` : ''}.`);
+    lines.push('Nouvelle session recommandée : le handoff reprendra ce plan au démarrage.');
+  } else {
+    lines.push('Plan de lots terminé.');
+  }
+  return lines.join('\n');
+}
+
 function sessionTitleMessage(title) {
   return [
     `Titre de session suggéré : « ${title} ».`,
@@ -86,5 +98,5 @@ function sessionTitleMessage(title) {
 
 module.exports = {
   MSG_ACTIF, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
-  occupancyMessage, sessionTitleMessage, autoInitMessage,
+  occupancyMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
 };

@@ -59,7 +59,18 @@ function incrementLot(root) {
 }
 
 function suggestedTitle(root) {
-  return `${readEpic(root)} — Lot ${getLotCounter(root) + 1}`;
+  const base = `${readEpic(root)} — Lot ${getLotCounter(root) + 1}`;
+  try {
+    // require paresseux : backlog.js require lot.js en tête, un require en tête ici
+    // créerait un cycle de modules.
+    const backlog = require('./backlog');
+    const b = backlog.loadBacklog(root);
+    const cur = backlog.currentLot(b) || backlog.nextLot(b);
+    if (cur) return `${base} : ${cur.title.length > 40 ? cur.title.slice(0, 39) + '…' : cur.title}`;
+  } catch (_) {
+    /* fail-open : titre de base */
+  }
+  return base;
 }
 
 module.exports = { readEpic, getLotCounter, incrementLot, suggestedTitle };

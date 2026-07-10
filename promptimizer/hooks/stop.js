@@ -19,8 +19,9 @@ const { writeAutoHandoff } = require('../lib/handoff');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { loadContextLedger } = require('../lib/ledger');
 const { incrementLot } = require('../lib/lot');
+const { loadBacklog, doneLot, nextLot, progress } = require('../lib/backlog');
 const occupancy = require('../lib/occupancy');
-const { MSG_CLOTURE, MSG_LECTURE, occupancyMessage } = require('../lib/messages');
+const { MSG_CLOTURE, MSG_LECTURE, occupancyMessage, lotClosedMessage } = require('../lib/messages');
 
 function main() {
   const input = parseHookInput();
@@ -66,7 +67,18 @@ function main() {
     } else if (!open && st.closure_reminded_for_batch) {
       st.closure_reminded_for_batch = false; // working tree propre -> nouveau lot
       saveSessionState(root, st);
-      incrementLot(root); // lot fermé -> le prochain sera proposé au SessionStart suivant
+      const closedNumber = incrementLot(root); // lot fermé -> le prochain sera proposé au SessionStart suivant
+      // Auto-clôture du lot backlog — cas univoque seulement (exactement un in_progress) ;
+      // sinon on ne touche à rien (réconciliation via backlog.js reconcile / close-batch).
+      const b = loadBacklog(root);
+      const inProg = b.lots.filter((l) => l.status === 'in_progress');
+      if (inProg.length === 1) {
+        const done = doneLot(root, inProg[0].id, null, closedNumber);
+        if (done) {
+          const after = loadBacklog(root);
+          parts.push(lotClosedMessage(done, nextLot(after), progress(after)));
+        }
+      }
     }
     // (c) handoff auto : dernier état connu, ÉCRASÉ à chaque fin de tour (un seul
     // fichier, pas de bloat) ; session-start.js l'injectera au prochain démarrage.

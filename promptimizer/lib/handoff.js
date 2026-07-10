@@ -11,6 +11,7 @@ const path = require('path');
 const { vibeDir, git, gitStatusMeaningful } = require('./project');
 const { loadContextLedger } = require('./ledger');
 const { readEpic, getLotCounter } = require('./lot');
+const { summaryLines, readTodoSnapshot } = require('./backlog');
 
 const AUTO_MARKER = '<!-- pmz:handoff:auto -->';
 const MANUAL_MARKER = '<!-- pmz:handoff:manual -->';
@@ -86,6 +87,22 @@ function writeAutoHandoff(root) {
       `- Epic / lot en cours : « ${readEpic(root)} » — lot ${getLotCounter(root) + 1}`,
       `- Branche : ${branch} — dernier commit : ${last}`,
     ];
+    // Avancement fonctionnel : plan de lots (backlog) + dernier état des todos.
+    // Blocs omis si artefacts absents — le handoff reste purement mécanique sinon.
+    const plan = summaryLines(root);
+    if (plan.length) {
+      lines.push(`- ${plan[0]}`);
+      for (const p of plan.slice(1)) lines.push(`  ${p}`);
+    }
+    const snap = readTodoSnapshot(root);
+    if (snap && snap.todos.length) {
+      const items = snap.todos.filter((t) => t.status === 'in_progress')
+        .concat(snap.todos.filter((t) => t.status === 'pending').slice(0, 5));
+      if (items.length) {
+        lines.push('- Tâches en cours (TodoWrite, dernier état) :');
+        for (const t of items) lines.push(`  - [${t.status === 'in_progress' ? 'en cours' : 'à faire'}] ${t.content}`);
+      }
+    }
     if (dirty.length) {
       lines.push(`- Working tree : ${dirty.length} entrée(s) non commitée(s) :`);
       for (const l of dirty.slice(0, MAX_DIRTY_LINES)) lines.push(`  - ${l}`);

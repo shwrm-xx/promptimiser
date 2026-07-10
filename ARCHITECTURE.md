@@ -29,7 +29,7 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
 | `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large, anti-spam 1×/session |
 | `pre-tool-use.js` | PreToolUse `Bash` | `tool_input.command` | `permissionDecision` allow/ask/deny | sûreté commandes |
 | `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite` | `tool_input.file_path`, `tool_input.todos` | — (effet de bord ledgers) | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite) |
-| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), hygiène de lecture, rappel de clôture nommant les skills, incrémente le compteur de lot, écrit le handoff auto (écrasé à chaque tour) |
+| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), hygiène de lecture, rappel de clôture nommant les skills, incrémente le compteur de lot, auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, écrit le handoff auto (écrasé à chaque tour) |
 
 ### Invariants NON négociables
 1. **Fail-open** : toute erreur/timeout/JSON → `exit 0` ; jamais `exit 2` ; doute → `allow`.
@@ -83,10 +83,20 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   `.vibe-agent/epic` ou nom du dossier) et demande à l'assistant de tenter le renommage réel puis
   d'accuser explicitement le résultat (réussite, ou pourquoi pas) — un hook ne peut pas appeler un
   outil MCP lui-même, ce n'est donc qu'une instruction, pas une garantie.
+- **Plan de lots** (`.vibe-agent/backlog.json`, `lib/backlog.js` + CLI `scripts/backlog.js`) :
+  le lot comme **objet persistant trans-session** — id, titre, « fait quand », statut
+  (`todo|in_progress|done|dropped`), commit de clôture. Au plus un `in_progress` ; cap 20 lots
+  ouverts ; `doneLot` idempotent. Écrit par l'assistant (CLI) ; **auto-clos par `stop.js`**
+  quand le working tree redevient propre et qu'exactement un lot est `in_progress` (sinon ne
+  touche à rien — réconciliation bête via `backlog.js reconcile`). Jamais de promotion
+  automatique du suivant. À part : `.vibe-agent/todo-snapshot.json`, capture passive de la
+  todo-list Claude Code (écrasée à chaque `TodoWrite`, sens unique outil→disque — granularité
+  tâche ≠ lot, jamais de promotion todo→backlog).
 - **Handoff de session** (`.vibe-agent/handoff.md`, `lib/handoff.js`) : UN fichier, **écrasé à
   chaque fin de tour** par `stop.js` (jamais cumulé — pas de bloat). Deux origines distinguées
   par marqueur en 1re ligne : `<!-- pmz:handoff:auto -->` (mécanique : epic/lot, branche,
-  dernier commit, working tree filtré, fichiers récemment lus à ne pas relire) et
+  dernier commit, plan de lots x/y + lot en cours + suivants, dernières todos,
+  working tree filtré, fichiers récemment lus à ne pas relire) et
   `<!-- pmz:handoff:manual -->` (riche, écrit par l'assistant via `/fresh-session` ou
   `/close-batch` — jamais écrasé par l'auto tant qu'il n'est pas consommé). Au SessionStart
   suivant (`startup`/`clear` uniquement, jamais `resume`/`compact`), le handoff est **injecté**

@@ -2,6 +2,29 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.5.2] — 2026-07-10 (lot A3 — suivi passif du plan de lots)
+
+Le suivi du lotissement devient **entièrement passif** : plus rien à penser, le plan avance
+tout seul au rythme des commits et voyage dans le handoff.
+
+- **Handoff auto enrichi** (`lib/handoff.js`) : deux blocs ajoutés — « Plan de lots : x/y
+  faits + lot en cours + 3 suivants » (`summaryLines`) et « Tâches en cours (TodoWrite,
+  dernier état) : l'in_progress puis 5 pending ». Blocs omis si artefacts absents ; cap
+  d'injection 6 000 caractères inchangé.
+- **Auto-clôture au Stop** (`stop.js`) : quand le working tree redevient propre (le point
+  exact d'`incrementLot`), si le backlog a **exactement un** lot `in_progress`, il est marqué
+  `done` (commit + `lot_number` fraîchement incrémenté) et un systemMessage annonce
+  « Lot “X” clos (n/y). Suivant : “Z” — nouvelle session recommandée ». Cas ambigu (0 ou
+  plusieurs in_progress) → aucune écriture, aucun message. **Pas de promotion automatique**
+  du lot suivant (un `start` fantôme sur un plan périmé serait pire que rien).
+- **Titre de session enrichi** (`lib/lot.js: suggestedTitle`) : « Epic — Lot N : <titre du
+  lot backlog en cours> » (40c) quand un plan existe.
+- Filet à double chemin : si l'assistant fait le `done` via close-batch d'abord, l'auto-
+  clôture ne trouve plus d'in_progress et se tait (doneLot idempotent) — les deux chemins
+  convergent.
+- **Tests** : section P (11 assertions) — cycle complet dirty→commit→clos (1/3), message,
+  pas de promotion, handoff enrichi et mis à jour, cas ambigu intact, titre suffixé. 223 OK.
+
 ## [0.5.1] — 2026-07-10 (lot A2 — capture passive TodoWrite)
 
 La todo-list native de Claude Code — le seul artefact de découpage que le modèle produit

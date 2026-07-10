@@ -771,6 +771,77 @@ section('TodoWrite — snapshot passif (.vibe-agent/todo-snapshot.json)');
   ok(!!r && Array.isArray(r.todos) && r.todos.length === 30, 'readTodoSnapshot : dernier état lu');
 }
 
+// ============================ P. SUIVI PASSIF DU BACKLOG ============================
+section('Backlog — auto-clôture au Stop, handoff enrichi, titre de session');
+{
+  const repo = path.join(SANDBOX, 'repo-backlog-flow');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const empty = path.join(SANDBOX, 'empty.jsonl');
+  const sid = 'sess-bf1';
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Premier périmètre', '--scope', 'fait quand : X vert']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Deuxième périmètre']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Troisième périmètre']);
+  runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
+
+  // P1. titre de session enrichi du lot en cours
+  ok(/ : Premier périmètre$/.test(lot.suggestedTitle(repo)), 'suggestedTitle : suffixe titre du lot en cours');
+
+  // P2. lot ouvert → rappel de clôture (comportement existant intact)
+  fs.writeFileSync(path.join(repo, 'w.txt'), 'x');
+  const r1 = runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empty });
+  ok(/close-batch/.test(r1.out), 'lot ouvert : rappel de clôture inchangé');
+
+  // P3. handoff auto enrichi : plan de lots + todos
+  runHook('post-tool-use.js', { tool_name: 'TodoWrite', cwd: repo, session_id: sid,
+    tool_input: { todos: [
+      { content: 'étape en cours', status: 'in_progress' },
+      { content: 'étape suivante', status: 'pending' },
+    ] } });
+  runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empty });
+  const hf = fs.readFileSync(path.join(repo, '.vibe-agent', 'handoff.md'), 'utf8');
+  ok(/Plan de lots : 0\/3 faits/.test(hf) && /#1/.test(hf), 'handoff : bloc plan de lots');
+  ok(/Tâches en cours \(TodoWrite/.test(hf) && /étape en cours/.test(hf), 'handoff : bloc todos (in_progress d\'abord)');
+
+  // P4. commit → auto-clôture du cas univoque + message n/y, sans promotion auto
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'lot 1 fini']);
+  const r2 = runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empty });
+  let msg = '';
+  try { msg = JSON.parse(r2.out).systemMessage || ''; } catch (_) {}
+  ok(/Lot « Premier périmètre » clos \(1\/3\)/.test(msg), 'auto-clôture : message « clos (n/y) »');
+  ok(/Suivant : « Deuxième périmètre »/.test(msg), 'auto-clôture : lot suivant annoncé');
+  const b1 = backlogLib.loadBacklog(repo);
+  const done1 = b1.lots.find((l) => l.id === 1);
+  ok(done1.status === 'done' && !!done1.closed_commit && Number.isFinite(done1.lot_number),
+    'auto-clôture : done + commit + lot_number posés');
+  ok(backlogLib.currentLot(b1) === null, 'auto-clôture : pas de promotion automatique du suivant');
+
+  // P5. handoff après clôture : avancement à jour
+  runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empty });
+  const hf2 = fs.readFileSync(path.join(repo, '.vibe-agent', 'handoff.md'), 'utf8');
+  ok(/1\/3 faits/.test(hf2) && /Suivants : #2/.test(hf2), 'handoff : avancement mis à jour après clôture');
+
+  // P6. cas ambigu (deux in_progress forgés) → aucune clôture auto, backlog intact
+  const forged = backlogLib.loadBacklog(repo);
+  forged.lots.find((l) => l.id === 2).status = 'in_progress';
+  forged.lots.find((l) => l.id === 3).status = 'in_progress';
+  backlogLib.saveBacklog(repo, forged);
+  fs.writeFileSync(path.join(repo, 'w.txt'), 'y');
+  runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empty });
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'commit ambigu']);
+  const r3 = runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empty });
+  let msg3 = '';
+  try { msg3 = JSON.parse(r3.out).systemMessage || ''; } catch (_) {}
+  ok(!/clos \(/.test(msg3), 'ambigu : aucun message de clôture');
+  const b2 = backlogLib.loadBacklog(repo);
+  ok(b2.lots.filter((l) => l.status === 'done').length === 1, 'ambigu : backlog non touché (un seul done)');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);
