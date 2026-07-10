@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 12,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-10T20:35:55.815Z",
+  "updated_at": "2026-07-10T21:52:39.841Z",
   "lots": [
     {
       "id": 1,
@@ -85,11 +85,11 @@
       "id": 8,
       "title": "Lot B2 — métrologie par tour (lib/turnstats.js)",
       "scope": "fait quand : lib/turnstats.js mesure par tour (delta occupation, tokens sortie, ratio cache, cache-bust distinguant pause 1re requête vs bust intra-tour) via offset octets stocké au Stop dans <sha1>-turns.json ; stop.js émet systemMessage (tour >=+50k anti-spam 3 tours, bust, pause 1x/session) + resync palier si delta<-100k ; miroir cl.occupancy ; tests fixtures usageLine verts.",
-      "status": "todo",
-      "closed_commit": null,
-      "closed_at": null,
+      "status": "done",
+      "closed_commit": "662cce6",
+      "closed_at": "2026-07-10T21:52:39.839Z",
       "started_at": null,
-      "lot_number": null,
+      "lot_number": 1,
       "note": null
     },
     {
