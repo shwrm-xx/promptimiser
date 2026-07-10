@@ -1,3 +1,4 @@
+<!-- pmz:handoff:manual -->
 ## Handoff session fraîche
 
 Objectif du lot terminé :

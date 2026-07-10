@@ -6,7 +6,9 @@ poursuit trois objectifs :
 
 1. **Économie de contexte** — alerte sur l'occupation réelle du contexte (tokens) par paliers,
    via un message visible **non bloquant** et **non réinjecté** dans le contexte du modèle.
-2. **Clôture propre des lots** — rappelle vérification ciblée + `CHANGELOG` + commit + handoff.
+2. **Clôture propre des lots** — rappelle vérification ciblée + `CHANGELOG` + commit + handoff ;
+   le handoff est écrit dans `.vibe-agent/handoff.md` (auto à chaque fin de tour, riche via
+   `/fresh-session`) et **injecté automatiquement au démarrage de la session suivante**.
 3. **Initialisation prudente des projets** — propose de créer `CLAUDE.md` / `AGENTS.md` /
    `.vibe-agent/` / `CHANGELOG.md`, **uniquement après ta confirmation**, jamais d'écrasement.
 

@@ -12,7 +12,7 @@
     },
     {
       "path": "promptimizer/install/install.command",
-      "read_at": 1781428827037,
+      "read_at": 1781456440741,
       "partial": false
     },
     {
@@ -22,7 +22,7 @@
     },
     {
       "path": ".gitignore",
-      "read_at": 1781426078974,
+      "read_at": 1783698522402,
       "partial": false
     },
     {
@@ -47,17 +47,17 @@
     },
     {
       "path": "CHANGELOG.md",
-      "read_at": 1781426278068,
-      "partial": false
+      "read_at": 1783697557184,
+      "partial": true
     },
     {
       "path": "promptimizer/lib/occupancy.js",
-      "read_at": 1781427017139,
+      "read_at": 1783696261041,
       "partial": false
     },
     {
       "path": "promptimizer/lib/ledger.js",
-      "read_at": 1781427019609,
+      "read_at": 1783697946123,
       "partial": false
     },
     {
@@ -67,32 +67,32 @@
     },
     {
       "path": "promptimizer/hooks/session-start.js",
-      "read_at": 1781427027365,
+      "read_at": 1783697883644,
       "partial": false
     },
     {
       "path": "promptimizer/lib/messages.js",
-      "read_at": 1781427029635,
+      "read_at": 1783696897345,
       "partial": false
     },
     {
       "path": "promptimizer/hooks/user-prompt-submit.js",
-      "read_at": 1781427035467,
+      "read_at": 1783697197702,
       "partial": false
     },
     {
       "path": "promptimizer/hooks/stop.js",
-      "read_at": 1781427037702,
+      "read_at": 1783697883644,
       "partial": false
     },
     {
       "path": "README.md",
-      "read_at": 1781427041509,
-      "partial": false
+      "read_at": 1783698418657,
+      "partial": true
     },
     {
       "path": "ARCHITECTURE.md",
-      "read_at": 1781427044192,
+      "read_at": 1783697239106,
       "partial": false
     },
     {
@@ -102,7 +102,7 @@
     },
     {
       "path": "promptimizer/lib/output.js",
-      "read_at": 1781427216635,
+      "read_at": 1783697894131,
       "partial": false
     },
     {
@@ -117,8 +117,8 @@
     },
     {
       "path": "promptimizer/scripts/bootstrap-project.js",
-      "read_at": 1781427412294,
-      "partial": true
+      "read_at": 1783696175752,
+      "partial": false
     },
     {
       "path": "promptimizer/scripts/audit-batch.js",
@@ -127,8 +127,8 @@
     },
     {
       "path": "promptimizer/scripts/close-batch.js",
-      "read_at": 1781427419293,
-      "partial": true
+      "read_at": 1783696175761,
+      "partial": false
     },
     {
       "path": "promptimizer/scripts/audit-context.js",
@@ -152,7 +152,62 @@
     },
     {
       "path": "promptimizer/hooks/post-tool-use.js",
-      "read_at": 1781428879137,
+      "read_at": 1783696822666,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/install/package.command",
+      "read_at": 1781457213008,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/templates/AGENTS.md",
+      "read_at": 1783698246748,
+      "partial": false
+    },
+    {
+      "path": "/Users/marwan.elachmar/.claude/statusline-cost.py",
+      "read_at": 1783687113736,
+      "partial": false
+    },
+    {
+      "path": "/private/tmp/claude-501/bundled-skills/2.1.205/cfe39f1043b108cc3a98aae2c1ccf1e9/dataviz/references/palette.md",
+      "read_at": 1783687537520,
+      "partial": false
+    },
+    {
+      "path": "/private/tmp/claude-501/-Users-marwan-elachmar-Documents-GitHub-promptimiser/b00579cd-2f88-4929-8fe9-63b17d6054a6/scratchpad/dashboard-assisthealth-tokens.html",
+      "read_at": 1783687766376,
+      "partial": true
+    },
+    {
+      "path": "test/run-tests.js",
+      "read_at": 1783697956907,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/lib/fsjson.js",
+      "read_at": 1783696788550,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/lib/cli.js",
+      "read_at": 1783697075779,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/templates/handoff-template.md",
+      "read_at": 1783697956741,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/lib/bootstrap.js",
+      "read_at": 1783698049222,
+      "partial": false
+    },
+    {
+      "path": "skills/promptimizer/SKILL.md",
+      "read_at": 1783698246744,
       "partial": false
     }
   ],
@@ -160,6 +215,23 @@
   "avoid_reread_notes": [
     "promptimizer/install/merge-settings.js",
     "promptimizer/hooks/pre-tool-use.js",
-    "promptimizer/install/install.command"
+    "promptimizer/install/install.command",
+    "CHANGELOG.md",
+    "promptimizer/install/package.command",
+    "ARCHITECTURE.md",
+    "promptimizer/hooks/post-tool-use.js",
+    "promptimizer/scripts/bootstrap-project.js",
+    "promptimizer/scripts/close-batch.js",
+    "promptimizer/lib/occupancy.js",
+    "promptimizer/hooks/stop.js",
+    "promptimizer/hooks/user-prompt-submit.js",
+    "promptimizer/lib/messages.js",
+    "promptimizer/hooks/session-start.js",
+    "test/run-tests.js",
+    "promptimizer/lib/output.js",
+    "promptimizer/lib/ledger.js",
+    "promptimizer/templates/AGENTS.md",
+    "README.md",
+    ".gitignore"
   ]
 }

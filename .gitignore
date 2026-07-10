@@ -6,3 +6,6 @@ node_modules/
 /.sandbox/
 *.pmz-backup-*.json
 *.vsg-backup-*.json
+
+# État PMZ éphémère (réécrit à chaque fin de tour)
+.vibe-agent/handoff.md

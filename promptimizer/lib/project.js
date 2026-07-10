@@ -86,6 +86,15 @@ function gitStatusPorcelain(root) {
   return out.split('\n').filter((l) => l.trim() !== '');
 }
 
+// Statut porcelain SANS le bruit .vibe-agent/ : les ledgers et le handoff sont
+// réécrits par les hooks à chaque tour ; seul le reste compte comme « lot ouvert ».
+function gitStatusMeaningful(root) {
+  return gitStatusPorcelain(root).filter((l) => {
+    const p = l.slice(3).replace(/^"/, '');
+    return !p.startsWith('.vibe-agent');
+  });
+}
+
 function lastCommitEpoch(root) {
   const out = git(['log', '-1', '--format=%ct'], root);
   if (!out) return null;
@@ -110,5 +119,5 @@ function changelogTouched(root) {
 
 module.exports = {
   git, gitRoot, vibeDir, isInitialized, ensureLedger, isFullyInitialized, exists, detectStack,
-  gitStatusPorcelain, lastCommitEpoch, hasAnyCommit, changelogTouched,
+  gitStatusPorcelain, gitStatusMeaningful, lastCommitEpoch, hasAnyCommit, changelogTouched,
 };

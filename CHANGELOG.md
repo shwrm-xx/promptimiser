@@ -2,6 +2,31 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.4.6] — 2026-07-10
+
+Handoff de session automatisé : plus besoin de copier-coller le handoff dans la nouvelle
+session — il vit dans UN fichier `.vibe-agent/handoff.md`, écrasé à chaque tour (pas de
+bloat), et il est injecté automatiquement au démarrage de la session suivante.
+
+- **`lib/handoff.js` (nouveau)** : handoff **auto** (mécanique — epic/lot, branche, dernier
+  commit, working tree, fichiers récemment lus à ne pas relire) écrit par `stop.js` à CHAQUE
+  fin de tour ; handoff **manuel** (riche) écrit par l'assistant via `/fresh-session` ou
+  `/close-batch`, distingué par le marqueur `<!-- pmz:handoff:manual -->` et jamais écrasé
+  par l'auto tant qu'il n'a pas été consommé. Un fichier sans marqueur PMZ (notes
+  utilisateur) n'est ni écrasé ni injecté.
+- **`session-start.js`** : injecte le handoff au démarrage (`startup`/`clear` uniquement,
+  cap 6 000 caractères) puis le marque consommé (manuel → auto, l'auto reprend la main).
+- **`lib/project.js: gitStatusMeaningful`** : la détection de « lot ouvert » de `stop.js`
+  ignore désormais le churn `.vibe-agent/` (ledgers + handoff réécrits à chaque tour), qui
+  rendait le working tree perpétuellement sale et bloquait la clôture de lot.
+- **`/fresh-session` et `/close-batch`** : écrivent le handoff riche dans
+  `.vibe-agent/handoff.md` (écrasement) au lieu de seulement l'afficher ; templates
+  (`handoff-template.md`, `CLAUDE.md`, `AGENTS.md` — équivalent Codex : lire le handoff en
+  première action) et `SKILL.md` alignés.
+- **Tests** : section K (16 assertions) — écrasement sans cumul, préservation du manuel,
+  injection SessionStart, consommation, non-réinjection au resume, fichier utilisateur
+  intouché, clôture de lot malgré `.vibe-agent/` non commité. 165 OK.
+
 ## [0.4.5] — 2026-07-10
 
 Six optimisations issues de l'audit d'usage tokens sur assistHealth (rapport + dashboard) :

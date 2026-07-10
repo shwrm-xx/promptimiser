@@ -2,7 +2,8 @@
 'use strict';
 // Stop : garde-fou de fin de tour UNIFIÉ et NON BLOQUANT (systemMessage).
 // (a) alerte palier d'occupation contexte (méthode reprise de context-guard.py) ;
-// (b) rappel de clôture si un lot est ouvert (anti-spam par lot).
+// (b) rappel de clôture si un lot est ouvert (anti-spam par lot) ;
+// (c) handoff auto écrit dans .vibe-agent/handoff.md (écrasé à chaque tour).
 process.on('uncaughtException', () => process.exit(0));
 process.on('unhandledRejection', () => process.exit(0));
 const { armFailOpen } = require('../lib/guard');
@@ -13,7 +14,8 @@ if (disabled()) process.exit(0);
 
 const { parseHookInput } = require('../lib/stdin');
 const { systemMessage, passThrough } = require('../lib/output');
-const { gitRoot, ensureLedger, gitStatusPorcelain } = require('../lib/project');
+const { gitRoot, ensureLedger, gitStatusMeaningful } = require('../lib/project');
+const { writeAutoHandoff } = require('../lib/handoff');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { loadContextLedger } = require('../lib/ledger');
 const { incrementLot } = require('../lib/lot');
@@ -47,7 +49,9 @@ function main() {
   const root = gitRoot(cwd);
   if (root) {
     ensureLedger(root);
-    const open = gitStatusPorcelain(root).length > 0;
+    // gitStatusMeaningful : le churn .vibe-agent/ (ledgers, handoff réécrit à
+    // chaque tour) ne doit pas compter comme lot ouvert ni bloquer sa clôture.
+    const open = gitStatusMeaningful(root).length > 0;
     const st = loadSessionState(root, sid);
     if (open && !st.closure_reminded_for_batch) {
       parts.push(MSG_CLOTURE);
@@ -64,6 +68,10 @@ function main() {
       saveSessionState(root, st);
       incrementLot(root); // lot fermé -> le prochain sera proposé au SessionStart suivant
     }
+    // (c) handoff auto : dernier état connu, ÉCRASÉ à chaque fin de tour (un seul
+    // fichier, pas de bloat) ; session-start.js l'injectera au prochain démarrage.
+    // Ne touche jamais un handoff manuel (/fresh-session) non encore consommé.
+    writeAutoHandoff(root);
   }
 
   if (parts.length) return systemMessage(parts.join('\n\n'));

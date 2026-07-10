@@ -30,6 +30,13 @@ contenu : cohérence + rendu). Annoncer ce qui n'a pas pu être vérifié.
 2. `CHANGELOG.md` mis à jour (entrée datée, en français).
 3. Commit court (français).
 4. Handoff < 800 tokens : fait · reste/blocages · fichiers clés · session fraîche si pertinent.
+   L'écrire dans `.vibe-agent/handoff.md` (écraser ; 1re ligne `<!-- pmz:handoff:manual -->`) —
+   il sera repris au démarrage de la session suivante.
+
+## Début de session
+
+Si `.vibe-agent/handoff.md` existe, le lire en première action et le prendre comme point de
+départ ; ne pas relire les fichiers qu'il liste sauf changement.
 
 ## Contexte élevé
 

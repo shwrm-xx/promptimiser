@@ -25,11 +25,11 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
 
 | Hook | Event / matcher | Lit (stdin) | Émet | Rôle |
 |------|-----------------|-------------|------|------|
-| `session-start.js` | SessionStart `startup\|resume` | `cwd`, `source` | `additionalContext` | détecte projet, auto-scaffold si projet neuf (0 commit), sinon propose init, rappel court + titre de session suggéré |
+| `session-start.js` | SessionStart `startup\|resume` | `cwd`, `source` | `additionalContext` | détecte projet, auto-scaffold si projet neuf (0 commit), sinon propose init, rappel court + titre de session suggéré + injecte le handoff de la session précédente puis le marque consommé |
 | `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large, anti-spam 1×/session |
 | `pre-tool-use.js` | PreToolUse `Bash` | `tool_input.command` | `permissionDecision` allow/ask/deny | sûreté commandes |
 | `post-tool-use.js` | PostToolUse `Read\|Edit\|Write` | `tool_input.file_path` | — (effet de bord ledgers) | auto-crée le ledger si absent, journalise lectures/édits |
-| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), hygiène de lecture, rappel de clôture nommant les skills, incrémente le compteur de lot |
+| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), hygiène de lecture, rappel de clôture nommant les skills, incrémente le compteur de lot, écrit le handoff auto (écrasé à chaque tour) |
 
 ### Invariants NON négociables
 1. **Fail-open** : toute erreur/timeout/JSON → `exit 0` ; jamais `exit 2` ; doute → `allow`.
@@ -77,6 +77,17 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   `.vibe-agent/epic` ou nom du dossier) et demande à l'assistant de tenter le renommage réel puis
   d'accuser explicitement le résultat (réussite, ou pourquoi pas) — un hook ne peut pas appeler un
   outil MCP lui-même, ce n'est donc qu'une instruction, pas une garantie.
+- **Handoff de session** (`.vibe-agent/handoff.md`, `lib/handoff.js`) : UN fichier, **écrasé à
+  chaque fin de tour** par `stop.js` (jamais cumulé — pas de bloat). Deux origines distinguées
+  par marqueur en 1re ligne : `<!-- pmz:handoff:auto -->` (mécanique : epic/lot, branche,
+  dernier commit, working tree filtré, fichiers récemment lus à ne pas relire) et
+  `<!-- pmz:handoff:manual -->` (riche, écrit par l'assistant via `/fresh-session` ou
+  `/close-batch` — jamais écrasé par l'auto tant qu'il n'est pas consommé). Au SessionStart
+  suivant (`startup`/`clear` uniquement, jamais `resume`/`compact`), le handoff est **injecté**
+  (cap 6 000 caractères) puis **marqué consommé** (manuel → auto, l'auto reprend la main). Un
+  fichier sans marqueur PMZ (notes utilisateur) n'est ni écrasé ni injecté. La détection de
+  « lot ouvert » de `stop.js` utilise `gitStatusMeaningful` (porcelain **sans** `.vibe-agent/`) :
+  le churn ledgers/handoff ne compte pas comme lot ouvert et ne bloque pas sa clôture.
 
 ## Mapping source → cible & installation
 
@@ -108,6 +119,12 @@ restauration) et **signale** un sidecar corrompu au lieu de l'avaler. Écriture 
   pratiques. Découpler « plomberie invisible » (ledger, auto-créée) de « scaffolding visible »
   (CLAUDE.md/AGENTS.md, toujours confirmé sur un projet mature) fait tourner la couche la plus
   utile sans toucher au consentement sur ce qui affecte réellement le repo de l'utilisateur.
+- **Handoff : un seul fichier écrasé, pas d'historique** : des fichiers par session
+  s'accumuleraient (bloat) et poseraient la question du nettoyage ; le handoff n'a de valeur
+  que pour la session suivante — l'état antérieur est déjà dans git/CHANGELOG. Le hook Stop ne
+  pouvant pas générer un handoff riche (pas d'accès au modèle), l'auto mécanique garantit un
+  plancher toujours présent, et le manuel de `/fresh-session` l'enrichit quand l'utilisateur
+  clôture proprement.
 - **Rappels qui nomment la commande exacte** (`/close-batch`, `/fresh-session`) plutôt qu'une
   prose générique : le même audit a montré que les skills PMZ n'étaient invoqués que quelques
   fois sur 76 sessions malgré des rappels de coût réguliers — l'écart entre « le mécanisme

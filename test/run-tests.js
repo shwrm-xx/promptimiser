@@ -447,6 +447,88 @@ const bootstrapLib = require(path.join(PKG, 'lib', 'bootstrap'));
   ok(!fs.existsSync(path.join(repo, 'CLAUDE.md')), 'projet mature sans /pmz-init → CLAUDE.md toujours NON créé automatiquement');
 }
 
+// ============================ K. HANDOFF DE FIN DE TOUR ============================
+section('Handoff auto (.vibe-agent/handoff.md) — écrasement, manuel, injection, consommation');
+const handoff = require(path.join(PKG, 'lib', 'handoff'));
+{
+  const repo = path.join(SANDBOX, 'repo-handoff');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'CLAUDE.md'), 'règles'); // + ledger -> isFullyInitialized
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'premier commit']);
+  const hf = path.join(repo, '.vibe-agent', 'handoff.md');
+  const empty = path.join(SANDBOX, 'empty.jsonl');
+  function startCtx(sid) {
+    const r = runHook('session-start.js', { source: 'startup', cwd: repo, session_id: sid });
+    try { return JSON.parse(r.out).hookSpecificOutput.additionalContext || ''; } catch (_) { return ''; }
+  }
+
+  // K1. stop.js écrit le handoff auto en fin de tour
+  runHook('stop.js', { session_id: 'sess-h1', cwd: repo, transcript_path: empty });
+  ok(fs.existsSync(hf), 'stop.js → handoff.md créé');
+  const c1 = fs.readFileSync(hf, 'utf8');
+  ok(c1.includes(handoff.AUTO_MARKER), 'handoff auto : marqueur auto présent');
+  ok(/premier commit/.test(c1), 'handoff auto : mentionne le dernier commit');
+
+  // K2. écrasé à chaque tour (jamais cumulé) et reflète l'état courant
+  fs.writeFileSync(path.join(repo, 'b.txt'), 'x');
+  runHook('stop.js', { session_id: 'sess-h1', cwd: repo, transcript_path: empty });
+  const c2 = fs.readFileSync(hf, 'utf8');
+  ok(c2.split('pmz:handoff:auto').length === 2, 'handoff écrasé à chaque tour (un seul marqueur, pas de cumul)');
+  ok(/b\.txt/.test(c2), 'handoff auto : reflète le working tree courant');
+
+  // K3. session-start injecte le handoff au démarrage de la session suivante
+  const ctx1 = startCtx('sess-h2');
+  ok(/handoff/i.test(ctx1) && /b\.txt/.test(ctx1), 'session-start : handoff injecté dans additionalContext');
+
+  // K4. un handoff manuel (/fresh-session) n'est jamais écrasé par stop.js
+  fs.writeFileSync(hf, handoff.MANUAL_MARKER + '\n## Handoff session fraîche\nCONTENU-RICHE\n');
+  runHook('stop.js', { session_id: 'sess-h2', cwd: repo, transcript_path: empty });
+  ok(/CONTENU-RICHE/.test(fs.readFileSync(hf, 'utf8')), 'handoff manuel préservé par stop.js');
+
+  // K5. handoff manuel injecté au démarrage suivant puis consommé (manuel -> auto)
+  const ctx2 = startCtx('sess-h3');
+  ok(/CONTENU-RICHE/.test(ctx2), 'handoff manuel injecté au démarrage');
+  const consumed = fs.readFileSync(hf, 'utf8');
+  ok(consumed.includes(handoff.AUTO_MARKER) && !consumed.includes(handoff.MANUAL_MARKER),
+    'consommation : marqueur manuel rebasculé en auto');
+  runHook('stop.js', { session_id: 'sess-h3', cwd: repo, transcript_path: empty });
+  ok(!/CONTENU-RICHE/.test(fs.readFileSync(hf, 'utf8')), 'après consommation : le handoff auto reprend la main');
+
+  // K6. resume/compact : aucune réinjection (anti-bloat)
+  const r3 = runHook('session-start.js', { source: 'resume', cwd: repo, session_id: 'sess-h4' });
+  ok(r3.code === 0 && !(r3.out || '').trim(), 'resume → aucune injection (handoff compris)');
+
+  // K7. fichier sans marqueur PMZ (notes utilisateur) : ni écrasé ni injecté
+  fs.writeFileSync(hf, 'notes perso sans marqueur');
+  runHook('stop.js', { session_id: 'sess-h5', cwd: repo, transcript_path: empty });
+  ok(fs.readFileSync(hf, 'utf8') === 'notes perso sans marqueur', 'fichier utilisateur : jamais écrasé');
+  ok(!/notes perso/.test(startCtx('sess-h6')), 'fichier utilisateur : jamais injecté');
+}
+{
+  // K8. le bruit .vibe-agent/ (ledgers + handoff réécrits chaque tour) ne compte
+  // pas comme lot ouvert et ne bloque plus la clôture du lot.
+  const repo = path.join(SANDBOX, 'repo-handoff-noise');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const empty = path.join(SANDBOX, 'empty.jsonl');
+  runHook('stop.js', { session_id: 'sess-n1', cwd: repo, transcript_path: empty }); // crée .vibe-agent + handoff
+  ok(project.gitStatusPorcelain(repo).length > 0, 'porcelain brut : voit le bruit .vibe-agent non commité');
+  ok(project.gitStatusMeaningful(repo).length === 0, 'gitStatusMeaningful : ignore .vibe-agent');
+  fs.writeFileSync(path.join(repo, 'a.txt'), '2'); // lot ouvert
+  runHook('stop.js', { session_id: 'sess-n1', cwd: repo, transcript_path: empty });
+  const before = lot.getLotCounter(repo);
+  execFileSync('git', ['-C', repo, 'add', 'a.txt']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'close']);
+  runHook('stop.js', { session_id: 'sess-n1', cwd: repo, transcript_path: empty });
+  ok(lot.getLotCounter(repo) === before + 1, 'lot clôturé malgré .vibe-agent non commité (ledgers/handoff)');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

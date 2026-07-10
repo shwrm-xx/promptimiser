@@ -30,8 +30,10 @@ Quand un projet n'est pas initialisé (présence de `.vibe-agent/` absente) :
 
 ## 3. Clôturer un lot
 `node ~/.claude/promptimizer/scripts/close-batch.js` puis :
-vérification ciblée → `CHANGELOG.md` → commit (français, court) → handoff < 800 tokens →
-recommander une session fraîche.
+vérification ciblée → `CHANGELOG.md` → commit (français, court) → handoff < 800 tokens
+**écrit dans `.vibe-agent/handoff.md`** (écrasé ; 1re ligne `<!-- pmz:handoff:manual -->`) →
+recommander une session fraîche (le handoff y est injecté automatiquement au démarrage ;
+à défaut, un handoff auto mécanique est écrit par le hook Stop à chaque fin de tour).
 
 ## Définition de « fini »
 demande littérale traitée · scope creep évité · vérification ciblée · erreurs/zones non

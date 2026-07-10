@@ -27,6 +27,11 @@ const MSG_CLOTURE = [
   'Lance /close-batch pour la checklist et l\'audit complets (vérif ciblée, CHANGELOG, commit, handoff).',
 ].join('\n');
 
+const MSG_HANDOFF = [
+  'Handoff de la session précédente (.vibe-agent/handoff.md) — prends-le comme point de départ.',
+  "Ne relis pas les fichiers qu'il liste sauf changement (git diff/git grep d'abord).",
+].join('\n');
+
 const MSG_LARGE = [
   'Demande potentiellement large.',
   'Découpe en un lot court et ciblé ; évite le scope creep et les relectures massives.',
@@ -80,6 +85,6 @@ function sessionTitleMessage(title) {
 }
 
 module.exports = {
-  MSG_ACTIF, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_LARGE, MSG_INIT_BEFORE_CODE,
+  MSG_ACTIF, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   occupancyMessage, sessionTitleMessage, autoInitMessage,
 };

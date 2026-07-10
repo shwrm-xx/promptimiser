@@ -18,7 +18,22 @@ const { gitRoot, isFullyInitialized, hasAnyCommit } = require('../lib/project');
 const { runBootstrap, commitScaffold } = require('../lib/bootstrap');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { suggestedTitle } = require('../lib/lot');
-const { MSG_ACTIF, MSG_NON_INIT, sessionTitleMessage, autoInitMessage } = require('../lib/messages');
+const { readHandoff, markConsumed } = require('../lib/handoff');
+const { MSG_ACTIF, MSG_NON_INIT, MSG_HANDOFF, sessionTitleMessage, autoInitMessage } = require('../lib/messages');
+
+// Ajoute le handoff de la session précédente (écrit par stop.js ou /fresh-session)
+// au message injecté, puis le marque consommé (un handoff manuel redevient
+// écrasable par le handoff auto). Fail-open : renvoie msg inchangé au moindre doute.
+function withHandoff(root, msg) {
+  try {
+    const h = readHandoff(root);
+    if (!h || !h.text) return msg;
+    markConsumed(root);
+    return msg + '\n\n' + MSG_HANDOFF + '\n\n' + h.text;
+  } catch (_) {
+    return msg;
+  }
+}
 
 function main() {
   const input = parseHookInput();
@@ -41,7 +56,7 @@ function main() {
     } catch (_) {
       /* fail-open : le rappel de base part quand même */
     }
-    return injectContext('SessionStart', msg);
+    return injectContext('SessionStart', withHandoff(root, msg));
   }
   // Non initialisé, et uniquement au vrai démarrage (l'état n'est pas persistable
   // hors projet initialisé).
@@ -62,7 +77,8 @@ function main() {
     }
   }
   // Sinon : on PROPOSE seulement (l'init réelle se fait après confirmation).
-  return injectContext('SessionStart', MSG_NON_INIT);
+  // Le handoff éventuel (ledger auto-créé sans socle visible) est injecté aussi.
+  return injectContext('SessionStart', withHandoff(root, MSG_NON_INIT));
 }
 
 main();
