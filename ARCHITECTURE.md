@@ -28,7 +28,7 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
 | `session-start.js` | SessionStart `startup\|resume\|clear\|compact` (n'injecte qu'au `startup`/`clear`) | `cwd`, `source` | `additionalContext` | détecte projet, auto-scaffold si projet neuf (0 commit), sinon propose init, rappel court + titre de session suggéré + injecte le handoff de la session précédente puis le marque consommé |
 | `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large, anti-spam 1×/session |
 | `pre-tool-use.js` | PreToolUse `Bash` | `tool_input.command` | `permissionDecision` allow/ask/deny | sûreté commandes |
-| `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite` | `tool_input.file_path` | — (effet de bord ledgers) | auto-crée le ledger si absent, journalise lectures/édits |
+| `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite` | `tool_input.file_path`, `tool_input.todos` | — (effet de bord ledgers) | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite) |
 | `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), hygiène de lecture, rappel de clôture nommant les skills, incrémente le compteur de lot, écrit le handoff auto (écrasé à chaque tour) |
 
 ### Invariants NON négociables

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 'use strict';
-// PostToolUse (Read|Edit|Write) : INFORMATIF uniquement. Met à jour les ledgers projet.
+// PostToolUse (Read|Edit|Write|TodoWrite) : INFORMATIF uniquement. Met à jour les
+// ledgers projet et capture la todo-list (snapshot écrasé à chaque TodoWrite).
 // Le ledger (.vibe-agent/) est auto-créé dès qu'un repo git existe (ensureLedger) —
 // aucune confirmation requise, contrairement au socle visible (CLAUDE.md/AGENTS.md).
 // Ne bloque jamais, aucune décision.
@@ -17,6 +18,7 @@ const { parseHookInput } = require('../lib/stdin');
 const { passThrough } = require('../lib/output');
 const { gitRoot, ensureLedger } = require('../lib/project');
 const { recordRead, recordModify } = require('../lib/ledger');
+const { writeTodoSnapshot } = require('../lib/backlog');
 
 function relOf(root, fp) {
   try {
@@ -30,6 +32,12 @@ function relOf(root, fp) {
 function main() {
   const input = parseHookInput();
   const tool = input.tool_name;
+  // TodoWrite n'a pas de file_path : branché avant le guard fp.
+  if (tool === 'TodoWrite') {
+    const root = gitRoot(input.cwd || process.cwd());
+    if (root) writeTodoSnapshot(root, input.tool_input && input.tool_input.todos, input.session_id || null);
+    return passThrough();
+  }
   const fp = input.tool_input && input.tool_input.file_path;
   if (!fp) return passThrough();
   const cwd = input.cwd || process.cwd();

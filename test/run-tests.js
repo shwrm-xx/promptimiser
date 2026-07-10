@@ -718,6 +718,59 @@ const BKLG = path.join(PKG, 'scripts', 'backlog.js');
     'backlog hors git : refus doux, rien créé');
 }
 
+// ============================ O. CAPTURE TODOWRITE ============================
+section('TodoWrite — snapshot passif (.vibe-agent/todo-snapshot.json)');
+{
+  const repo = path.join(SANDBOX, 'repo-todos');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const snap = path.join(repo, '.vibe-agent', 'todo-snapshot.json');
+
+  // O1. capture : contenu + statut, activeForm jeté
+  runHook('post-tool-use.js', { tool_name: 'TodoWrite', cwd: repo, session_id: 's-td1',
+    tool_input: { todos: [
+      { content: 'faire A', status: 'in_progress', activeForm: 'Faisant A' },
+      { content: 'faire B', status: 'pending', activeForm: 'Faisant B' },
+    ] } });
+  ok(fs.existsSync(snap), 'TodoWrite → snapshot créé');
+  let j = JSON.parse(fs.readFileSync(snap, 'utf8'));
+  ok(j.todos.length === 2 && j.todos[0].content === 'faire A' && j.todos[0].status === 'in_progress',
+    'snapshot : contenu et statut capturés');
+  ok(!('activeForm' in j.todos[0]) && j.session_id === 's-td1', 'snapshot : activeForm jeté, session posée');
+
+  // O2. écrasement intégral à chaque appel (liste complète transmise par l'outil)
+  runHook('post-tool-use.js', { tool_name: 'TodoWrite', cwd: repo, session_id: 's-td1',
+    tool_input: { todos: [{ content: 'faire C', status: 'completed' }] } });
+  j = JSON.parse(fs.readFileSync(snap, 'utf8'));
+  ok(j.todos.length === 1 && j.todos[0].content === 'faire C', 'snapshot : écrasé intégralement à chaque appel');
+
+  // O3. caps 30 items / 120 chars
+  const many = [];
+  for (let i = 0; i < 40; i++) many.push({ content: 'i'.repeat(300), status: 'pending' });
+  runHook('post-tool-use.js', { tool_name: 'TodoWrite', cwd: repo, tool_input: { todos: many } });
+  j = JSON.parse(fs.readFileSync(snap, 'utf8'));
+  ok(j.todos.length === 30 && j.todos[0].content.length <= 120, 'snapshot : caps 30 items / 120 chars');
+
+  // O4. todos malformés → exit 0, snapshot intact
+  const before = fs.readFileSync(snap, 'utf8');
+  ok(runHook('post-tool-use.js', { tool_name: 'TodoWrite', cwd: repo, tool_input: { todos: 'nimporte' } }).code === 0,
+    'todos malformés → exit 0');
+  ok(fs.readFileSync(snap, 'utf8') === before, 'todos malformés → snapshot intact');
+
+  // O5. hors git → rien créé
+  const dirNo = path.join(SANDBOX, 'todos-nogit');
+  fs.mkdirSync(dirNo, { recursive: true });
+  runHook('post-tool-use.js', { tool_name: 'TodoWrite', cwd: dirNo, tool_input: { todos: [{ content: 'x', status: 'pending' }] } });
+  ok(!fs.existsSync(path.join(dirNo, '.vibe-agent')), 'TodoWrite hors git → rien créé');
+
+  // O6. lecteur (consommé par le handoff au lot A3)
+  const r = backlogLib.readTodoSnapshot(repo);
+  ok(!!r && Array.isArray(r.todos) && r.todos.length === 30, 'readTodoSnapshot : dernier état lu');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

@@ -13,10 +13,16 @@ const MAX_LOTS_OPEN = 20; // lots todo+in_progress ; au-delà c'est un Jira, ref
 const MAX_TITLE = 80;
 const MAX_SCOPE = 400;
 const MAX_NOTE = 200;
+const MAX_TODOS = 30;
+const MAX_TODO_CHARS = 120;
 const STATUSES = ['todo', 'in_progress', 'done', 'dropped'];
 
 function backlogFile(root) {
   return path.join(vibeDir(root), 'backlog.json');
+}
+
+function todoSnapshotFile(root) {
+  return path.join(vibeDir(root), 'todo-snapshot.json');
 }
 
 function trunc(s, n) {
@@ -178,6 +184,34 @@ function summaryLines(root) {
   }
 }
 
+// Capture passive de la todo-list Claude Code : TodoWrite transmet la liste COMPLÈTE à
+// chaque appel → un seul fichier écrasé intégralement (dernier état connu). Jamais
+// effacé en début de session (précieux après un crash) : remplacé au premier TodoWrite
+// de la session suivante. `activeForm` est jeté (redondant avec content).
+function writeTodoSnapshot(root, todos, sessionId) {
+  try {
+    if (!root || !Array.isArray(todos)) return false;
+    const clean = todos
+      .filter((t) => t && typeof t === 'object' && t.content)
+      .slice(0, MAX_TODOS)
+      .map((t) => ({ content: trunc(t.content, MAX_TODO_CHARS), status: String(t.status || 'pending') }));
+    ensureLedger(root);
+    return writeAtomic(todoSnapshotFile(root), {
+      session_id: sessionId || null,
+      updated_at: now(),
+      todos: clean,
+    });
+  } catch (_) {
+    return false;
+  }
+}
+
+function readTodoSnapshot(root) {
+  const raw = readJson(todoSnapshotFile(root), null);
+  if (!raw || !Array.isArray(raw.todos)) return null;
+  return raw;
+}
+
 // Réparation volontairement bête — jamais bloquante, jamais de matching sémantique.
 function reconcile(root) {
   const fixed = [];
@@ -211,5 +245,6 @@ function reconcile(root) {
 module.exports = {
   backlogFile, loadBacklog, saveBacklog, addLot, startLot, doneLot, dropLot, noteLot,
   currentLot, nextLot, progress, summaryLines, reconcile,
-  MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_NOTE,
+  todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot,
+  MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_NOTE, MAX_TODOS,
 };

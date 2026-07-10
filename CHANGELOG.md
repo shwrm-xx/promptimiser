@@ -2,6 +2,23 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.5.1] — 2026-07-10 (lot A2 — capture passive TodoWrite)
+
+La todo-list native de Claude Code — le seul artefact de découpage que le modèle produit
+spontanément chaque session — n'est plus perdue à la fin de la session : elle est capturée
+passivement dans `.vibe-agent/todo-snapshot.json`, sans aucune coopération requise.
+
+- **`post-tool-use.js`** : branche `TodoWrite` (avant le guard `file_path` — l'outil n'en a
+  pas) → `writeTodoSnapshot`. L'outil transmet la liste COMPLÈTE à chaque appel : un seul
+  fichier, écrasé intégralement (même philosophie que le handoff auto).
+- **`lib/backlog.js: writeTodoSnapshot/readTodoSnapshot`** : `activeForm` jeté, contenu
+  tronqué à 120c, cap 30 items ; jamais effacé en début de session (dernier état connu,
+  précieux après un crash) — remplacé au premier TodoWrite suivant.
+- Sens unique TodoWrite→disque : le snapshot alimente le handoff (lot A3), il ne pilote
+  jamais l'outil (pas de promotion automatique todo→lot : granularité tâche ≠ lot).
+- **Tests** : section O (9 assertions) — capture, écrasement intégral, caps, malformé →
+  exit 0, hors-git → rien, lecteur. 212 OK.
+
 ## [0.5.0] — 2026-07-10 (lot A1 — noyau backlog)
 
 Le « lot » devient un **objet persistant** : `.vibe-agent/backlog.json`, un plan de 2 à
