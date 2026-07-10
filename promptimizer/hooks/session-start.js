@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 // SessionStart (matcher startup|resume|clear|compact) : détecte le projet, propose
-// l'init, rappel court. N'injecte qu'au startup/clear (resume/compact → passThrough).
+// l'init, rappel court. N'injecte qu'au startup/clear — sauf compact, qui reçoit une
+// réinjection MINIMALE du lot en cours (le contexte compacté a perdu le plan).
 // Ne crée RIEN automatiquement, ne scanne jamais le repo.
 // Préambule fail-open AVANT tout require : si un require échoue (module corrompu/absent),
 // l'exception est captée et on sort en exit 0 (jamais exit non-0 qui bruiterait la session).
@@ -20,7 +21,22 @@ const { runBootstrap, commitScaffold } = require('../lib/bootstrap');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { suggestedTitle } = require('../lib/lot');
 const { readHandoff, markConsumed } = require('../lib/handoff');
-const { MSG_ACTIF, MSG_NON_INIT, MSG_HANDOFF, sessionTitleMessage, autoInitMessage } = require('../lib/messages');
+const { loadBacklog, currentLot, nextLot, progress, readTodoSnapshot } = require('../lib/backlog');
+const {
+  MSG_ACTIF, MSG_NON_INIT, MSG_HANDOFF, sessionTitleMessage, autoInitMessage,
+  compactResumeMessage, backlogResumeMessage,
+} = require('../lib/messages');
+
+// Filet quand il n'y a pas de handoff à injecter : 2 lignes sur le plan de lots.
+function backlogFallback(root) {
+  try {
+    const b = loadBacklog(root);
+    if (!b.lots.length) return null;
+    return backlogResumeMessage(currentLot(b), nextLot(b), progress(b));
+  } catch (_) {
+    return null;
+  }
+}
 
 // Ajoute le handoff de la session précédente (écrit par stop.js ou /fresh-session)
 // au message injecté, puis le marque consommé (un handoff manuel redevient
@@ -28,9 +44,14 @@ const { MSG_ACTIF, MSG_NON_INIT, MSG_HANDOFF, sessionTitleMessage, autoInitMessa
 function withHandoff(root, msg) {
   try {
     const h = readHandoff(root);
-    if (!h || !h.text) return msg;
-    markConsumed(root);
-    return msg + '\n\n' + MSG_HANDOFF + '\n\n' + h.text;
+    if (h && h.text) {
+      markConsumed(root);
+      return msg + '\n\n' + MSG_HANDOFF + '\n\n' + h.text;
+    }
+    // Pas de handoff injectable (premier démarrage, notes utilisateur) : le plan de
+    // lots sert de filet minimal pour ne pas repartir sans objectif.
+    const fb = backlogFallback(root);
+    return fb ? msg + '\n\n' + fb : msg;
   } catch (_) {
     return msg;
   }
@@ -42,6 +63,24 @@ function main() {
   const src = input.source || 'startup';
   const root = gitRoot(cwd);
   if (!root) return passThrough();
+
+  // Après compaction : réinjection MINIMALE du lot en cours (≤ 300 chars). Ni MSG_ACTIF,
+  // ni handoff, ni titre — le contexte survit, seul le plan a besoin d'être rappelé.
+  if (src === 'compact') {
+    try {
+      const b = loadBacklog(root);
+      const cur = currentLot(b);
+      if (!cur) return passThrough();
+      const snap = readTodoSnapshot(root);
+      const todos = snap && Array.isArray(snap.todos)
+        ? snap.todos.filter((t) => t.status === 'in_progress')
+          .concat(snap.todos.filter((t) => t.status === 'pending').slice(0, 2))
+        : [];
+      return injectContext('SessionStart', compactResumeMessage(cur, progress(b), todos));
+    } catch (_) {
+      return passThrough();
+    }
+  }
 
   if (isFullyInitialized(root)) {
     // Anti-spam : un seul rappel par session, et jamais de réinjection au resume/compact

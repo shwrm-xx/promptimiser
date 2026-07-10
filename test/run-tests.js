@@ -72,8 +72,8 @@ function runNode(file, args, env) {
 }
 
 // ============================ A. FAIL-OPEN ============================
-section('Fail-open des 5 hooks (stdin vide / malformé / valide → exit 0)');
-const ALL_HOOKS = ['session-start.js', 'user-prompt-submit.js', 'pre-tool-use.js', 'post-tool-use.js', 'stop.js'];
+section('Fail-open des hooks (stdin vide / malformé / valide → exit 0)');
+const ALL_HOOKS = ['session-start.js', 'user-prompt-submit.js', 'pre-tool-use.js', 'post-tool-use.js', 'stop.js', 'pre-compact.js'];
 for (const h of ALL_HOOKS) {
   ok(runHook(h, '').code === 0, `${h} : stdin vide → exit 0`);
   ok(runHook(h, '{bad json').code === 0, `${h} : stdin malformé → exit 0`);
@@ -208,13 +208,13 @@ writeSettings({ permissions: { allow: ['Read'] }, statusLine: { type: 'command',
 runNode(MS, [SP], { PMZ_STATE_DIR: STATE });
 let s = readSettings();
 ok(s.permissions && s.statusLine && s.enabledPlugins, 'préserve permissions/statusLine/enabledPlugins');
-ok(hookCmds(s).filter((c) => c.includes('promptimizer/hooks/')).length === 5, 'install → 5 hooks PMZ');
+ok(hookCmds(s).filter((c) => c.includes('promptimizer/hooks/')).length === 6, 'install → 6 hooks PMZ');
 ok(hookCmds(s).every((c) => /^"[^"]+\/node" /.test(c) || /^"[^"]*node" /.test(c)), 'hooks câblés avec node en chemin absolu quoté');
 
 // D3. Idempotence
 runNode(MS, [SP], { PMZ_STATE_DIR: STATE });
 s = readSettings();
-ok(hookCmds(s).filter((c) => c.includes('promptimizer/hooks/')).length === 5, 'réinstall → toujours 5 (idempotent)');
+ok(hookCmds(s).filter((c) => c.includes('promptimizer/hooks/')).length === 6, 'réinstall → toujours 6 (idempotent)');
 
 // D3bis. Matchers PMZ à jour : clear/compact déclenchent SessionStart, TodoWrite observé.
 function pmzEntry(s2, ev) {
@@ -222,6 +222,7 @@ function pmzEntry(s2, ev) {
 }
 ok(pmzEntry(s, 'SessionStart').matcher === 'startup|resume|clear|compact', 'matcher SessionStart couvre clear et compact');
 ok(pmzEntry(s, 'PostToolUse').matcher === 'Read|Edit|Write|TodoWrite', 'matcher PostToolUse couvre TodoWrite');
+ok(pmzEntry(s, 'PreCompact') && pmzEntry(s, 'PreCompact').matcher === 'manual|auto', 'PreCompact enregistré (manual|auto)');
 
 // D4. Strip legacy (vibe-session-governor) + double-firing
 writeSettings({
@@ -233,7 +234,7 @@ writeSettings({
 runNode(MS, [SP], { PMZ_STATE_DIR: STATE });
 s = readSettings();
 ok(hookCmds(s).filter((c) => c.includes('vibe-session-governor')).length === 0, 'strip legacy : 0 hook vibe-session-governor');
-ok(hookCmds(s).filter((c) => c.includes('promptimizer/hooks/')).length === 5, 'strip legacy : 5 hooks PMZ (pas de doublon)');
+ok(hookCmds(s).filter((c) => c.includes('promptimizer/hooks/')).length === 6, 'strip legacy : 6 hooks PMZ (pas de doublon)');
 
 // D5. Takeover context-guard.py → sidecar
 writeSettings({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'python3 ~/.claude/hooks/context-guard.py' }] }] } });
@@ -840,6 +841,70 @@ section('Backlog — auto-clôture au Stop, handoff enrichi, titre de session');
   ok(!/clos \(/.test(msg3), 'ambigu : aucun message de clôture');
   const b2 = backlogLib.loadBacklog(repo);
   ok(b2.lots.filter((l) => l.status === 'done').length === 1, 'ambigu : backlog non touché (un seul done)');
+}
+
+// ============================ Q. CONTINUITÉ — PRECOMPACT & SESSIONSTART ============================
+section('Continuité — PreCompact sauve le handoff, compact réinjecte le lot, fallback backlog');
+{
+  const repo = path.join(SANDBOX, 'repo-continuite');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'CLAUDE.md'), 'règles'); // isFullyInitialized avec le ledger
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const hf = path.join(repo, '.vibe-agent', 'handoff.md');
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot continuité', '--scope', 'fait quand : OK']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot suivant']);
+  runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
+  runHook('post-tool-use.js', { tool_name: 'TodoWrite', cwd: repo, session_id: 's-q1',
+    tool_input: { todos: [
+      { content: 'étape active', status: 'in_progress' },
+      { content: 'étape 2', status: 'pending' },
+      { content: 'étape 3', status: 'pending' },
+      { content: 'étape 4', status: 'pending' },
+    ] } });
+
+  // Q1. PreCompact écrit le handoff enrichi (sans attendre un Stop)
+  ok(!fs.existsSync(hf), 'avant PreCompact : pas de handoff');
+  const rPc = runHook('pre-compact.js', { cwd: repo, session_id: 's-q1' });
+  ok(rPc.code === 0 && fs.existsSync(hf), 'PreCompact → handoff écrit');
+  const c = fs.readFileSync(hf, 'utf8');
+  ok(/Plan de lots : 0\/2 faits/.test(c) && /étape active/.test(c), 'PreCompact : handoff porte plan + todos');
+
+  // Q2. PreCompact ne touche jamais un handoff manuel non consommé
+  fs.writeFileSync(hf, handoff.MANUAL_MARKER + '\nRICHE-Q');
+  runHook('pre-compact.js', { cwd: repo, session_id: 's-q1' });
+  ok(/RICHE-Q/.test(fs.readFileSync(hf, 'utf8')), 'PreCompact : handoff manuel préservé');
+  fs.unlinkSync(hf);
+
+  // Q3. SessionStart compact : réinjection minimale du lot en cours (≤ 300 chars)
+  const rC = runHook('session-start.js', { source: 'compact', cwd: repo, session_id: 's-q2' });
+  let ctxC = '';
+  try { ctxC = JSON.parse(rC.out).hookSpecificOutput.additionalContext || ''; } catch (_) {}
+  ok(/Après compaction/.test(ctxC) && /Lot continuité/.test(ctxC) && /1\/2|0\/2/.test(ctxC),
+    'compact : lot en cours réinjecté');
+  ok(/étape active/.test(ctxC) && ctxC.length <= 300, 'compact : todos inclus, cap 300 chars');
+  ok(!/Promptimizer actif/.test(ctxC) && !/Titre de session/.test(ctxC) && !/handoff/i.test(ctxC),
+    'compact : ni MSG_ACTIF, ni titre, ni handoff (minimal)');
+
+  // Q4. compact sans lot en cours → rien
+  runNode(BKLG, ['done', '--cwd', repo, '--id', '1']);
+  const rC2 = runHook('session-start.js', { source: 'compact', cwd: repo, session_id: 's-q3' });
+  ok(rC2.code === 0 && !(rC2.out || '').trim(), 'compact sans in_progress → aucune injection');
+
+  // Q5. fallback startup sans handoff : le plan de lots sert de filet
+  const rS = runHook('session-start.js', { source: 'startup', cwd: repo, session_id: 's-q4' });
+  let ctxS = '';
+  try { ctxS = JSON.parse(rS.out).hookSpecificOutput.additionalContext || ''; } catch (_) {}
+  ok(/Plan de lots : 1\/2 faits/.test(ctxS) && /Prochain lot : « Lot suivant »/.test(ctxS),
+    'fallback : plan injecté quand aucun handoff (prochain lot + start --id)');
+
+  // Q6. compact hors repo git → passThrough
+  const dirNo = path.join(SANDBOX, 'continuite-nogit');
+  fs.mkdirSync(dirNo, { recursive: true });
+  const rNo = runHook('session-start.js', { source: 'compact', cwd: dirNo, session_id: 's-q5' });
+  ok(rNo.code === 0 && !(rNo.out || '').trim(), 'compact hors git → passThrough');
 }
 
 // ============================ RÉSUMÉ ============================

@@ -2,6 +2,27 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.5.3] — 2026-07-10 (lot A4 — continuité : compaction et démarrages sans handoff)
+
+Le plan de lots survit désormais aux deux points de perte restants : la **compaction** du
+contexte et un démarrage **sans handoff**.
+
+- **`hooks/pre-compact.js`** (nouveau, 6e hook, matcher `manual|auto`) : réécrit le handoff
+  auto (qui porte plan de lots + todos depuis A3) juste AVANT que le transcript soit
+  compacté. Aucune sortie ; ne touche jamais un handoff manuel non consommé. Même préambule
+  fail-open que les autres hooks.
+- **`session-start.js` — branche `compact`** : réinjection MINIMALE (≤ 300 chars) du lot en
+  cours + reste à faire TodoWrite (in_progress + 2 pending). Ni MSG_ACTIF, ni handoff, ni
+  titre — le contexte compacté n'a perdu que le plan, on ne réinjecte que le plan. Sans lot
+  `in_progress` : rien.
+- **`session-start.js` — filet sans handoff** : au startup/clear, si aucun handoff n'est
+  injectable (premier démarrage, notes utilisateur), 2 lignes sur le plan de lots (lot en
+  cours, ou prochain lot avec la commande `start --id N`), cap 400 chars.
+- **`merge-settings.js`** : `PreCompact` enregistré → 6 hooks PMZ. Réinstallation requise.
+- **Tests** : fail-open étendu au 6e hook, compteurs merge-settings à 6, section Q
+  (11 assertions) — PreCompact écrit/préserve, compact minimal capé, compact sans lot ou
+  hors git silencieux, fallback plan. 237 OK.
+
 ## [0.5.2] — 2026-07-10 (lot A3 — suivi passif du plan de lots)
 
 Le suivi du lotissement devient **entièrement passif** : plus rien à penser, le plan avance

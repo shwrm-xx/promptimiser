@@ -88,6 +88,34 @@ function lotClosedMessage(lot, next, prog) {
   return lines.join('\n');
 }
 
+// Réinjection minimale après compaction (SessionStart source=compact, additionalContext).
+function compactResumeMessage(lot, prog, todos) {
+  const lines = [`Après compaction — lot en cours : « ${lot.title} » (${prog.done}/${prog.total} faits).`];
+  if (todos && todos.length) {
+    lines.push('Reste à faire (TodoWrite) : ' + todos.map((t) => t.content).join(' · '));
+  }
+  let msg = lines.join('\n');
+  if (msg.length > 300) msg = msg.slice(0, 299) + '…';
+  return msg;
+}
+
+// Filet SessionStart quand aucun handoff n'est injectable mais qu'un plan de lots existe.
+function backlogResumeMessage(cur, next, prog) {
+  const lines = [];
+  if (cur) {
+    lines.push(`Plan de lots : ${prog.done}/${prog.total} faits. Lot en cours : « ${cur.title} »${cur.scope ? ` — ${String(cur.scope).slice(0, 120)}` : ''}.`);
+    lines.push('Traite ce lot uniquement ; clôture par vérif ciblée + CHANGELOG + commit.');
+  } else if (next) {
+    lines.push(`Plan de lots : ${prog.done}/${prog.total} faits. Prochain lot : « ${next.title} »${next.scope ? ` — ${String(next.scope).slice(0, 120)}` : ''}.`);
+    lines.push(`Démarre-le (node ~/.claude/promptimizer/scripts/backlog.js start --id ${next.id}) puis traite ce lot uniquement.`);
+  } else {
+    return null; // plan terminé/abandonné : rien à rappeler
+  }
+  let msg = lines.join('\n');
+  if (msg.length > 400) msg = msg.slice(0, 399) + '…';
+  return msg;
+}
+
 function sessionTitleMessage(title) {
   return [
     `Titre de session suggéré : « ${title} ».`,
@@ -99,4 +127,5 @@ function sessionTitleMessage(title) {
 module.exports = {
   MSG_ACTIF, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   occupancyMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
+  compactResumeMessage, backlogResumeMessage,
 };

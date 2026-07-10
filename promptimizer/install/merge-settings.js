@@ -56,6 +56,7 @@ const PMZ_HOOKS = {
   PreToolUse: [{ matcher: 'Bash', hooks: [cmd('pre-tool-use.js', T.default)] }],
   PostToolUse: [{ matcher: 'Read|Edit|Write|TodoWrite', hooks: [cmd('post-tool-use.js', T.default)] }],
   Stop: [{ hooks: [cmd('stop.js', T.default)] }],
+  PreCompact: [{ matcher: 'manual|auto', hooks: [cmd('pre-compact.js', T.default)] }],
 };
 
 function cmd(name, timeout) {

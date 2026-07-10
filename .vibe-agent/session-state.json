@@ -2,9 +2,7 @@
   "session_id": "fe6b1cf2-bf5f-4f32-9c8d-1e755962a75b",
   "session_start_reminded": true,
   "closure_reminded_for_batch": true,
-  "prompt_reminders": {
-    "broad": true
-  },
+  "prompt_reminders": {},
   "current_batch": null,
   "batch_status": "not_started",
   "verification_status": "not_checked"
