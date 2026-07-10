@@ -622,6 +622,102 @@ const AUDIT = path.join(PKG, 'scripts', 'audit-batch.js');
     'template session-state.json sans champs morts');
 }
 
+// ============================ N. BACKLOG — NOYAU ============================
+section('backlog — CRUD, caps, corruption, reconcile');
+const backlogLib = require(path.join(PKG, 'lib', 'backlog'));
+const BKLG = path.join(PKG, 'scripts', 'backlog.js');
+{
+  const repo = path.join(SANDBOX, 'repo-backlog');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+
+  // N1. add ×3 via CLI : ids monotones, ledger auto-créé
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot un', '--scope', 'fait quand : test A']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot deux']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot trois']);
+  let b = backlogLib.loadBacklog(repo);
+  ok(b.lots.length === 3 && b.lots.map((l) => l.id).join(',') === '1,2,3' && b.next_id === 4,
+    'backlog add ×3 : ids 1,2,3 et next_id=4');
+  ok(b.lots[0].scope === 'fait quand : test A' && b.lots[0].status === 'todo', 'backlog : scope et statut posés');
+
+  // N2. start : un seul in_progress à la fois
+  runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
+  runNode(BKLG, ['start', '--cwd', repo, '--id', '2']);
+  b = backlogLib.loadBacklog(repo);
+  ok(b.lots.filter((l) => l.status === 'in_progress').length === 1 && backlogLib.currentLot(b).id === 2,
+    'backlog start : un seul in_progress (le dernier démarré)');
+  ok(b.lots[0].status === 'todo', 'backlog start : le précédent rétrogradé en todo');
+
+  // N3. done : commit, date, lot_number ; idempotent
+  runNode(BKLG, ['done', '--cwd', repo, '--id', '2', '--commit', 'abc1234']);
+  b = backlogLib.loadBacklog(repo);
+  const l2 = b.lots.find((l) => l.id === 2);
+  ok(l2.status === 'done' && l2.closed_commit === 'abc1234' && !!l2.closed_at && Number.isFinite(l2.lot_number),
+    'backlog done : statut, commit, date, lot_number posés');
+  const again = backlogLib.doneLot(repo, 2, 'zzz9999');
+  ok(again && again.closed_commit === 'abc1234', 'backlog done : idempotent (lot déjà clos non réécrit)');
+
+  // N4. next = premier todo dans l'ordre du tableau
+  const nx = backlogLib.nextLot(backlogLib.loadBacklog(repo));
+  ok(!!nx && nx.id === 1, 'backlog next : premier todo dans l\'ordre');
+
+  // N5. progress + summaryLines (consommés par handoff/messages)
+  runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
+  const p = backlogLib.progress(backlogLib.loadBacklog(repo));
+  ok(p.done === 1 && p.total === 3, 'backlog progress : 1/3');
+  const sum = backlogLib.summaryLines(repo);
+  ok(sum.length >= 2 && /1\/3 faits/.test(sum[0]) && /#1/.test(sum[0]), 'summaryLines : x/y + lot en cours');
+  ok(/Suivants/.test(sum[1]) && /#3/.test(sum[1]), 'summaryLines : lots suivants listés');
+
+  // N6. drop : exclu du total
+  runNode(BKLG, ['drop', '--cwd', repo, '--id', '3', '--note', 'hors périmètre']);
+  b = backlogLib.loadBacklog(repo);
+  ok(b.lots.find((l) => l.id === 3).status === 'dropped', 'backlog drop : statut abandonné');
+  ok(backlogLib.progress(b).total === 2, 'backlog progress : dropped exclu du total');
+
+  // N7. troncatures
+  const long = backlogLib.addLot(repo, 'x'.repeat(200), 'y'.repeat(600));
+  ok(!!long && long.title.length <= 80 && long.scope.length <= 400, 'backlog : troncatures titre 80 / scope 400');
+
+  // N8. cap de lots ouverts (refus doux)
+  for (let i = 0; i < 25; i++) runNode(BKLG, ['add', '--cwd', repo, '--title', 'lot ' + i]);
+  b = backlogLib.loadBacklog(repo);
+  ok(b.lots.filter((l) => l.status === 'todo' || l.status === 'in_progress').length <= backlogLib.MAX_LOTS_OPEN,
+    'backlog cap : jamais plus de 20 lots ouverts');
+  const refused = runNode(BKLG, ['add', '--cwd', repo, '--title', 'un de trop']);
+  ok(/Refusé/.test(refused.out) && refused.code === 0, 'backlog cap : refus doux, exit 0');
+
+  // N9. fichier corrompu → backlog vide valide, jamais de crash
+  fs.writeFileSync(path.join(repo, '.vibe-agent', 'backlog.json'), '{pas du json');
+  const rShow = runNode(BKLG, ['show', '--cwd', repo]);
+  ok(rShow.code === 0 && /Aucun plan de lots/.test(rShow.out), 'backlog corrompu : show → vide, exit 0');
+
+  // N10. reconcile : deux in_progress forgés + done sans commit
+  fs.writeFileSync(path.join(repo, '.vibe-agent', 'backlog.json'), JSON.stringify({
+    version: 1, next_id: 4, lots: [
+      { id: 1, title: 'a', status: 'in_progress', started_at: '2026-07-10T10:00:00Z' },
+      { id: 2, title: 'b', status: 'in_progress', started_at: '2026-07-10T11:00:00Z' },
+      { id: 3, title: 'c', status: 'done' },
+    ],
+  }));
+  const rRec = runNode(BKLG, ['reconcile', '--cwd', repo]);
+  b = backlogLib.loadBacklog(repo);
+  ok(b.lots.filter((l) => l.status === 'in_progress').length === 1 && backlogLib.currentLot(b).id === 2,
+    'reconcile : garde le in_progress le plus récent');
+  ok(!!b.lots.find((l) => l.id === 3).closed_commit, 'reconcile : commit attaché au done orphelin');
+  ok(/Réparé/.test(rRec.out), 'reconcile : sortie explicite');
+
+  // N11. hors git : message doux, rien créé
+  const noRepo = path.join(SANDBOX, 'backlog-nogit');
+  fs.mkdirSync(noRepo, { recursive: true });
+  const rNo = runNode(BKLG, ['add', '--cwd', noRepo, '--title', 'x']);
+  ok(rNo.code === 0 && /Pas un dépôt git/.test(rNo.out) && !fs.existsSync(path.join(noRepo, '.vibe-agent')),
+    'backlog hors git : refus doux, rien créé');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

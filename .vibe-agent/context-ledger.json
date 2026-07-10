@@ -62,7 +62,7 @@
     "promptimizer/templates/rules.yaml": 1781426088361,
     ".vibe-agent/rules.yaml": 1781426101445,
     "promptimizer/hooks/pre-tool-use.js": 1781428977080,
-    "CHANGELOG.md": 1783704145820,
+    "CHANGELOG.md": 1783704406323,
     "promptimizer/lib/fsjson.js": 1781427288216,
     "promptimizer/lib/ledger.js": 1781427295966,
     "promptimizer/lib/state.js": 1783703962160,
@@ -80,7 +80,7 @@
     "promptimizer/scripts/audit-context.js": 1781427466862,
     "README.md": 1783699090505,
     "ARCHITECTURE.md": 1783704090285,
-    "test/run-tests.js": 1783703998041,
+    "test/run-tests.js": 1783704359902,
     "test/run-tests.command": 1781427685406,
     "CLAUDE.md": 1781427696474,
     "/tmp/pmz-commit-msg.txt": 1781428109327,
@@ -112,7 +112,9 @@
     "promptimizer/templates/pmz-rules.md": 1783698879092,
     "promptimizer/commands/pmz-init.md": 1783698897585,
     ".vibe-agent/handoff.md": 1783700123001,
-    "/Users/marwan.elachmar/.claude/plans/comment-toffer-l-offre-de-cuddly-aurora.md": 1783703713785
+    "/Users/marwan.elachmar/.claude/plans/comment-toffer-l-offre-de-cuddly-aurora.md": 1783703713785,
+    "promptimizer/lib/backlog.js": 1783704263773,
+    "promptimizer/scripts/backlog.js": 1783704301062
   },
   "repeated_reads": [
     {

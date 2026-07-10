@@ -2,6 +2,29 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.5.0] — 2026-07-10 (lot A1 — noyau backlog)
+
+Le « lot » devient un **objet persistant** : `.vibe-agent/backlog.json`, un plan de 2 à
+20 lots durables (id, titre, critère « fait quand », statut, commit de clôture) — trans-
+session, distinct des todos volatils de Claude Code. Livrable volontairement **inerte** :
+aucun hook câblé (le suivi passif arrive aux lots A2-A4).
+
+- **`lib/backlog.js`** (nouveau) : module pur fail-silent — `loadBacklog` (normalisation
+  défensive : fichier corrompu → backlog vide valide), `addLot`/`startLot`/`doneLot`/
+  `dropLot`/`noteLot`, `currentLot`/`nextLot`/`progress`, `summaryLines` (bloc compact pour
+  le futur handoff), `reconcile` (réparation bête : un seul `in_progress`, commit attaché aux
+  `done` orphelins — jamais de matching sémantique).
+- **Règles** : au plus un lot `in_progress` (start rétrograde les autres) ; `doneLot`
+  idempotent, capture `lot_number` (compteur `(lot N)` du CHANGELOG) pour la traçabilité ;
+  cap **20 lots ouverts** (refus doux : un backlog n'est pas un Jira) ; troncatures titre
+  80c / scope 400c / note 200c ; écriture atomique `fsjson`, ledger auto-créé.
+- **`scripts/backlog.js`** (nouveau) : CLI zéro-dépendance —
+  `show|add|start|done|drop|note|next|reconcile` (+`--json`), sortie française lisible,
+  toujours exit 0. `lot-counter.json`/`epic` inchangés (numérotation chronologique
+  découplée, aucune migration).
+- **Tests** : section N (20 assertions) — CRUD, unicité in_progress, idempotence,
+  troncatures, cap, corruption, reconcile, hors-git. 203 OK.
+
 ## [0.4.8] — 2026-07-10 (lot A0 — correctifs socle)
 
 Correctifs préparatoires au chantier « lotissement + économie de tokens » (plan approuvé) :
