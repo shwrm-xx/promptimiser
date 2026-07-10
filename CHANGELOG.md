@@ -2,6 +2,26 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.5.9] — 2026-07-11 (lot B4 — advisory intra-tour sur relecture redondante)
+
+`post-tool-use.js` peut désormais **signaler** (jamais bloquer) une relecture complète et
+inutile, au moment même où elle se produit — plus besoin d'attendre `/check-context`.
+
+- **Advisory intra-tour** (`lib/advisory.js`, nouveau) : sur un `Read` **complet** (`!partial`)
+  d'un fichier **≥ 16 Ko**, déjà lu et **inchangé** (mtime identique — réutilise le signal
+  `waste` de `ledger.recordRead`, désormais renvoyé à l'appelant) et **hors `files_modified`**,
+  émet un `additionalContext` d'une ligne (~60 tokens) via la nouvelle sortie `postToolContext`
+  (`lib/output.js`). Jamais de `permissionDecision` : purement informatif.
+- **Plafonds** : 1×/fichier ET 3×/session, via un état **hors-projet**
+  `<sha1(session_id)>-advisory` (même convention que `occupancy.js`/`turnstats.js`) — remis à
+  zéro à chaque nouvelle session.
+- **Opt-out** : `PMZ_NO_ADVISORY=1` coupe uniquement cette note (le reste de PMZ continue de
+  tourner) ; ne consomme pas le plafond.
+- **Tests** (`test/run-tests.js`, +12) : baseline sans advisory, relecture redondante avec
+  advisory, plafond 1×/fichier, plafond 3×/session sur fichiers distincts, relecture partielle
+  silencieuse, fichier sous le seuil de 16 Ko, fichier marqué modifié malgré mtime identique,
+  opt-out (silence + plafond non consommé).
+
 ## [0.5.8] — 2026-07-11 (lot B3 — `/budget` et `/check-context` chiffrés en tokens)
 
 Le statut d'économie de contexte de `/budget` et `/check-context` (via `audit-context.js`) n'est

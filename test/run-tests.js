@@ -1184,6 +1184,99 @@ section('Métrologie par tour (turnstats : delta, anti-spam, baseline, resync, b
   ok(r6.alerts.intraBust === true && r6.alerts.pause === false, 'B2 : bust intra -> alerte intraBust');
 }
 
+// ============================ B4. ADVISORY INTRA-TOUR (relecture redondante) ============================
+section('Advisory intra-tour (PostToolUse : relecture complète redondante, lot B4)');
+{
+  const advisoryText = (r) => {
+    if (!r.out.trim()) return null;
+    try { return JSON.parse(r.out).hookSpecificOutput.additionalContext || null; } catch (_) { return null; }
+  };
+  const mkRepo = (name) => {
+    const repo = path.join(SANDBOX, name);
+    fs.mkdirSync(repo, { recursive: true });
+    execFileSync('git', ['init', '-q', repo]);
+    return repo;
+  };
+  const commitFile = (repo, rel, bytes) => {
+    const p = path.join(repo, rel);
+    fs.writeFileSync(p, 'x'.repeat(bytes));
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+    return p;
+  };
+
+  // 1-4) Plafonds 1×/fichier ET 3×/session, sur 4 fichiers distincts >= 16 Ko d'un même repo/session.
+  const repo = mkRepo('repo-b4-advisory');
+  const big1 = path.join(repo, 'big1.js');
+  const big2 = path.join(repo, 'big2.js');
+  const big3 = path.join(repo, 'big3.js');
+  const big4 = path.join(repo, 'big4.js');
+  [big1, big2, big3, big4].forEach((p) => fs.writeFileSync(p, 'x'.repeat(20000)));
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const readFile = (fp, sid, extra, env) => runHook('post-tool-use.js', {
+    tool_name: 'Read', tool_input: Object.assign({ file_path: fp }, extra || {}), cwd: repo, session_id: sid,
+  }, env);
+
+  const r1 = readFile(big1, 'b4-s1');
+  ok(advisoryText(r1) === null, 'B4 : 1re lecture → aucune advisory (rien à comparer encore)');
+
+  const r2 = readFile(big1, 'b4-s1');
+  const t2 = advisoryText(r2);
+  ok(!!t2 && /big1\.js/.test(t2) && /20 Ko/.test(t2), 'B4 : relecture complète redondante → advisory nommant fichier + taille');
+  ok(!/permissionDecision/.test(r2.out), 'B4 : jamais de permissionDecision sur Read (informatif uniquement)');
+
+  ok(advisoryText(readFile(big1, 'b4-s1')) === null, 'B4 : plafond 1×/fichier → silence dès la 3e lecture du même fichier');
+
+  readFile(big2, 'b4-s1');
+  ok(/big2\.js/.test(advisoryText(readFile(big2, 'b4-s1')) || ''), 'B4 : 2e fichier distinct redondant → advisory #2 de la session');
+
+  readFile(big3, 'b4-s1');
+  ok(/big3\.js/.test(advisoryText(readFile(big3, 'b4-s1')) || ''), 'B4 : 3e fichier distinct redondant → advisory #3 (plafond session atteint)');
+
+  readFile(big4, 'b4-s1');
+  ok(advisoryText(readFile(big4, 'b4-s1')) === null, 'B4 : plafond 3×/session atteint → 4e fichier distinct redondant reste silencieux');
+
+  // 5) Relecture PARTIELLE (offset) d'un fichier déjà lu et inchangé → pas d'advisory.
+  const repoPartial = mkRepo('repo-b4-partial');
+  const bigP = commitFile(repoPartial, 'big.js', 20000);
+  const readPartial = (sid, extra) => runHook('post-tool-use.js', {
+    tool_name: 'Read', tool_input: Object.assign({ file_path: bigP }, extra || {}), cwd: repoPartial, session_id: sid,
+  });
+  readPartial('b4-partial');
+  ok(advisoryText(readPartial('b4-partial', { offset: 1 })) === null, 'B4 : relecture PARTIELLE (offset) → pas d\'advisory même si inchangé');
+
+  // 6) Fichier sous le seuil de 16 Ko : jamais d'advisory même redondant.
+  const repoSmall = mkRepo('repo-b4-small');
+  const smallP = commitFile(repoSmall, 'small.js', 4000);
+  const readSmall = (sid) => runHook('post-tool-use.js', {
+    tool_name: 'Read', tool_input: { file_path: smallP }, cwd: repoSmall, session_id: sid,
+  });
+  readSmall('b4-small');
+  ok(advisoryText(readSmall('b4-small')) === null, 'B4 : fichier < 16 Ko → jamais d\'advisory même redondant');
+
+  // 7) Fichier marqué modifié (files_modified) entre deux lectures à mtime identique →
+  //    garde-fou explicite en plus du mtime (spec : "mtime + hors files_modified").
+  const repoMod = mkRepo('repo-b4-modified');
+  const bigM = commitFile(repoMod, 'big.js', 20000);
+  const readMod = (sid) => runHook('post-tool-use.js', {
+    tool_name: 'Read', tool_input: { file_path: bigM }, cwd: repoMod, session_id: sid,
+  });
+  readMod('b4-mod');
+  runHook('post-tool-use.js', { tool_name: 'Edit', tool_input: { file_path: bigM }, cwd: repoMod, session_id: 'b4-mod' });
+  ok(advisoryText(readMod('b4-mod')) === null, 'B4 : fichier marqué modifié (files_modified) → pas d\'advisory même à mtime identique');
+
+  // 8) Opt-out PMZ_NO_ADVISORY=1 : silence, et ne consomme pas le plafond.
+  const repoOptout = mkRepo('repo-b4-optout');
+  const bigO = commitFile(repoOptout, 'big.js', 20000);
+  const readOptout = (sid, env) => runHook('post-tool-use.js', {
+    tool_name: 'Read', tool_input: { file_path: bigO }, cwd: repoOptout, session_id: sid,
+  }, env);
+  readOptout('b4-optout');
+  ok(advisoryText(readOptout('b4-optout', { PMZ_NO_ADVISORY: '1' })) === null, 'B4 : PMZ_NO_ADVISORY=1 → silence même si redondant');
+  ok(advisoryText(readOptout('b4-optout')) !== null, 'B4 : opt-out n\'a pas consommé le plafond (advisory dispo juste après)');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

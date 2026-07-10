@@ -18,6 +18,17 @@ function injectContext(eventName, text) {
   process.exit(0);
 }
 
+// Additionnel injecté APRÈS un tool (PostToolUse) : informatif, jamais bloquant —
+// distinct d'injectContext pour garder le bon hookEventName (SessionStart/UserPromptSubmit
+// vs PostToolUse). Jamais de permissionDecision ici : PostToolUse ne peut plus bloquer le
+// tool déjà exécuté, seulement informer le tour suivant.
+function postToolContext(text) {
+  if (text) {
+    write({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: text } });
+  }
+  process.exit(0);
+}
+
 // Décision de permission pour PreToolUse : 'allow' | 'ask' | 'deny'.
 function preToolDecision(decision, reason) {
   write({
@@ -41,4 +52,4 @@ function passThrough() {
   process.exit(0);
 }
 
-module.exports = { write, injectContext, preToolDecision, systemMessage, passThrough };
+module.exports = { write, injectContext, postToolContext, preToolDecision, systemMessage, passThrough };

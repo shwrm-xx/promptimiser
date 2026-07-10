@@ -45,12 +45,16 @@ function estTokens(stat) {
   return stat && stat.bytes ? Math.round(stat.bytes / 4) : 0;
 }
 
+// Renvoie { waste, bytes, modifiedSince } pour l'advisory intra-tour (lot B4) — évite
+// à l'appelant de recharger les ledgers pour ré-évaluer le même événement de lecture.
 function recordRead(root, relPath, sessionId, partial, stat) {
-  if (!isInitialized(root) || !relPath) return;
+  if (!isInitialized(root) || !relPath) return null;
   const rl = loadReadLedger(root);
   const cl = loadContextLedger(root);
   const now = Date.now();
   const existing = rl.reads.find((r) => r && r.path === relPath);
+  const modifiedSince = Object.prototype.hasOwnProperty.call(cl.files_modified, relPath);
+  let waste = false;
   if (existing) {
     cl.repeated_reads.push({ path: relPath, at: now });
     if (cl.repeated_reads.length > MAX_REPEATED) {
@@ -61,6 +65,7 @@ function recordRead(root, relPath, sessionId, partial, stat) {
     // la dernière lecture (mtime identique). Une lecture partielle ou un fichier
     // modifié entre-temps est un coût justifié, pas du gaspillage.
     if (!partial && stat && existing.mtime != null && stat.mtimeMs === existing.mtime) {
+      waste = true;
       const est = estTokens(stat);
       cl.estimated_context_waste = (cl.estimated_context_waste || 0) + est;
       cl.waste_by_file[relPath] = (cl.waste_by_file[relPath] || 0) + est;
@@ -79,6 +84,7 @@ function recordRead(root, relPath, sessionId, partial, stat) {
   if (sessionId) cl.session_id = sessionId;
   writeAtomic(readLedgerFile(root), rl);
   writeAtomic(contextLedgerFile(root), cl);
+  return { waste, bytes: stat ? stat.bytes : null, modifiedSince };
 }
 
 // Miroir COMPACT de la mesure par tour (turnstats) dans le ledger projet. La mesure

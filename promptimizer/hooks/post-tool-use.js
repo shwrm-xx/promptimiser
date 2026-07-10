@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 'use strict';
 // PostToolUse (Read|Edit|Write|TodoWrite) : INFORMATIF uniquement. Met à jour les
-// ledgers projet et capture la todo-list (snapshot écrasé à chaque TodoWrite).
+// ledgers projet, capture la todo-list (snapshot écrasé à chaque TodoWrite) et peut
+// émettre un additionalContext advisory (lot B4 : relecture complète redondante) —
+// jamais de permissionDecision, jamais de blocage : Read est déjà exécuté.
 // Le ledger (.vibe-agent/) est auto-créé dès qu'un repo git existe (ensureLedger) —
 // aucune confirmation requise, contrairement au socle visible (CLAUDE.md/AGENTS.md).
-// Ne bloque jamais, aucune décision.
 process.on('uncaughtException', () => process.exit(0));
 process.on('unhandledRejection', () => process.exit(0));
 const { armFailOpen } = require('../lib/guard');
@@ -16,9 +17,10 @@ if (disabled()) process.exit(0);
 const fs = require('fs');
 const path = require('path');
 const { parseHookInput } = require('../lib/stdin');
-const { passThrough } = require('../lib/output');
+const { passThrough, postToolContext } = require('../lib/output');
 const { gitRoot, ensureLedger } = require('../lib/project');
 const { recordRead, recordModify } = require('../lib/ledger');
+const { maybeAdvise } = require('../lib/advisory');
 const { writeTodoSnapshot } = require('../lib/backlog');
 
 function relOf(root, fp) {
@@ -55,7 +57,14 @@ function main() {
       const st = fs.statSync(fp);
       stat = { bytes: st.size, mtimeMs: st.mtimeMs };
     } catch (_) { /* fichier disparu/inaccessible : coût inconnu, pas de gaspillage */ }
-    recordRead(root, rel, sid, partial, stat);
+    const rr = recordRead(root, rel, sid, partial, stat);
+    const advisory = maybeAdvise({
+      sessionId: sid,
+      relPath: rel,
+      bytes: rr && rr.bytes,
+      redundant: !!(rr && rr.waste && !rr.modifiedSince),
+    });
+    if (advisory) return postToolContext(advisory);
   } else if (tool === 'Edit' || tool === 'Write') {
     recordModify(root, rel, sid);
   }

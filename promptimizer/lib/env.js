@@ -7,6 +7,12 @@ function disabled() {
   return process.env.PMZ_DISABLE === '1';
 }
 
+// Opt-out de l'advisory intra-tour (Lot B4, relecture redondante) — le reste des
+// hooks continue de tourner normalement, seul ce signal informatif est coupé.
+function advisoryDisabled() {
+  return process.env.PMZ_NO_ADVISORY === '1';
+}
+
 const EXTRA_DIRS = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'];
 
 function hasTool(name) {
@@ -53,4 +59,4 @@ function resolveTool(name) {
   return name;
 }
 
-module.exports = { disabled, hasTool, resolveNode, resolveTool };
+module.exports = { disabled, advisoryDisabled, hasTool, resolveNode, resolveTool };

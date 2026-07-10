@@ -58,6 +58,9 @@ Statut : vert
   (tour à +50k tokens ; cache invalidé après une pause vs en plein tour) ; rappel de clôture si un
   lot est ouvert sans commit ; si un plan de lots existe, le lot en cours est **clos automatiquement
   au commit** et le suivant annoncé.
+- **Pendant le tour** : une relecture **complète** d'un gros fichier (≥ 16 Ko) déjà lu et
+  inchangé déclenche une note discrète (~60 tokens, plafonnée à 1×/fichier et 3×/session) —
+  jamais de blocage, juste un rappel.
 - **Plan de lots durable** : `.vibe-agent/backlog.json` est versionné par défaut (un
   `.vibe-agent/.gitignore` ignore l'état éphémère mais garde le plan), et stagé à chaque écriture —
   il ne se perd plus entre deux sessions.
@@ -80,6 +83,8 @@ les matchers de hooks ne s'appliquent qu'à la réinstallation._
 - **Mettre PMZ en pause** sans désinstaller : exporte `PMZ_DISABLE=1` dans l'environnement
   d'où tu lances Claude Code — chaque hook sort immédiatement (`exit 0`) en première ligne.
   Retire la variable pour réactiver.
+- **Couper juste la note de relecture redondante** (le reste de PMZ continue de tourner) :
+  `PMZ_NO_ADVISORY=1`.
 - Les hooks sont chargés au **démarrage** de Claude Code : après (dés)installation, **redémarre**
   l'app pour appliquer les changements.
 

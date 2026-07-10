@@ -28,7 +28,7 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
 | `session-start.js` | SessionStart `startup\|resume\|clear\|compact` (injecte au `startup`/`clear` ; `compact` → réinjection minimale du lot en cours ≤ 300 chars) | `cwd`, `source` | `additionalContext` | détecte projet, auto-scaffold si projet neuf (0 commit), sinon propose init, rappel court + titre de session suggéré + injecte le handoff de la session précédente puis le marque consommé ; sans handoff, le plan de lots sert de filet (2 lignes) |
 | `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large, anti-spam 1×/session |
 | `pre-tool-use.js` | PreToolUse `Bash` | `tool_input.command` | `permissionDecision` allow/ask/deny | sûreté commandes |
-| `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite` | `tool_input.file_path`, `tool_input.todos` | — (effet de bord ledgers) | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite) |
+| `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite` | `tool_input.file_path`, `tool_input.todos` | `additionalContext` (rare, advisory) + effet de bord ledgers | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite), signale une relecture complète redondante (lot B4) |
 | `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), hygiène de lecture, rappel de clôture nommant les skills, incrémente le compteur de lot, auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, écrit le handoff auto (écrasé à chaque tour) |
 | `pre-compact.js` | PreCompact `manual\|auto` | `cwd` | — (effet de bord handoff) | sauve le handoff auto (plan de lots + todos compris) AVANT compaction ; la réinjection minimale se fait au SessionStart(compact) |
 
@@ -101,6 +101,15 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   un gaspillage ≥ un palier aggrave d'un cran. **Fallback annoncé** : sans occupation token connue
   (jamais passé par un `Stop` récent, hors-git), retombe sur le comptage de relectures et le dit
   explicitement — jamais de chiffre tokens fantôme.
+- **Advisory intra-tour** (`lib/advisory.js`, appelé par `post-tool-use.js`) : sur un `Read`
+  **COMPLET** (`!partial`) d'un fichier **≥ 16 Ko** déjà lu, **inchangé** (mtime identique —
+  signal `waste` renvoyé par `ledger.recordRead`) et **hors `files_modified`** (garde-fou en
+  plus du mtime), émet un `additionalContext` d'une ligne (~60 tokens) signalant la relecture
+  probablement redondante. PostToolUse reste strictement informatif : jamais de
+  `permissionDecision`, le `Read` est déjà exécuté. Plafonné par un état **hors-projet**
+  `<sha1(session_id)>-advisory` (même convention que `occupancy.js`/`turnstats.js`) : 1×/fichier
+  ET 3×/session, remis à zéro à chaque nouvelle `session_id`. Opt-out `PMZ_NO_ADVISORY=1` (ne
+  consomme pas le plafond — l'advisory reste disponible si l'opt-out est levé dans la session).
 - **État de clôture** (`.vibe-agent/session-state.json`) : keyé par `session_id` ; flag
   anti-spam du rappel de clôture par lot. À la fermeture d'un lot (working tree qui redevient
   propre), `stop.js` incrémente aussi le **compteur de lot** (`.vibe-agent/lot-counter.json`,
