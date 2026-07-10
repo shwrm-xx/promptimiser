@@ -17,11 +17,15 @@ const { systemMessage, passThrough } = require('../lib/output');
 const { gitRoot, ensureLedger, gitStatusMeaningful } = require('../lib/project');
 const { writeAutoHandoff } = require('../lib/handoff');
 const { loadSessionState, saveSessionState } = require('../lib/state');
-const { loadContextLedger } = require('../lib/ledger');
+const { loadContextLedger, recordOccupancy } = require('../lib/ledger');
 const { incrementLot } = require('../lib/lot');
 const { loadBacklog, doneLot, nextLot, progress } = require('../lib/backlog');
 const occupancy = require('../lib/occupancy');
-const { MSG_CLOTURE, MSG_LECTURE, occupancyMessage, lotClosedMessage } = require('../lib/messages');
+const turnstats = require('../lib/turnstats');
+const {
+  MSG_CLOTURE, MSG_LECTURE, occupancyMessage, lotClosedMessage,
+  costlyTurnMessage, bustIntraMessage, pauseTtlMessage,
+} = require('../lib/messages');
 
 function main() {
   const input = parseHookInput();
@@ -46,10 +50,25 @@ function main() {
     ].join('\n'));
   }
 
+  // (a3) métrologie PAR TOUR — coût réel du dernier tour (scan du seul offset ajouté).
+  // Fonctionne hors projet (ne dépend que du transcript). Le miroir ledger est fait
+  // plus bas, quand root est connu.
+  const turn = turnstats.computeTurn(input.transcript_path, sid);
+  if (turn) {
+    if (turn.alerts.costly) parts.push(costlyTurnMessage(turn));
+    if (turn.alerts.intraBust) parts.push(bustIntraMessage(turn));
+    if (turn.alerts.pause) parts.push(pauseTtlMessage(turn));
+    // Redescente brutale (compaction) : le palier d'occupation persisté est périmé,
+    // on le resynchronise pour réarmer les futures alertes de palier.
+    if (turn.alerts.resync) occupancy.resyncBucket(sid, turn.occ);
+  }
+
   // (b) clôture — dans tout repo git (ledger auto-créé, jamais de confirmation requise).
   const root = gitRoot(cwd);
   if (root) {
     ensureLedger(root);
+    // Miroir compact de l'occupation dans le ledger projet (aperçu lisible).
+    if (turn && turn.occ != null) recordOccupancy(root, { occ: turn.occ, delta: turn.delta, sessionId: sid });
     // gitStatusMeaningful : le churn .vibe-agent/ (ledgers, handoff réécrit à
     // chaque tour) ne doit pas compter comme lot ouvert ni bloquer sa clôture.
     const open = gitStatusMeaningful(root).length > 0;

@@ -2,6 +2,33 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.5.7] — 2026-07-10 (lot B2 — métrologie par tour + sécurisation du backlog dans l'ADN)
+
+Deux volets, d'une même consigne. Le lot **B2** du plan (#8) livre la mesure fine du coût par
+tour ; et la **sécurisation du backlog** est désormais un comportement par défaut du package (et
+plus un correctif ponctuel de ce dépôt) — le plan de lots ne peut plus être perdu entre sessions.
+
+- **B2 — métrologie par tour** (`lib/turnstats.js`, nouveau) : à chaque Stop, mémorise l'**offset
+  en octets** du transcript + la dernière occupation dans `<sha1(sid)>-turns.json` (FIFO 40 tours) ;
+  au Stop suivant, ne scanne QUE `[offset, EOF]` = exactement le tour écoulé. `computeTurn` en tire
+  `delta` d'occupation, tokens de sortie, appels, ratio de cache et les **cache-busts** (`first:true`
+  = pause/TTL au 1er appel, normal, 1×/session ; `first:false` = bust en plein tour, anormal).
+  `stop.js` émet un `systemMessage` : tour coûteux (`delta ≥ 50k`, anti-spam 3 tours), bust intra,
+  pause. Garde-fous : offset > taille → `baselineReset` (`delta=null`, zéro alerte parasite) ;
+  `delta < -100k` (compaction) → `occupancy.resyncBucket` réarme le palier. Miroir compact
+  `context-ledger.json.occupancy`.
+- **Sécurisation du backlog par défaut** : le bootstrap pose un `.vibe-agent/.gitignore`
+  **whitelist** (`*` puis `!.gitignore`, `!backlog.json`, `!rules.yaml`) — l'état éphémère (ledgers,
+  handoff, session-state, snapshot) reste hors git, seul le plan durable est suivi ; `saveBacklog`
+  **stage** le backlog à chaque écriture (survit à `git clean`, part au prochain commit dès sa
+  création). `commitScaffold` ajoute désormais fichier par fichier (tolère les ledgers ignorés).
+  Ce dépôt lui-même dogfoode l'ADN : `.vibe-agent/.gitignore` posé, ledgers/session-state
+  dé-suivis (`git rm --cached`), `backlog.json` + `rules.yaml` conservés.
+- **Tests** : 279 OK, 0 échec (+27 depuis 0.5.6). B2 : delta sur 2 Stops, anti-spam 3 tours,
+  baselineReset, delta négatif → resync, busts `first` vs intra. Backlog-ADN : `.gitignore`
+  whitelist, éphémère ignoré / durable suivi, staging auto, survie à `git clean -fd`, commit du
+  socle malgré ledgers ignorés. Smoke test bout-en-bout de `stop.js` (tour coûteux → `systemMessage`).
+
 ## [0.5.6] — 2026-07-10 (sécurisation du backlog — lots B2 à B5 détaillés)
 
 `.vibe-agent/backlog.json` n'était pas versionné dans ce dépôt : il avait disparu entre deux

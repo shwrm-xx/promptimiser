@@ -73,6 +73,39 @@ function occupancyMessage(occ, bucket) {
   ].join('\n');
 }
 
+function fmtK(n) {
+  const v = Math.abs(n || 0);
+  return v >= 1000 ? `${Math.round(v / 1000)}k` : `${Math.round(v)}`;
+}
+
+// Tour coûteux : +delta d'occupation notable sur le dernier tour (anti-spam 3 tours).
+function costlyTurnMessage(turn) {
+  return [
+    `Tour coûteux : +${fmtK(turn.delta)} tokens de contexte (sortie ~${fmtK(turn.out)}, ${turn.req} appel${turn.req > 1 ? 's' : ''}).`,
+    'Cause fréquente : Read complet ou tool_result verbeux. git grep/git diff ou lecture partielle coûtent bien moins.',
+  ].join('\n');
+}
+
+// Cache invalidé EN PLEIN tour (anormal) : un fichier lu par le cache a changé en session.
+function bustIntraMessage(turn) {
+  const b = turn.busts.filter((x) => !x.first).slice(-1)[0] || {};
+  const k = fmtK(b.cacheCreation || turn.cacheCreation);
+  return [
+    `Cache invalidé EN PLEIN tour (~${k} tokens recréés) — anormal.`,
+    'Cause probable : un fichier relu par le cache (CLAUDE.md, settings, gros fichier) modifié en cours de session ; il sera recréé à chaque tour suivant.',
+  ].join('\n');
+}
+
+// Cache expiré au 1er appel du tour (pause/TTL) : normal, signalé 1×/session.
+function pauseTtlMessage(turn) {
+  const b = turn.busts.filter((x) => x.first)[0] || {};
+  const k = fmtK(b.cacheCreation || turn.cacheCreation);
+  return [
+    `Cache expiré après une pause (~${k} tokens retokenisés au 1er appel du tour).`,
+    "Normal après > ~5 min d'inactivité ; enchaîner les tours l'évite. (Signalé 1×/session.)",
+  ].join('\n');
+}
+
 // Confirmation factuelle après un auto-scaffold de projet neuf (point 6) — jamais
 // silencieux sur ce qui a été fait ou pas.
 function autoInitMessage({ gitInitDone, committed }) {
@@ -140,4 +173,5 @@ module.exports = {
   MSG_ACTIF, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   occupancyMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
   compactResumeMessage, backlogResumeMessage, largeWithPlanMessage,
+  costlyTurnMessage, bustIntraMessage, pauseTtlMessage,
 };

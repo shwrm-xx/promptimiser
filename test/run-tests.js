@@ -147,8 +147,10 @@ for (const c of ALLOW) ok(bashVerdict(c) === 'allow', `allow: ${c}`);
 // ============================ C. OCCUPANCY ============================
 section('Occupation par tokens (paliers, anti-spam monotone, scan par blocs)');
 const occupancy = require(path.join(PKG, 'lib', 'occupancy'));
-function usageLine(input, read, create) {
-  return JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: input, cache_read_input_tokens: read, cache_creation_input_tokens: create } } });
+function usageLine(input, read, create, output) {
+  const usage = { input_tokens: input, cache_read_input_tokens: read, cache_creation_input_tokens: create };
+  if (output != null) usage.output_tokens = output;
+  return JSON.stringify({ type: 'assistant', message: { usage } });
 }
 function writeTranscript(name, lines) {
   const p = path.join(SANDBOX, name);
@@ -453,6 +455,48 @@ const bootstrapLib = require(path.join(PKG, 'lib', 'bootstrap'));
   execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
   runHook('session-start.js', { source: 'startup', cwd: repo, session_id: 's-mature' });
   ok(!fs.existsSync(path.join(repo, 'CLAUDE.md')), 'projet mature sans /pmz-init → CLAUDE.md toujours NON créé automatiquement');
+}
+
+// ============================ K2. SÉCURISATION DU BACKLOG (ADN) ============================
+section('Sécurisation du backlog — .vibe-agent/.gitignore whitelist + staging auto');
+{
+  const backlog = require(path.join(PKG, 'lib', 'backlog'));
+  const repo = path.join(SANDBOX, 'repo-backlog-dna');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  bootstrapLib.runBootstrap(repo);
+
+  const giPath = path.join(repo, '.vibe-agent', '.gitignore');
+  ok(fs.existsSync(giPath), 'bootstrap : .vibe-agent/.gitignore créé');
+  const gi = fs.readFileSync(giPath, 'utf8');
+  ok(/^\*$/m.test(gi) && /^!backlog\.json$/m.test(gi), '.gitignore : whiteliste backlog.json (ignore le reste)');
+
+  const ignored = (rel) => {
+    try { execFileSync('git', ['-C', repo, 'check-ignore', '-q', rel]); return true; } catch (_) { return false; }
+  };
+  ok(ignored('.vibe-agent/context-ledger.json') && ignored('.vibe-agent/read-ledger.json') &&
+    ignored('.vibe-agent/session-state.json'), 'état éphémère (ledgers, session-state) : gitignoré');
+  ok(!ignored('.vibe-agent/backlog.json') && !ignored('.vibe-agent/rules.yaml'),
+    'durable (backlog.json, rules.yaml) : NON gitignoré');
+
+  // saveBacklog stage le backlog automatiquement → il part au prochain commit ET
+  // survit à un git clean -fd (fichier stagé jamais supprimé).
+  backlog.addLot(repo, 'Lot test', 'fait quand : …');
+  const staged = execFileSync('git', ['-C', repo, 'diff', '--cached', '--name-only'], { encoding: 'utf8' });
+  ok(/\.vibe-agent\/backlog\.json/.test(staged), 'addLot : backlog.json stagé automatiquement');
+  execFileSync('git', ['-C', repo, 'clean', '-fd'], { encoding: 'utf8' });
+  ok(fs.existsSync(path.join(repo, '.vibe-agent', 'backlog.json')), 'backlog.json survit à git clean -fd (stagé)');
+
+  // commitScaffold ne s'étrangle pas sur les ledgers ignorés : 1 commit du socle.
+  const repo2 = path.join(SANDBOX, 'repo-backlog-dna2');
+  fs.mkdirSync(repo2, { recursive: true });
+  const rInit = bootstrapLib.autoInitGitAndBootstrap(repo2);
+  ok(rInit.ok === true && rInit.committed === true, 'autoInit : socle commité malgré les ledgers ignorés');
+  const tracked = execFileSync('git', ['-C', repo2, 'ls-files', '.vibe-agent'], { encoding: 'utf8' });
+  ok(/\.vibe-agent\/\.gitignore/.test(tracked) && /\.vibe-agent\/rules\.yaml/.test(tracked),
+    'commit du socle : .gitignore + rules.yaml suivis');
+  ok(!/context-ledger\.json/.test(tracked) && !/session-state\.json/.test(tracked),
+    'commit du socle : ledgers éphémères NON suivis');
 }
 
 // ============================ L. INIT PROJET EN COURS (--augment) ============================
@@ -1016,6 +1060,83 @@ const AUDIT_CTX = path.join(PKG, 'scripts', 'audit-context.js');
   runHook('post-tool-use.js', { tool_name: 'Read', tool_input: { file_path: path.join(repoClean, 'a.txt') }, cwd: repoClean });
   const auditClean = runNode(AUDIT_CTX, ['--cwd', repoClean]);
   ok(/Gaspillage estimé :\n- \(aucun détecté\)/.test(auditClean.out), 'B1 : sans gaspillage → « aucun détecté »');
+}
+
+// ============================ B2. MÉTROLOGIE PAR TOUR ============================
+section('Métrologie par tour (turnstats : delta, anti-spam, baseline, resync, busts)');
+{
+  const ts = require(path.join(PKG, 'lib', 'turnstats'));
+  const tsPath = (n) => path.join(SANDBOX, n);
+  const stop = (file, line, sid) => { fs.appendFileSync(file, line + '\n'); return ts.computeTurn(file, sid); };
+
+  // 1) Delta sur 2 Stops consécutifs. Le 1er Stop établit la baseline (delta null),
+  //    le 2e mesure le tour écoulé en ne scannant que l'offset ajouté.
+  const t1 = tsPath('ts1.jsonl');
+  const r1 = stop(t1, usageLine(2000, 118000, 0, 500), 'ts-A'); // occ 120k
+  ok(r1 && r1.delta === null && r1.occ === 120000, 'B2 : 1er Stop = baseline (delta null, occ 120k)');
+  ok(r1.alerts.costly === false && r1.busts.length === 0, 'B2 : baseline -> aucune alerte, aucun bust');
+  const r2 = stop(t1, usageLine(3000, 197000, 0, 3000), 'ts-A'); // occ 200k
+  ok(r2 && r2.delta === 80000 && r2.occ === 200000, 'B2 : 2e Stop = delta +80k (200k - 120k)');
+  ok(r2.out === 3000 && r2.req === 1, 'B2 : out=3000, req=1 sur le seul tour écoulé');
+  ok(r2.alerts.costly === true, 'B2 : delta>=50k -> tour coûteux');
+
+  // 2) Anti-spam : 1 alerte coûteuse, puis silence 2 tours, puis réalerte au 3e.
+  const t2 = tsPath('ts2.jsonl');
+  stop(t2, usageLine(2000, 118000, 0, 100), 'ts-spam'); // baseline occ 120k
+  const a2 = stop(t2, usageLine(2000, 178000, 0, 100), 'ts-spam'); // +60k
+  const a3 = stop(t2, usageLine(2000, 238000, 0, 100), 'ts-spam'); // +60k
+  const a4 = stop(t2, usageLine(2000, 298000, 0, 100), 'ts-spam'); // +60k
+  const a5 = stop(t2, usageLine(2000, 358000, 0, 100), 'ts-spam'); // +60k
+  ok(a2.alerts.costly === true, 'B2 anti-spam : 1er tour coûteux alerte');
+  ok(a3.alerts.costly === false && a4.alerts.costly === false, 'B2 anti-spam : silence 2 tours suivants');
+  ok(a5.alerts.costly === true, 'B2 anti-spam : réalerte après 3 tours');
+
+  // 3) Baseline invalide : transcript remplacé plus court (offset > taille) -> reset.
+  const t3 = tsPath('ts3.jsonl');
+  fs.writeFileSync(t3, [usageLine(2000, 300000, 0, 100), usageLine(2000, 400000, 0, 100)].join('\n') + '\n');
+  ts.computeTurn(t3, 'ts-trunc'); // offset = grande taille
+  fs.writeFileSync(t3, usageLine(2000, 50000, 0, 100) + '\n'); // remplacé, plus court
+  const r3 = ts.computeTurn(t3, 'ts-trunc');
+  ok(r3 && r3.baselineReset === true && r3.delta === null, 'B2 : offset>taille -> baselineReset, delta null');
+  ok(!r3.alerts.costly && !r3.alerts.intraBust && !r3.alerts.pause && r3.busts.length === 0,
+    'B2 : baselineReset -> aucune alerte/bust parasite');
+
+  // 4) Delta très négatif (compaction) -> resync du palier d'occupation, sans parasite.
+  const t4 = tsPath('ts4.jsonl');
+  fs.writeFileSync(t4, usageLine(2000, 398000, 0, 100) + '\n'); // occ 400k baseline
+  ts.computeTurn(t4, 'ts-neg');
+  fs.appendFileSync(t4, usageLine(2000, 248000, 0, 100) + '\n'); // occ 250k
+  const r4 = ts.computeTurn(t4, 'ts-neg');
+  ok(r4 && r4.delta === -150000 && r4.alerts.resync === true, 'B2 : delta -150k -> resync');
+  ok(r4.alerts.costly === false, 'B2 : delta négatif -> pas de tour coûteux parasite');
+  // resyncBucket (appelé par stop.js quand alerts.resync) réécrit le palier courant.
+  occupancy.resyncBucket('ts-neg', r4.occ);
+  ok(fs.readFileSync(occupancy.stateFileFor('ts-neg'), 'utf8').trim() === String(occupancy.bucketIndex(250000)),
+    'B2 : resyncBucket réécrit le palier au bucket courant (250k)');
+
+  // 5a) Cache-bust au 1er appel du tour (pause/TTL) : first=true, alerte 1×/session.
+  const t5 = tsPath('ts5.jsonl');
+  fs.writeFileSync(t5, usageLine(2000, 298000, 0, 100) + '\n'); // occ 300k baseline
+  ts.computeTurn(t5, 'ts-pause');
+  fs.appendFileSync(t5, usageLine(10000, 10000, 290000, 100) + '\n'); // read effondré au 1er appel
+  const r5 = ts.computeTurn(t5, 'ts-pause');
+  ok(r5.busts.length === 1 && r5.busts[0].first === true, 'B2 : bust 1er appel -> first=true (pause/TTL)');
+  ok(r5.alerts.pause === true && r5.alerts.intraBust === false, 'B2 : first bust -> alerte pause, pas intra');
+  fs.appendFileSync(t5, usageLine(10000, 10000, 290000, 100) + '\n');
+  const r5b = ts.computeTurn(t5, 'ts-pause');
+  ok(r5b.alerts.pause === false, 'B2 : pause signalée 1×/session (2e occurrence muette)');
+
+  // 5b) Cache-bust EN PLEIN tour (2e requête) : first=false, alerte intra.
+  const t6 = tsPath('ts6.jsonl');
+  fs.writeFileSync(t6, usageLine(2000, 298000, 0, 100) + '\n'); // occ 300k baseline
+  ts.computeTurn(t6, 'ts-intra');
+  fs.appendFileSync(t6, [
+    usageLine(3000, 307000, 0, 200),     // occ 310k, read fort -> pas de bust
+    usageLine(5000, 20000, 295000, 200), // occ 320k, read effondré vs 310k -> bust intra
+  ].join('\n') + '\n');
+  const r6 = ts.computeTurn(t6, 'ts-intra');
+  ok(r6.busts.length === 1 && r6.busts[0].first === false, 'B2 : bust 2e requête -> first=false (intra-tour)');
+  ok(r6.alerts.intraBust === true && r6.alerts.pause === false, 'B2 : bust intra -> alerte intraBust');
 }
 
 // ============================ RÉSUMÉ ============================

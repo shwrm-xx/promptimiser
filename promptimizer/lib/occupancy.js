@@ -174,6 +174,20 @@ function evaluateReadMix(transcriptPath, sessionId) {
   return mix;
 }
 
+// Réécrit le fichier de palier avec le bucket correspondant à `occ`. Utilisé après
+// une compaction (delta très négatif) détectée par turnstats : le palier persisté
+// est alors périmé (trop haut), et sans ce resync aucune alerte ne se réarmerait tant
+// que l'occ n'a pas regrimpé au-dessus de l'ancien palier. Fail-silent.
+function resyncBucket(sessionId, occ) {
+  if (occ == null) return false;
+  try {
+    fs.writeFileSync(stateFileFor(sessionId), String(bucketIndex(occ)));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 // Retourne { occupancy, bucket, crossedNew } ou null si rien d'exploitable.
 function evaluate(transcriptPath, sessionId) {
   if (!transcriptPath) return null;
@@ -201,5 +215,6 @@ function evaluate(transcriptPath, sessionId) {
 
 module.exports = {
   readLastOccupancy, bucketIndex, evaluate, scanTailForReadMix, evaluateReadMix,
+  resyncBucket, stateFileFor,
   BUCKETS, FLOATING_STEP, STATE_DIR,
 };

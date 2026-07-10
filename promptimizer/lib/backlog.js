@@ -63,12 +63,23 @@ function loadBacklog(root) {
   };
 }
 
+// Sécurise le plan de lots : le stage (best-effort) dès qu'il change. Un fichier
+// STAGÉ survit à un `git clean -fd` et part avec le prochain commit, ce qui ferme la
+// fenêtre où un backlog fraîchement créé, encore non suivi, pouvait disparaître entre
+// deux sessions. Le .vibe-agent/.gitignore (bootstrap) le whiteliste ; dans un projet
+// sans ce .gitignore, `git add` marche aussi (fichier non ignoré). git() = fail-open.
+function stageBacklog(root) {
+  try { git(['add', '--', path.relative(root, backlogFile(root))], root); } catch (_) { /* fail-open */ }
+}
+
 function saveBacklog(root, b) {
   if (!root) return false;
   ensureLedger(root); // plomberie interne, comme les ledgers
   b.updated_at = now();
   if (!b.created_at) b.created_at = b.updated_at;
-  return writeAtomic(backlogFile(root), b);
+  const okw = writeAtomic(backlogFile(root), b);
+  if (okw) stageBacklog(root);
+  return okw;
 }
 
 function findLot(b, id) {

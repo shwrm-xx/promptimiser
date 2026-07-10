@@ -5,7 +5,8 @@ desktop** (macOS). Il s'installe une fois, s'active automatiquement sur tous les
 poursuit trois objectifs :
 
 1. **Économie de contexte** — alerte sur l'occupation réelle du contexte (tokens) par paliers,
-   via un message visible **non bloquant** et **non réinjecté** dans le contexte du modèle.
+   et sur le **coût du dernier tour** (tour à +50k tokens, invalidations de cache), via un
+   message visible **non bloquant** et **non réinjecté** dans le contexte du modèle.
 2. **Clôture propre des lots** — rappelle vérification ciblée + `CHANGELOG` + commit + handoff ;
    le handoff est écrit dans `.vibe-agent/handoff.md` (auto à chaque fin de tour, riche via
    `/fresh-session`) et **injecté automatiquement au démarrage de la session suivante**.
@@ -53,9 +54,13 @@ Statut : vert
 - **Pendant la session** : confirmation demandée avant une commande destructive
   (`git reset --hard`, `rm -rf <dossier>`…) ; les commandes catastrophiques sont bloquées. Les
   lectures/éditions normales ne sont **pas** ralenties (respect de `acceptEdits`).
-- **En fin de tour** : alerte de coût aux paliers de contexte ; rappel de clôture si un lot est
-  ouvert sans commit ; si un plan de lots existe, le lot en cours est **clos automatiquement au
-  commit** et le suivant annoncé.
+- **En fin de tour** : alerte de coût aux paliers de contexte et sur le **coût du dernier tour**
+  (tour à +50k tokens ; cache invalidé après une pause vs en plein tour) ; rappel de clôture si un
+  lot est ouvert sans commit ; si un plan de lots existe, le lot en cours est **clos automatiquement
+  au commit** et le suivant annoncé.
+- **Plan de lots durable** : `.vibe-agent/backlog.json` est versionné par défaut (un
+  `.vibe-agent/.gitignore` ignore l'état éphémère mais garde le plan), et stagé à chaque écriture —
+  il ne se perd plus entre deux sessions.
 - **Après un `/clear` ou une compaction** : le handoff (ou le lot en cours) est réinjecté —
   le plan ne se perd pas.
 

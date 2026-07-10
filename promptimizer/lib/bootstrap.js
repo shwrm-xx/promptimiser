@@ -44,6 +44,10 @@ function runBootstrap(root) {
   const vd = vibeDir(root);
   try { fs.mkdirSync(vd, { recursive: true }); } catch (_) { /* ignore */ }
 
+  // .vibe-agent/.gitignore EN PREMIER : whiteliste backlog.json (le plan de lots est
+  // durable et ne doit JAMAIS être perdu) tout en ignorant l'état éphémère réécrit à
+  // chaque tour. Posé avant les ledgers pour qu'ils naissent déjà ignorés.
+  copyIfAbsent('vibe-gitignore', path.join(vd, '.gitignore'), created, skipped);
   copyIfAbsent('rules.yaml', path.join(vd, 'rules.yaml'), created, skipped);
   copyIfAbsent('context-ledger.json', path.join(vd, 'context-ledger.json'), created, skipped);
   copyIfAbsent('read-ledger.json', path.join(vd, 'read-ledger.json'), created, skipped);
@@ -103,10 +107,17 @@ function augmentExisting(root) {
 // sur échec.
 function commitScaffold(root, created) {
   if (!created || !created.length) return false;
-  const rel = created.map((p) => path.relative(root, p)).filter(Boolean);
-  if (!rel.length) return false;
-  if (git(['add', ...rel], root) === null) return false;
-  const msg = 'chore: socle Promptimizer (CLAUDE.md, AGENTS.md, CHANGELOG.md, ledger)';
+  // Ajout FICHIER PAR FICHIER : l'état éphémère de .vibe-agent/ (ledgers, session-state)
+  // est désormais gitignoré (cf. .vibe-agent/.gitignore) et `git add` le refuse — on le
+  // saute sans faire échouer le commit du reste du socle (backlog.json et rules.yaml, eux,
+  // sont whitelistés donc bien commités). git() ne throw jamais (fail-open).
+  let staged = 0;
+  for (const p of created) {
+    const rel = path.relative(root, p);
+    if (rel && git(['add', '--', rel], root) !== null) staged += 1;
+  }
+  if (!staged) return false;
+  const msg = 'chore: socle Promptimizer (CLAUDE.md, AGENTS.md, CHANGELOG.md, plan de lots)';
   return git(['commit', '-m', msg], root) !== null;
 }
 

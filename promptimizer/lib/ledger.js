@@ -28,6 +28,7 @@ function loadContextLedger(root) {
   if (!('estimated_context_waste' in cl)) cl.estimated_context_waste = null;
   cl.waste_by_file = cl.waste_by_file && typeof cl.waste_by_file === 'object' ? cl.waste_by_file : {};
   cl.warnings = Array.isArray(cl.warnings) ? cl.warnings : [];
+  if (!('occupancy' in cl)) cl.occupancy = null;
   return cl;
 }
 
@@ -80,6 +81,23 @@ function recordRead(root, relPath, sessionId, partial, stat) {
   writeAtomic(contextLedgerFile(root), cl);
 }
 
+// Miroir COMPACT de la mesure par tour (turnstats) dans le ledger projet. La mesure
+// fine vit dans l'état hors-projet <sha1>-turns.json ; ici c'est un aperçu lisible,
+// last-writer-wins ASSUMÉ (le dernier Stop écrase — acceptable, ce n'est pas la source
+// de vérité). No-op hors projet initialisé ou sans occ.
+function recordOccupancy(root, { occ, delta, sessionId }) {
+  if (!isInitialized(root) || occ == null) return;
+  const cl = loadContextLedger(root);
+  cl.occupancy = {
+    last: occ,
+    at: Date.now(),
+    delta_last_turn: delta == null ? null : delta,
+    session: sessionId || null,
+  };
+  if (sessionId) cl.session_id = sessionId;
+  writeAtomic(contextLedgerFile(root), cl);
+}
+
 function recordModify(root, relPath, sessionId) {
   if (!isInitialized(root) || !relPath) return;
   const cl = loadContextLedger(root);
@@ -89,4 +107,4 @@ function recordModify(root, relPath, sessionId) {
   writeAtomic(contextLedgerFile(root), cl);
 }
 
-module.exports = { loadReadLedger, loadContextLedger, recordRead, recordModify, estTokens };
+module.exports = { loadReadLedger, loadContextLedger, recordRead, recordModify, recordOccupancy, estTokens };

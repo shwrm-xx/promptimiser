@@ -29,7 +29,7 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
 | `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large, anti-spam 1×/session |
 | `pre-tool-use.js` | PreToolUse `Bash` | `tool_input.command` | `permissionDecision` allow/ask/deny | sûreté commandes |
 | `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite` | `tool_input.file_path`, `tool_input.todos` | — (effet de bord ledgers) | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite) |
-| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), hygiène de lecture, rappel de clôture nommant les skills, incrémente le compteur de lot, auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, écrit le handoff auto (écrasé à chaque tour) |
+| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), hygiène de lecture, rappel de clôture nommant les skills, incrémente le compteur de lot, auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, écrit le handoff auto (écrasé à chaque tour) |
 | `pre-compact.js` | PreCompact `manual\|auto` | `cwd` | — (effet de bord handoff) | sauve le handoff auto (plan de lots + todos compris) AVANT compaction ; la réinjection minimale se fait au SessionStart(compact) |
 
 ### Invariants NON négociables
@@ -68,6 +68,18 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   croissant** (une seule alerte par palier ; pas de redescente intra-session — un vrai reset =
   nouvelle `session_id`). Aucune dépendance aux ledgers projet. → Méthode reprise de l'ancien
   `context-guard.py`.
+- **Métrologie par tour** (`lib/turnstats.js`, appelée par `stop.js`) : mesure le coût du
+  **dernier tour** en ne scannant QUE `[offset, EOF]` du transcript — l'offset (octets) et la
+  dernière occupation sont mémorisés au Stop précédent dans `<sha1(sid)>-turns.json` (FIFO 40
+  tours). `computeTurn` en tire `delta` d'occupation, tokens de sortie, nombre d'appels, ratio de
+  cache et les **cache-busts** (cache_read effondré sous 50 % d'une occ ≥ 100k) : `first:true` =
+  1er appel du tour (pause/TTL de cache expiré, normal, signalé 1×/session via `<sha1>-ttl`) vs
+  `first:false` = bust **en plein tour** (anormal : fichier lu par le cache modifié en session).
+  Alertes `systemMessage` : tour coûteux (`delta ≥ 50k`, anti-spam 3 tours) et busts. Un offset
+  supérieur à la taille du fichier (transcript tronqué/remplacé) → `baselineReset` (`delta=null`,
+  aucune alerte parasite) ; un `delta < -100k` (compaction) → `occupancy.resyncBucket` réécrit le
+  palier persisté pour réarmer les alertes. Miroir compact `context-ledger.json.occupancy`
+  (`{last, at, delta_last_turn, session}`, last-writer-wins assumé — la mesure fine reste hors-projet).
 - **Hygiène de lecture** (`lib/occupancy.js: evaluateReadMix`) : même principe (lit le transcript
   brut, fenêtre fixe 1,5 Mo, aucune dépendance au ledger), tally les blocs `tool_use` récents pour
   détecter une majorité de `Read` sans `offset`/`limit` face aux recherches (`Grep`/`Glob`/`grep`
@@ -95,7 +107,12 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   ouverts ; `doneLot` idempotent. Écrit par l'assistant (CLI) ; **auto-clos par `stop.js`**
   quand le working tree redevient propre et qu'exactement un lot est `in_progress` (sinon ne
   touche à rien — réconciliation bête via `backlog.js reconcile`). Jamais de promotion
-  automatique du suivant. À part : `.vibe-agent/todo-snapshot.json`, capture passive de la
+  automatique du suivant. **Durabilité par défaut** (le backlog ne doit JAMAIS être perdu) : le
+  bootstrap pose un `.vibe-agent/.gitignore` **whitelist** (`*` puis `!.gitignore`, `!backlog.json`,
+  `!rules.yaml`) — l'état éphémère (ledgers, handoff, session-state, snapshot) reste hors git, seul
+  le plan durable est suivi ; et `saveBacklog` **stage** le fichier à chaque écriture (survit à un
+  `git clean`, part au prochain commit dès sa création). Sa disparition passée venait de ce qu'il
+  n'était pas suivi par git. À part : `.vibe-agent/todo-snapshot.json`, capture passive de la
   todo-list Claude Code (écrasée à chaque `TodoWrite`, sens unique outil→disque — granularité
   tâche ≠ lot, jamais de promotion todo→backlog).
 - **Handoff de session** (`.vibe-agent/handoff.md`, `lib/handoff.js`) : UN fichier, **écrasé à
