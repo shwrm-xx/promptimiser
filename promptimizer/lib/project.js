@@ -37,6 +37,24 @@ function isInitialized(root) {
   }
 }
 
+// Crée .vibe-agent/ silencieusement si absent (plomberie interne, jamais de contenu
+// visible ajouté au repo utilisateur). Idempotent, ne remonte jamais d'erreur.
+function ensureLedger(root) {
+  try {
+    if (!root) return false;
+    fs.mkdirSync(vibeDir(root), { recursive: true });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+// Socle visible posé (CLAUDE.md) EN PLUS du ledger — distinct de isInitialized()
+// qui ne teste que la plomberie interne (désormais auto-créée par ensureLedger).
+function isFullyInitialized(root) {
+  return isInitialized(root) && exists(root, 'CLAUDE.md');
+}
+
 function exists(root, name) {
   try {
     return fs.existsSync(path.join(root, name));
@@ -91,6 +109,6 @@ function changelogTouched(root) {
 }
 
 module.exports = {
-  git, gitRoot, vibeDir, isInitialized, exists, detectStack,
+  git, gitRoot, vibeDir, isInitialized, ensureLedger, isFullyInitialized, exists, detectStack,
   gitStatusPorcelain, lastCommitEpoch, hasAnyCommit, changelogTouched,
 };

@@ -13,9 +13,10 @@ if (disabled()) process.exit(0);
 
 const { parseHookInput } = require('../lib/stdin');
 const { systemMessage, passThrough } = require('../lib/output');
-const { gitRoot, isInitialized, gitStatusPorcelain } = require('../lib/project');
+const { gitRoot, ensureLedger, gitStatusPorcelain } = require('../lib/project');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { loadContextLedger } = require('../lib/ledger');
+const { incrementLot } = require('../lib/lot');
 const occupancy = require('../lib/occupancy');
 const { MSG_CLOTURE, MSG_LECTURE, occupancyMessage } = require('../lib/messages');
 
@@ -32,9 +33,20 @@ function main() {
     parts.push(occupancyMessage(occ.occupancy, occ.bucket));
   }
 
-  // (b) clôture — seulement dans un projet git initialisé.
+  // (a2) hygiène de lecture — indépendante du ledger, une fois par session, marche
+  // même sur un projet jamais initialisé (lit le transcript brut comme (a)).
+  const mix = occupancy.evaluateReadMix(input.transcript_path, sid);
+  if (mix) {
+    parts.push([
+      `Cette session : ${mix.fullReads}/${mix.reads} lectures étaient des Read complets (sans offset/limit).`,
+      'Grep/git diff en amont sur les gros fichiers réduirait le coût des prochaines relectures.',
+    ].join('\n'));
+  }
+
+  // (b) clôture — dans tout repo git (ledger auto-créé, jamais de confirmation requise).
   const root = gitRoot(cwd);
-  if (root && isInitialized(root)) {
+  if (root) {
+    ensureLedger(root);
     const open = gitStatusPorcelain(root).length > 0;
     const st = loadSessionState(root, sid);
     if (open && !st.closure_reminded_for_batch) {
@@ -50,6 +62,7 @@ function main() {
     } else if (!open && st.closure_reminded_for_batch) {
       st.closure_reminded_for_batch = false; // working tree propre -> nouveau lot
       saveSessionState(root, st);
+      incrementLot(root); // lot fermé -> le prochain sera proposé au SessionStart suivant
     }
   }
 

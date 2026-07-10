@@ -2,6 +2,37 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.4.5] — 2026-07-10
+
+Six optimisations issues de l'audit d'usage tokens sur assistHealth (rapport + dashboard) :
+la couche ledger/clôture restait inerte sans `/pmz-init` explicite, et les skills PMZ étaient
+quasi jamais invoqués malgré des rappels vagues.
+
+- **Ledger auto-créé sans confirmation** (`lib/project.js: ensureLedger`) : `.vibe-agent/`
+  se crée dès qu'un repo git existe, branché dans `post-tool-use.js` et `stop.js`. Le socle
+  **visible** (CLAUDE.md/AGENTS.md/CHANGELOG.md) reste derrière confirmation sur un projet
+  mature (`isFullyInitialized`).
+- **Rappels qui nomment la commande exacte** : `occupancyMessage()` et `MSG_CLOTURE`
+  pointent vers `/close-batch`/`/fresh-session` au lieu d'une prose générique.
+- **Palier d'alerte flottant** (`lib/occupancy.js: FLOATING_STEP`) : au-delà du dernier palier
+  fixe (750k), une alerte continue de se déclencher tous les +250k au lieu de se taire pour
+  le reste d'une session marathon.
+- **Hygiène de lecture** (`lib/occupancy.js: scanTailForReadMix/evaluateReadMix`) : le hook
+  Stop signale, une fois par session et sans dépendre du ledger, une majorité de `Read`
+  complets (sans offset/limit) face aux recherches (`Grep`/`git grep`).
+- **Nommage automatique de session** (`lib/lot.js`, nouveau) : compteur de lot par projet
+  (`.vibe-agent/lot-counter.json`, amorcé depuis les `(lot N)` déjà présents dans
+  `CHANGELOG.md`), epic configurable via `.vibe-agent/epic` (sinon nom du dossier).
+  `session-start.js` suggère « Epic — Lot N » et demande à l'assistant de tenter le
+  renommage réel puis d'accuser explicitement le résultat.
+- **Auto-scaffold d'un projet neuf** (`lib/bootstrap.js`, nouveau — logique extraite de
+  `scripts/bootstrap-project.js`) : sur un repo git à 0 commit, ou même sans `.git` du tout
+  (PMZ fait alors `git init` lui-même) sur un prompt de démarrage, le socle est posé et
+  commité automatiquement. Un projet mature continue de nécessiter `/pmz-init` explicite.
+- **Vérifié** : `node test/run-tests.js` vert (149 assertions) ; parcours manuel en bac à
+  sable pour les 6 points (textes de rappel réels, fichiers créés, commits) ; `ARCHITECTURE.md`
+  mis à jour (invariant §3 reformulé, flux de données, décisions).
+
 ## [0.4.4] — 2026-06-14
 
 AGENTS.md enrichi — équivalent textuel des hooks PMZ pour Codex.

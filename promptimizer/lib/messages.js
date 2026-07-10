@@ -1,6 +1,6 @@
 'use strict';
 // Messages injectés par les hooks. Courts, conformes à la spec mwn/ (rg -> git grep).
-const { BUCKETS } = require('./occupancy');
+const { BUCKETS, FLOATING_STEP } = require('./occupancy');
 
 const MSG_ACTIF = [
   'Promptimizer actif.',
@@ -24,7 +24,7 @@ const MSG_LECTURE = [
 
 const MSG_CLOTURE = [
   'Lot modifié sans clôture complète.',
-  'Avant de continuer : vérification ciblée, CHANGELOG, commit, handoff court, session fraîche recommandée.',
+  'Lance /close-batch pour la checklist et l\'audit complets (vérif ciblée, CHANGELOG, commit, handoff).',
 ].join('\n');
 
 const MSG_LARGE = [
@@ -38,17 +38,48 @@ const MSG_INIT_BEFORE_CODE = [
 
 function occupancyMessage(occ, bucket) {
   const k = Math.round(occ / 1000);
-  const next = BUCKETS[bucket]; // seuil suivant (bucket = nb de paliers déjà franchis), undefined au dernier
-  const repere = next
-    ? `prochain palier ~${Math.round(next / 1000)}k`
-    : 'au-delà du dernier palier — session fraîche conseillée';
+  let repere;
+  if (bucket < BUCKETS.length) {
+    const next = BUCKETS[bucket];
+    repere = `prochain palier ~${Math.round(next / 1000)}k`;
+  } else {
+    // Palier flottant au-delà de 750k : continue à alerter tous les +250k au lieu
+    // de se taire pour le reste d'une session marathon.
+    const last = BUCKETS[BUCKETS.length - 1];
+    const nextFloating = last + (bucket - BUCKETS.length + 1) * FLOATING_STEP;
+    repere = `au-delà du dernier palier fixe — prochain rappel ~${Math.round(nextFloating / 1000)}k`;
+  }
   return [
     `Contexte ≈ ${k}k tokens (${repere}).`,
-    'Pense à : git diff/git grep plutôt que relire, handoff court, session fraîche si le lot est fini.',
+    'Pense à : git diff/git grep plutôt que relire.',
+    "Lot fini → lance /close-batch. Sinon → /fresh-session après un commit intermédiaire pour repartir au plancher.",
+  ].join('\n');
+}
+
+// Confirmation factuelle après un auto-scaffold de projet neuf (point 6) — jamais
+// silencieux sur ce qui a été fait ou pas.
+function autoInitMessage({ gitInitDone, committed }) {
+  const lines = [
+    gitInitDone
+      ? "Nouveau projet détecté : git init + socle Promptimizer posés automatiquement (CLAUDE.md, AGENTS.md, CHANGELOG.md, .vibe-agent/)."
+      : "Nouveau projet détecté (0 commit) : socle Promptimizer posé automatiquement (CLAUDE.md, AGENTS.md, CHANGELOG.md, .vibe-agent/).",
+    committed
+      ? 'Commit initial du socle effectué.'
+      : "Commit initial NON effectué (git a échoué) — à faire manuellement.",
+    'Relis CLAUDE.md avant de coder, puis propose un premier lot court.',
+  ];
+  return lines.join('\n');
+}
+
+function sessionTitleMessage(title) {
+  return [
+    `Titre de session suggéré : « ${title} ».`,
+    "Essaie de renommer cette session avec ce titre via l'outil de renommage de session s'il est disponible dans ce contexte.",
+    "Confirme ensuite explicitement à l'utilisateur si le renommage a réussi, ou explique pourquoi ce n'était pas possible (outil absent, erreur…) — jamais silencieux sur ce point.",
   ].join('\n');
 }
 
 module.exports = {
   MSG_ACTIF, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_LARGE, MSG_INIT_BEFORE_CODE,
-  occupancyMessage,
+  occupancyMessage, sessionTitleMessage, autoInitMessage,
 };

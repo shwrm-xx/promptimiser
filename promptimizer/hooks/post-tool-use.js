@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 'use strict';
 // PostToolUse (Read|Edit|Write) : INFORMATIF uniquement. Met à jour les ledgers projet.
-// Court-circuit immédiat si projet non initialisé. Ne bloque jamais, aucune décision.
+// Le ledger (.vibe-agent/) est auto-créé dès qu'un repo git existe (ensureLedger) —
+// aucune confirmation requise, contrairement au socle visible (CLAUDE.md/AGENTS.md).
+// Ne bloque jamais, aucune décision.
 process.on('uncaughtException', () => process.exit(0));
 process.on('unhandledRejection', () => process.exit(0));
 const { armFailOpen } = require('../lib/guard');
@@ -13,7 +15,7 @@ if (disabled()) process.exit(0);
 const path = require('path');
 const { parseHookInput } = require('../lib/stdin');
 const { passThrough } = require('../lib/output');
-const { gitRoot, isInitialized } = require('../lib/project');
+const { gitRoot, ensureLedger } = require('../lib/project');
 const { recordRead, recordModify } = require('../lib/ledger');
 
 function relOf(root, fp) {
@@ -32,7 +34,8 @@ function main() {
   if (!fp) return passThrough();
   const cwd = input.cwd || process.cwd();
   const root = gitRoot(cwd);
-  if (!root || !isInitialized(root)) return passThrough(); // n'écrit QUE si initialisé
+  if (!root) return passThrough(); // n'écrit QUE dans un repo git
+  ensureLedger(root); // plomberie interne silencieuse, jamais de contenu visible
   const rel = relOf(root, fp);
   const sid = input.session_id || null;
   if (tool === 'Read') {

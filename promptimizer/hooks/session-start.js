@@ -14,9 +14,11 @@ if (disabled()) process.exit(0);
 
 const { parseHookInput } = require('../lib/stdin');
 const { injectContext, passThrough } = require('../lib/output');
-const { gitRoot, isInitialized } = require('../lib/project');
+const { gitRoot, isFullyInitialized, hasAnyCommit } = require('../lib/project');
+const { runBootstrap, commitScaffold } = require('../lib/bootstrap');
 const { loadSessionState, saveSessionState } = require('../lib/state');
-const { MSG_ACTIF, MSG_NON_INIT } = require('../lib/messages');
+const { suggestedTitle } = require('../lib/lot');
+const { MSG_ACTIF, MSG_NON_INIT, sessionTitleMessage, autoInitMessage } = require('../lib/messages');
 
 function main() {
   const input = parseHookInput();
@@ -25,7 +27,7 @@ function main() {
   const root = gitRoot(cwd);
   if (!root) return passThrough();
 
-  if (isInitialized(root)) {
+  if (isFullyInitialized(root)) {
     // Anti-spam : un seul rappel par session, et jamais de réinjection au resume/compact
     // (sinon MSG_ACTIF regonfle le contexte à chaque reprise).
     if (src !== 'startup' && src !== 'clear') return passThrough();
@@ -33,11 +35,33 @@ function main() {
     if (st.session_start_reminded) return passThrough();
     st.session_start_reminded = true;
     saveSessionState(root, st);
-    return injectContext('SessionStart', MSG_ACTIF);
+    let msg = MSG_ACTIF;
+    try {
+      msg = msg + '\n\n' + sessionTitleMessage(suggestedTitle(root));
+    } catch (_) {
+      /* fail-open : le rappel de base part quand même */
+    }
+    return injectContext('SessionStart', msg);
   }
-  // Non initialisé : on PROPOSE seulement (l'init réelle se fait après confirmation),
-  // et uniquement au vrai démarrage (l'état n'est pas persistable hors projet initialisé).
+  // Non initialisé, et uniquement au vrai démarrage (l'état n'est pas persistable
+  // hors projet initialisé).
   if (src !== 'startup' && src !== 'clear') return passThrough();
+
+  // Projet NEUF (repo git existant mais 0 commit) : scaffold posé automatiquement,
+  // sans confirmation — rien à écraser par construction (copyIfAbsent). Un projet
+  // mature (des commits déjà) continue de nécessiter /pmz-init explicite.
+  if (!hasAnyCommit(root)) {
+    try {
+      const result = runBootstrap(root);
+      if (result.ok) {
+        const committed = commitScaffold(root, result.created);
+        return injectContext('SessionStart', autoInitMessage({ gitInitDone: false, committed }));
+      }
+    } catch (_) {
+      /* fail-open : on retombe sur la proposition normale ci-dessous */
+    }
+  }
+  // Sinon : on PROPOSE seulement (l'init réelle se fait après confirmation).
   return injectContext('SessionStart', MSG_NON_INIT);
 }
 

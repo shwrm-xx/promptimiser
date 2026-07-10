@@ -12,9 +12,10 @@ if (disabled()) process.exit(0);
 
 const { parseHookInput } = require('../lib/stdin');
 const { injectContext, passThrough } = require('../lib/output');
-const { gitRoot, isInitialized } = require('../lib/project');
+const { gitRoot, isFullyInitialized } = require('../lib/project');
+const { autoInitGitAndBootstrap } = require('../lib/bootstrap');
 const { loadSessionState, saveSessionState } = require('../lib/state');
-const { MSG_LARGE, MSG_INIT_BEFORE_CODE } = require('../lib/messages');
+const { MSG_LARGE, MSG_INIT_BEFORE_CODE, autoInitMessage } = require('../lib/messages');
 
 const INIT_RE = /(nouveau projet|initialise|initialiser|scaffold|setup|from scratch|cr[ée]er? un projet|bootstrap)/i;
 const BROAD_RE = /(refactor (complet|global|tout)|partout|tout le (projet|code|repo)|et aussi|pendant que tu y es|tant qu'on y est|toutes les|tous les fichiers)/i;
@@ -31,9 +32,25 @@ function main() {
   const cwd = input.cwd || process.cwd();
   const prompt = String(input.prompt || '');
   const root = gitRoot(cwd);
-  if (!root) return passThrough();
+  if (!root) {
+    // Aucun .git du tout : si le prompt ressemble à un vrai démarrage de projet,
+    // on initialise nous-mêmes (git init + scaffold + commit) — rien à écraser
+    // par construction (copyIfAbsent). Sinon comportement inchangé : on ne touche
+    // à rien hors repo git.
+    if (INIT_RE.test(prompt)) {
+      try {
+        const result = autoInitGitAndBootstrap(cwd);
+        if (result.ok) {
+          return injectContext('UserPromptSubmit', autoInitMessage({ gitInitDone: true, committed: result.committed }));
+        }
+      } catch (_) {
+        /* fail-open : on retombe sur passThrough ci-dessous */
+      }
+    }
+    return passThrough();
+  }
 
-  const initialized = isInitialized(root);
+  const initialized = isFullyInitialized(root);
   const sid = input.session_id || null;
   const st = loadSessionState(root, sid);
 

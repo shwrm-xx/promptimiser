@@ -22,6 +22,13 @@ const SANDBOX = fs.mkdtempSync(path.join(os.tmpdir(), 'pmz-test-'));
 const STATE = path.join(SANDBOX, 'state');
 fs.mkdirSync(STATE, { recursive: true });
 process.env.PMZ_STATE_DIR = STATE;
+// Identité git déterministe pour tout le run (les commits auto-créés par le bootstrap
+// ne doivent pas dépendre de la config git globale de la machine qui lance les tests).
+process.env.GIT_AUTHOR_NAME = 'PMZ Test';
+process.env.GIT_AUTHOR_EMAIL = 'pmz-test@example.com';
+process.env.GIT_COMMITTER_NAME = 'PMZ Test';
+process.env.GIT_COMMITTER_EMAIL = 'pmz-test@example.com';
+fs.writeFileSync(path.join(SANDBOX, 'empty.jsonl'), ''); // transcript vide réutilisé par plusieurs tests stop.js
 
 let pass = 0;
 let fail = 0;
@@ -269,6 +276,176 @@ const rBoot2 = runNode(BOOTSTRAP, ['--cwd', repo]);
 let jBoot2 = {};
 try { jBoot2 = JSON.parse(rBoot2.out); } catch (_) {}
 ok(jBoot2.ok === true && Array.isArray(jBoot2.created) && jBoot2.created.length === 0, '2e run → rien recréé (idempotent)');
+
+// ============================ F. LEDGER AUTO-CRÉÉ (point 1) ============================
+section('Ledger auto-créé sans confirmation, socle visible non (point 1)');
+const project = require(path.join(PKG, 'lib', 'project'));
+{
+  const repo = path.join(SANDBOX, 'repo-autoledger');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'existing.txt'), 'hello');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']); // projet MATURE (hasAnyCommit)
+  ok(!fs.existsSync(path.join(repo, '.vibe-agent')), 'avant : .vibe-agent absent');
+  ok(project.isInitialized(repo) === false, 'avant : isInitialized=false');
+  ok(project.isFullyInitialized(repo) === false, 'avant : isFullyInitialized=false');
+  runHook('post-tool-use.js', { tool_name: 'Read', tool_input: { file_path: path.join(repo, 'existing.txt') }, cwd: repo });
+  ok(fs.existsSync(path.join(repo, '.vibe-agent')), 'après un Read : .vibe-agent auto-créé sans confirmation');
+  ok(project.isInitialized(repo) === true, 'après : isInitialized=true (ledger présent)');
+  ok(project.isFullyInitialized(repo) === false, 'après : isFullyInitialized=false (pas de CLAUDE.md)');
+  ok(!fs.existsSync(path.join(repo, 'CLAUDE.md')), 'projet mature : aucun CLAUDE.md créé sans confirmation explicite');
+  // stop.js doit aussi auto-créer le ledger (via ensureLedger dans le bloc clôture).
+  const repo2 = path.join(SANDBOX, 'repo-autoledger-stop');
+  fs.mkdirSync(repo2, { recursive: true });
+  execFileSync('git', ['init', '-q', repo2]);
+  fs.writeFileSync(path.join(repo2, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo2, 'add', '.']);
+  execFileSync('git', ['-C', repo2, 'commit', '-q', '-m', 'init']);
+  ok(!fs.existsSync(path.join(repo2, '.vibe-agent')), 'repo2 avant stop.js : .vibe-agent absent');
+  runHook('stop.js', { cwd: repo2, session_id: 'sess-f', transcript_path: path.join(SANDBOX, 'empty.jsonl') });
+  ok(fs.existsSync(path.join(repo2, '.vibe-agent')), 'stop.js : .vibe-agent auto-créé aussi');
+}
+
+// ============================ G. PALIER FLOTTANT (point 3) ============================
+section('Palier flottant au-delà de 750k (point 3)');
+ok(occupancy.bucketIndex(750000) === 4, 'bucketIndex(750k) = 4 (dernier palier fixe)');
+ok(occupancy.bucketIndex(1000000) === 5, 'bucketIndex(1000k) = 5 (1er palier flottant)');
+ok(occupancy.bucketIndex(1249999) === 5, 'bucketIndex(1249999) = 5 (juste avant le suivant)');
+ok(occupancy.bucketIndex(1250000) === 6, 'bucketIndex(1250k) = 6 (palier flottant suivant)');
+{
+  const tF1 = writeTranscript('float1.jsonl', [usageLine(750000, 0, 0)]);
+  const ef1 = occupancy.evaluate(tF1, 'sessFloat');
+  ok(ef1 && ef1.bucket === 4 && ef1.crossedNew === true, 'flottant : dernier palier fixe franchi');
+  const tF2 = writeTranscript('float2.jsonl', [usageLine(1000000, 0, 0)]);
+  const ef2 = occupancy.evaluate(tF2, 'sessFloat');
+  ok(ef2 && ef2.bucket === 5 && ef2.crossedNew === true, 'flottant : nouvelle alerte au-delà de 750k (ne se tait plus)');
+  const tF3 = writeTranscript('float3.jsonl', [usageLine(1300000, 0, 0)]);
+  const ef3 = occupancy.evaluate(tF3, 'sessFloat');
+  ok(ef3 && ef3.bucket === 6 && ef3.crossedNew === true, 'flottant : encore une alerte au palier flottant suivant');
+}
+const messages = require(path.join(PKG, 'lib', 'messages'));
+{
+  const m1 = messages.occupancyMessage(320000, 2);
+  ok(/\/close-batch/.test(m1) && /\/fresh-session/.test(m1), 'occupancyMessage nomme /close-batch et /fresh-session');
+  const m2 = messages.occupancyMessage(1000000, 5);
+  ok(/dernier palier fixe/i.test(m2), 'occupancyMessage : mentionne le palier flottant au-delà de 750k');
+}
+ok(/\/close-batch/.test(messages.MSG_CLOTURE), 'MSG_CLOTURE nomme /close-batch');
+
+// ============================ H. HYGIÈNE DE LECTURE (point 4) ============================
+section('Ratio Read-complet / recherche (point 4)');
+function toolUseLine(name, input) {
+  return JSON.stringify({ message: { role: 'assistant', content: [{ type: 'tool_use', name, input: input || {} }] } });
+}
+{
+  const lines = [];
+  for (let i = 0; i < 5; i++) lines.push(toolUseLine('Read', { file_path: `f${i}.js` }));
+  lines.push(toolUseLine('Grep', { pattern: 'x' }));
+  const t = writeTranscript('readmix.jsonl', lines);
+  const mix = occupancy.scanTailForReadMix(t);
+  ok(!!mix && mix.reads === 5 && mix.fullReads === 5 && mix.searches === 1, 'scanTailForReadMix : 5 Read complets + 1 recherche');
+  const note1 = occupancy.evaluateReadMix(t, 'sessReadMix');
+  ok(!!note1 && note1.fullReads === 5, 'majorité de Read complets → note émise');
+  const note2 = occupancy.evaluateReadMix(t, 'sessReadMix');
+  ok(note2 === null, 'anti-spam : pas de 2e note dans la même session');
+}
+{
+  const lines = [];
+  for (let i = 0; i < 5; i++) lines.push(toolUseLine('Read', { file_path: `f${i}.js`, offset: 1, limit: 50 }));
+  const t = writeTranscript('readmix-partial.jsonl', lines);
+  const note = occupancy.evaluateReadMix(t, 'sessReadMixPartial');
+  ok(note === null, 'majorité de lectures partielles → pas de note');
+}
+{
+  const lines = [toolUseLine('Bash', { command: 'git grep foo' }), toolUseLine('Read', { file_path: 'a.js' })];
+  const t = writeTranscript('readmix-bashgrep.jsonl', lines);
+  const mix = occupancy.scanTailForReadMix(t);
+  ok(!!mix && mix.searches === 1, 'Bash "git grep" compté comme recherche');
+}
+
+// ============================ I. LOT & TITRE DE SESSION (point 5) ============================
+section('Numérotation de lot et titre de session (point 5)');
+const lot = require(path.join(PKG, 'lib', 'lot'));
+{
+  const repo = path.join(SANDBOX, 'repo-lot');
+  fs.mkdirSync(path.join(repo, '.vibe-agent'), { recursive: true });
+  fs.writeFileSync(path.join(repo, 'CHANGELOG.md'), '## 2026-06-16 (lot 3)\n\ntexte\n\n## 2026-06-11 (lot 1)\n');
+  const epic = path.basename(repo);
+  ok(lot.getLotCounter(repo) === 3, 'seed depuis CHANGELOG : plus grand (lot N) trouvé = 3');
+  ok(lot.suggestedTitle(repo) === `${epic} — Lot 4`, 'titre suggéré = nom du dossier — Lot 4');
+  ok(lot.incrementLot(repo) === 4, 'incrementLot : 3 → 4');
+  ok(lot.getLotCounter(repo) === 4, 'compteur persisté = 4');
+  ok(lot.suggestedTitle(repo) === `${epic} — Lot 5`, 'titre suggéré suit le compteur : Lot 5');
+  fs.writeFileSync(path.join(repo, '.vibe-agent', 'epic'), 'MonEpic\n');
+  ok(lot.readEpic(repo) === 'MonEpic', 'epic configurable via .vibe-agent/epic');
+}
+{
+  // Intégration : stop.js incrémente le lot au moment où le lot se referme.
+  const repo = path.join(SANDBOX, 'repo-stopclose');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const sid = 'sess-close';
+  fs.writeFileSync(path.join(repo, 'a.txt'), '2'); // lot ouvert
+  runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: path.join(SANDBOX, 'empty.jsonl') });
+  const before = lot.getLotCounter(repo);
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'close']);
+  runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: path.join(SANDBOX, 'empty.jsonl') });
+  ok(lot.getLotCounter(repo) === before + 1, 'lot incrémenté quand le working tree redevient propre');
+}
+
+// ============================ J. AUTO-SCAFFOLD PROJET NEUF (point 6) ============================
+section('Auto-scaffold sur détection de projet neuf (point 6)');
+const bootstrapLib = require(path.join(PKG, 'lib', 'bootstrap'));
+{
+  // (a) repo git existant, 0 commit → session-start.js scaffold automatiquement.
+  const repo = path.join(SANDBOX, 'repo-newproject');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  ok(!fs.existsSync(path.join(repo, 'CLAUDE.md')), 'avant : pas de CLAUDE.md');
+  const r = runHook('session-start.js', { source: 'startup', cwd: repo, session_id: 's-newproject' });
+  ok(r.code === 0, 'session-start sur projet neuf → exit 0');
+  ok(fs.existsSync(path.join(repo, 'CLAUDE.md')), 'CLAUDE.md créé automatiquement (0 commit, sans confirmation)');
+  ok(fs.existsSync(path.join(repo, '.vibe-agent')), '.vibe-agent créé');
+  const log = execFileSync('git', ['-C', repo, 'log', '--oneline'], { encoding: 'utf8' });
+  ok(log.trim().split('\n').length === 1, 'commit initial du socle créé par PMZ');
+}
+{
+  // (b) aucun .git du tout → user-prompt-submit.js fait git init + scaffold + commit.
+  const dir = path.join(SANDBOX, 'no-git-yet');
+  fs.mkdirSync(dir, { recursive: true });
+  const r = runHook('user-prompt-submit.js', { cwd: dir, prompt: 'initialise un nouveau projet de todo-list', session_id: 's-nogit' });
+  ok(r.code === 0, 'user-prompt-submit sur dossier sans .git → exit 0');
+  ok(fs.existsSync(path.join(dir, '.git')), 'git init effectué automatiquement');
+  ok(fs.existsSync(path.join(dir, 'CLAUDE.md')), 'CLAUDE.md créé automatiquement après git init');
+}
+{
+  // (c) prompt anodin sur dossier sans .git → on ne touche à rien (comportement inchangé).
+  const dir = path.join(SANDBOX, 'no-git-anodin');
+  fs.mkdirSync(dir, { recursive: true });
+  const r = runHook('user-prompt-submit.js', { cwd: dir, prompt: 'quelle heure est-il ?', session_id: 's-anodin' });
+  ok(r.code === 0 && !fs.existsSync(path.join(dir, '.git')), 'prompt anodin sans .git → rien créé');
+}
+{
+  // (d) racine interdite → jamais d'auto-init.
+  const r = bootstrapLib.autoInitGitAndBootstrap(os.homedir());
+  ok(r.ok === false && r.reason === 'forbidden_root', 'autoInitGitAndBootstrap refuse une racine interdite ($HOME)');
+}
+{
+  // (e) projet MATURE (déjà des commits) sans CLAUDE.md → pas d'auto-scaffold, juste la proposition.
+  const repo = path.join(SANDBOX, 'repo-mature-noclaude');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  runHook('session-start.js', { source: 'startup', cwd: repo, session_id: 's-mature' });
+  ok(!fs.existsSync(path.join(repo, 'CLAUDE.md')), 'projet mature sans /pmz-init → CLAUDE.md toujours NON créé automatiquement');
+}
 
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
