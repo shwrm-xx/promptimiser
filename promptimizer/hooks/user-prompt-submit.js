@@ -15,7 +15,8 @@ const { injectContext, passThrough } = require('../lib/output');
 const { gitRoot, isFullyInitialized } = require('../lib/project');
 const { autoInitGitAndBootstrap } = require('../lib/bootstrap');
 const { loadSessionState, saveSessionState } = require('../lib/state');
-const { MSG_LARGE, MSG_INIT_BEFORE_CODE, autoInitMessage } = require('../lib/messages');
+const { loadBacklog, currentLot, progress } = require('../lib/backlog');
+const { MSG_LARGE, MSG_INIT_BEFORE_CODE, autoInitMessage, largeWithPlanMessage } = require('../lib/messages');
 
 const INIT_RE = /(nouveau projet|initialise|initialiser|scaffold|setup|from scratch|cr[ée]er? un projet|bootstrap)/i;
 const BROAD_RE = /(refactor (complet|global|tout)|partout|tout le (projet|code|repo)|et aussi|pendant que tu y es|tant qu'on y est|toutes les|tous les fichiers)/i;
@@ -57,7 +58,16 @@ function main() {
   let msg = null;
   let key = null;
   if (!initialized && INIT_RE.test(prompt)) { key = 'init_before_code'; msg = MSG_INIT_BEFORE_CODE; }
-  else if (isBroad(prompt)) { key = 'broad'; msg = MSG_LARGE; }
+  else if (isBroad(prompt)) {
+    key = 'broad';
+    // Plan de lots déjà en place → rattacher plutôt que redécouper.
+    try {
+      const b = loadBacklog(root);
+      msg = b.lots.length ? largeWithPlanMessage(progress(b), currentLot(b)) : MSG_LARGE;
+    } catch (_) {
+      msg = MSG_LARGE;
+    }
+  }
 
   if (msg && key) {
     st.prompt_reminders = st.prompt_reminders || {};

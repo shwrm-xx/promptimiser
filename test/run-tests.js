@@ -905,6 +905,62 @@ section('Continuité — PreCompact sauve le handoff, compact réinjecte le lot,
   fs.mkdirSync(dirNo, { recursive: true });
   const rNo = runHook('session-start.js', { source: 'compact', cwd: dirNo, session_id: 's-q5' });
   ok(rNo.code === 0 && !(rNo.out || '').trim(), 'compact hors git → passThrough');
+
+  // Q7. source=clear : le handoff EST injecté (preuve du correctif de matcher du lot A0 —
+  // le hook gérait clear mais n'était jamais déclenché dessus).
+  const empty = path.join(SANDBOX, 'empty.jsonl');
+  runHook('stop.js', { session_id: 's-q6', cwd: repo, transcript_path: empty }); // réécrit le handoff auto
+  const rClear = runHook('session-start.js', { source: 'clear', cwd: repo, session_id: 's-q7' });
+  let ctxClear = '';
+  try { ctxClear = JSON.parse(rClear.out).hookSpecificOutput.additionalContext || ''; } catch (_) {}
+  ok(/Handoff de la session précédente/.test(ctxClear) && /Plan de lots/.test(ctxClear),
+    'clear : handoff (plan compris) réinjecté après /clear');
+}
+
+// ============================ R. COUCHE EXPLICITE ============================
+section('Couche explicite — MSG_LARGE v2, audit/close-batch avec plan de lots');
+{
+  const repo = path.join(SANDBOX, 'repo-explicite');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+
+  // R1. broad sans plan → consigne de découpage persisté
+  const r1 = runHook('user-prompt-submit.js', { cwd: repo, prompt: 'refactor complet du projet', session_id: 's-r1' });
+  let m1 = '';
+  try { m1 = JSON.parse(r1.out).hookSpecificOutput.additionalContext || ''; } catch (_) {}
+  ok(/2 à 5 lots/.test(m1) && /backlog\.js add/.test(m1), 'broad sans plan : consigne de découpage persisté');
+
+  // R2. broad avec plan → rattacher au lot en cours, pas de redécoupage
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot R']);
+  runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
+  const r2 = runHook('user-prompt-submit.js', { cwd: repo, prompt: 'refactor complet du projet', session_id: 's-r2' });
+  let m2 = '';
+  try { m2 = JSON.parse(r2.out).hookSpecificOutput.additionalContext || ''; } catch (_) {}
+  ok(/plan de lots existe déjà/.test(m2) && /Lot R/.test(m2), 'broad avec plan : rattachement au lot en cours');
+
+  // R3. audit-batch --json expose le plan (null-safe)
+  let jA = {};
+  try { jA = JSON.parse(runNode(AUDIT, ['--cwd', repo, '--json']).out); } catch (_) {}
+  ok(!!jA.backlog && jA.backlog.total === 1 && jA.backlog.current && jA.backlog.current.id === 1,
+    'audit-batch : bloc backlog exposé');
+
+  // R4. close-batch : bloc plan + étape done --id pré-remplie
+  const CLOSE = path.join(PKG, 'scripts', 'close-batch.js');
+  const rC = runNode(CLOSE, ['--cwd', repo]);
+  ok(/Plan de lots/.test(rC.out) && /done --id 1/.test(rC.out), 'close-batch : bloc plan + done --id pré-rempli');
+
+  // R5. close-batch sans plan : sortie historique inchangée
+  const repo2 = path.join(SANDBOX, 'repo-explicite-vide');
+  fs.mkdirSync(repo2, { recursive: true });
+  execFileSync('git', ['init', '-q', repo2]);
+  fs.writeFileSync(path.join(repo2, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo2, 'add', '.']);
+  execFileSync('git', ['-C', repo2, 'commit', '-q', '-m', 'init']);
+  const rC2 = runNode(CLOSE, ['--cwd', repo2]);
+  ok(!/Plan de lots/.test(rC2.out) && /Clôture du lot/.test(rC2.out), 'close-batch sans plan : sortie historique');
 }
 
 // ============================ RÉSUMÉ ============================

@@ -31,6 +31,14 @@ Quand un projet n'est pas initialisé (présence de `.vibe-agent/` absente) :
 - Le coût réel est suivi par paliers de tokens (alerte `systemMessage` en fin de tour).
   Audit ponctuel : `node ~/.claude/promptimizer/scripts/audit-context.js`.
 
+## 2bis. Lotir une grosse demande
+Demande large (plusieurs sujets, ≥ 6 puces, refactor global…) : proposer un découpage en
+**2 à 5 lots** (1 lot = 1 commit livrable, critère « fait quand : … »), le faire valider en
+une question, puis le persister via `/pmz-scope` ou
+`node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "…"` (+ `start --id N`).
+Traiter **uniquement le premier lot**. Le suivi est automatique ensuite : clôture au commit
+(hook Stop), avancement dans le handoff, réinjection au démarrage et après compaction.
+
 ## 3. Clôturer un lot
 `node ~/.claude/promptimizer/scripts/close-batch.js` puis :
 vérification ciblée → `CHANGELOG.md` → commit (français, court) → handoff < 800 tokens

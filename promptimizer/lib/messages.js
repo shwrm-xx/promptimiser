@@ -34,8 +34,20 @@ const MSG_HANDOFF = [
 
 const MSG_LARGE = [
   'Demande potentiellement large.',
-  'Découpe en un lot court et ciblé ; évite le scope creep et les relectures massives.',
+  'Propose un découpage en 2 à 5 lots (1 lot = 1 commit livrable), fais-le valider, puis',
+  'persiste-le : /pmz-scope, ou node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "fait quand : …" (puis start --id N).',
+  'Traite ensuite UNIQUEMENT le premier lot.',
 ].join('\n');
+
+// Variante quand un plan de lots existe déjà : ne pas repartir sur un nouveau plan.
+function largeWithPlanMessage(prog, cur) {
+  return [
+    `Demande potentiellement large — un plan de lots existe déjà (${prog.done}/${prog.total} faits).`,
+    cur
+      ? `Rattache la demande au lot en cours (« ${cur.title} ») ou ajoute un lot via backlog.js add — sans élargir le lot courant.`
+      : 'Rattache la demande à un lot existant ou ajoute un lot via backlog.js add — un seul lot à la fois.',
+  ].join('\n');
+}
 
 const MSG_INIT_BEFORE_CODE = [
   'Projet neuf : initialise le socle (CLAUDE.md/AGENTS.md/.vibe-agent) avant de coder, avec lecture minimale.',
@@ -127,5 +139,5 @@ function sessionTitleMessage(title) {
 module.exports = {
   MSG_ACTIF, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   occupancyMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
-  compactResumeMessage, backlogResumeMessage,
+  compactResumeMessage, backlogResumeMessage, largeWithPlanMessage,
 };

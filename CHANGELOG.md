@@ -2,6 +2,26 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.5.4] — 2026-07-10 (lot A5 — couche explicite du lotissement + docs)
+
+Les points d'entrée explicites du plan de lots, par-dessus la couche passive (A1-A4).
+
+- **`/pmz-scope`** (nouveau) : reformuler une grosse demande en 2-5 lots (titre + « fait
+  quand »), validation en UNE question, persistance via `backlog.js add`/`start`, puis
+  traiter uniquement le premier lot.
+- **`MSG_LARGE` v2** (UserPromptSubmit, même anti-spam `broad`) : la consigne « découpe »
+  devient actionnable (proposer 2-5 lots + les persister). Variante quand un plan existe
+  déjà : « rattache la demande au lot en cours (x/y faits), sans élargir » — jamais de
+  redécoupage par-dessus un plan vivant.
+- **`/close-batch` avec plan** : `audit-batch.compute()` expose `backlog` (null-safe) ; la
+  checklist gagne un bloc « Plan de lots » (conformité du périmètre → `note --id`, étape
+  `done --id N` pré-remplie, lot suivant à reprendre dans le handoff). Sans plan : sortie
+  historique inchangée. Filet : le hook Stop fait le `done` tout seul si l'assistant oublie.
+- **Docs** : README (lotissement, `/pmz-scope`, note « réinstaller pour les matchers »),
+  SKILL.md (§ 2bis Lotir une grosse demande), ARCHITECTURE déjà à jour (A3-A4).
+- **Tests** : section R (5 assertions) + preuve de bout en bout du correctif A0 (handoff
+  réinjecté au `source=clear`). 243 OK.
+
 ## [0.5.3] — 2026-07-10 (lot A4 — continuité : compaction et démarrages sans handoff)
 
 Le plan de lots survit désormais aux deux points de perte restants : la **compaction** du

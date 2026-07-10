@@ -12,6 +12,15 @@ function main() {
   const commit = yn(d.has_commit && !d.needs_closure);
   const closable = d.is_git_repo && !d.needs_closure;
 
+  const bl = d.backlog;
+  const backlogBlock = bl ? `
+## Plan de lots
+
+- Avancement : ${bl.done}/${bl.total} faits${bl.current ? ` — en cours : #${bl.current.id} « ${bl.current.title} »` : ' — aucun lot en cours'}
+- Périmètre conforme au lot du backlog : à confirmer (dévié → node ~/.claude/promptimizer/scripts/backlog.js note --id N --note "…")
+- Après le commit : node ~/.claude/promptimizer/scripts/backlog.js done --id ${bl.current ? bl.current.id : 'N'} (SHA du HEAD pris automatiquement ; le hook Stop le fait aussi tout seul)${bl.next ? `
+- Lot suivant à reprendre dans le handoff : #${bl.next.id} « ${bl.next.title} »` : ''}
+` : '';
   const out = `## Clôture du lot
 
 Checklist :
@@ -24,7 +33,7 @@ Checklist :
 - CHANGELOG mis à jour : ${changelog}
 - Commit fait : ${commit}
 - Non vérifié explicitement listé : à confirmer
-
+${backlogBlock}
 ## Économie de contexte
 
 - lectures évitées : voir .vibe-agent/read-ledger.json

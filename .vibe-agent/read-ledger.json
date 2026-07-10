@@ -127,7 +127,7 @@
     },
     {
       "path": "promptimizer/scripts/close-batch.js",
-      "read_at": 1783700629249,
+      "read_at": 1783706005226,
       "partial": false
     },
     {
@@ -207,7 +207,7 @@
     },
     {
       "path": "skills/promptimizer/SKILL.md",
-      "read_at": 1783698246744,
+      "read_at": 1783706043724,
       "partial": false
     },
     {
@@ -293,6 +293,7 @@
     "promptimizer/commands/check-context.md",
     "promptimizer/templates/rules.yaml",
     "promptimizer/commands/close-batch.md",
-    "promptimizer/lib/handoff.js"
+    "promptimizer/lib/handoff.js",
+    "skills/promptimizer/SKILL.md"
   ]
 }

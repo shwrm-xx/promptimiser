@@ -4,7 +4,27 @@
 const {
   gitRoot, gitStatusMeaningful, changelogTouched, hasAnyCommit, lastCommitEpoch,
 } = require('../lib/project');
+const { loadBacklog, currentLot, nextLot, progress } = require('../lib/backlog');
 const { parseCwd } = require('../lib/cli');
+
+// Résumé null-safe du plan de lots pour la checklist de clôture. null si pas de plan.
+function backlogSummary(root) {
+  try {
+    const b = loadBacklog(root);
+    if (!b.lots.length) return null;
+    const cur = currentLot(b);
+    const nxt = nextLot(b);
+    const p = progress(b);
+    return {
+      done: p.done,
+      total: p.total,
+      current: cur ? { id: cur.id, title: cur.title } : null,
+      next: nxt ? { id: nxt.id, title: nxt.title } : null,
+    };
+  } catch (_) {
+    return null;
+  }
+}
 
 function compute(cwd) {
   const root = gitRoot(cwd);
@@ -12,7 +32,7 @@ function compute(cwd) {
     return {
       is_git_repo: false, root: null, modified_files: [],
       changelog_touched: false, has_commit: false, last_commit_epoch: null,
-      needs_closure: false,
+      needs_closure: false, backlog: null,
     };
   }
   // Même définition de « lot ouvert » que stop.js : le churn .vibe-agent/ (ledgers,
@@ -26,6 +46,7 @@ function compute(cwd) {
     has_commit: hasAnyCommit(root),
     last_commit_epoch: lastCommitEpoch(root),
     needs_closure: modified.length > 0,
+    backlog: backlogSummary(root),
   };
 }
 
@@ -39,6 +60,10 @@ function toMarkdown(d) {
   lines.push(`- CHANGELOG touché : ${d.changelog_touched ? 'oui' : 'non'}`);
   lines.push(`- Commit existant : ${d.has_commit ? 'oui' : 'non'}`);
   lines.push(`- Clôture nécessaire : ${d.needs_closure ? 'oui' : 'non'}`);
+  if (d.backlog) {
+    lines.push(`- Plan de lots : ${d.backlog.done}/${d.backlog.total} faits`
+      + (d.backlog.current ? ` — en cours : #${d.backlog.current.id} « ${d.backlog.current.title} »` : ''));
+  }
   return lines.join('\n') + '\n';
 }
 

@@ -9,6 +9,9 @@ poursuit trois objectifs :
 2. **Clôture propre des lots** — rappelle vérification ciblée + `CHANGELOG` + commit + handoff ;
    le handoff est écrit dans `.vibe-agent/handoff.md` (auto à chaque fin de tour, riche via
    `/fresh-session`) et **injecté automatiquement au démarrage de la session suivante**.
+   Une grosse demande peut être **lotie** (`/pmz-scope`) en un plan de 2-5 lots persistant
+   (`.vibe-agent/backlog.json`) : chaque lot est clos automatiquement au commit, le suivant
+   est annoncé, et le plan survit aux sessions comme à la compaction.
 3. **Initialisation prudente des projets** — propose de créer `CLAUDE.md` / `AGENTS.md` /
    `.vibe-agent/` / `CHANGELOG.md`, **uniquement après ta confirmation**, jamais d'écrasement.
    Sur un **projet en cours** qui a déjà ces fichiers, `/pmz-init` ajoute la section « Règles
@@ -51,11 +54,17 @@ Statut : vert
   (`git reset --hard`, `rm -rf <dossier>`…) ; les commandes catastrophiques sont bloquées. Les
   lectures/éditions normales ne sont **pas** ralenties (respect de `acceptEdits`).
 - **En fin de tour** : alerte de coût aux paliers de contexte ; rappel de clôture si un lot est
-  ouvert sans commit.
+  ouvert sans commit ; si un plan de lots existe, le lot en cours est **clos automatiquement au
+  commit** et le suivant annoncé.
+- **Après un `/clear` ou une compaction** : le handoff (ou le lot en cours) est réinjecté —
+  le plan ne se perd pas.
 
 ## Slash commands (secours)
 
-`/pmz-init` · `/budget` · `/check-context` · `/close-batch` · `/fresh-session`
+`/pmz-init` · `/pmz-scope` · `/budget` · `/check-context` · `/close-batch` · `/fresh-session`
+
+_Après une mise à jour du package, relance `install.command` puis redémarre Claude Code :
+les matchers de hooks ne s'appliquent qu'à la réinstallation._
 
 ## Pause / désactivation
 
