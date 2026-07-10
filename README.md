@@ -68,6 +68,10 @@ Statut : vert
 
 `/pmz-init` · `/pmz-scope` · `/budget` · `/check-context` · `/close-batch` · `/fresh-session`
 
+`/budget` et `/check-context` chiffrent leur statut vert/orange/rouge en **tokens réels**
+(occupation courante du contexte + gaspillage de relecture), avec repli annoncé sur le comptage
+de relectures quand l'occupation token n'est pas encore connue.
+
 _Après une mise à jour du package, relance `install.command` puis redémarre Claude Code :
 les matchers de hooks ne s'appliquent qu'à la réinstallation._
 

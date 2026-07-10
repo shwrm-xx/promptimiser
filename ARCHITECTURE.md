@@ -93,6 +93,14 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   incrémente `estimated_context_waste` (total) et `waste_by_file[path]` (ventilé) — une lecture
   partielle ou un fichier modifié entre-temps est un coût justifié, pas du gaspillage.
   `audit-context.js` en tire la ligne « Gaspillage ≈ Xk sur N fichiers » + liste triée par coût.
+- **Statut d'économie chiffré en tokens** (`audit-context.js`, servant `/budget` et
+  `/check-context`) : le verdict vert/orange/rouge est piloté par l'**occupation en tokens
+  réels** — le miroir `context-ledger.json.occupancy.last` posé par le hook `Stop` (métrologie
+  par tour) — combiné au gaspillage de relecture ci-dessus. Seuils alignés sur les paliers
+  d'`occupancy.js` (orange à `BUCKETS[1]`=300k, rouge à `BUCKETS[2]`=500k, sans échelle inventée) ;
+  un gaspillage ≥ un palier aggrave d'un cran. **Fallback annoncé** : sans occupation token connue
+  (jamais passé par un `Stop` récent, hors-git), retombe sur le comptage de relectures et le dit
+  explicitement — jamais de chiffre tokens fantôme.
 - **État de clôture** (`.vibe-agent/session-state.json`) : keyé par `session_id` ; flag
   anti-spam du rappel de clôture par lot. À la fermeture d'un lot (working tree qui redevient
   propre), `stop.js` incrémente aussi le **compteur de lot** (`.vibe-agent/lot-counter.json`,

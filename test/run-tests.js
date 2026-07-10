@@ -1062,6 +1062,51 @@ const AUDIT_CTX = path.join(PKG, 'scripts', 'audit-context.js');
   ok(/Gaspillage estimé :\n- \(aucun détecté\)/.test(auditClean.out), 'B1 : sans gaspillage → « aucun détecté »');
 }
 
+// ============================ B3. STATUT CHIFFRÉ EN TOKENS RÉELS ============================
+section('Statut d\'économie chiffré en tokens réels (occupation + fallback annoncé)');
+{
+  const ledger = require(path.join(PKG, 'lib', 'ledger'));
+  // Repo initialisé (un Read via le hook bootstrappe .vibe-agent), puis on pose une
+  // occupation token via le miroir que le hook Stop écrit normalement (recordOccupancy).
+  const mkRepo = (name) => {
+    const repo = path.join(SANDBOX, name);
+    fs.mkdirSync(repo, { recursive: true });
+    execFileSync('git', ['init', '-q', repo]);
+    fs.writeFileSync(path.join(repo, 'a.txt'), 'a');
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+    runHook('post-tool-use.js', { tool_name: 'Read', tool_input: { file_path: path.join(repo, 'a.txt') }, cwd: repo });
+    return repo;
+  };
+  const statutLine = (out) => (out.match(/^Statut : .*/m) || [''])[0];
+
+  // Vert : occupation sous le palier orange (300k).
+  const rVert = mkRepo('repo-b3-vert');
+  ledger.recordOccupancy(rVert, { occ: 100000, delta: 5000, sessionId: 'b3-v' });
+  const aVert = runNode(AUDIT_CTX, ['--cwd', rVert]);
+  ok(/^Statut : vert /.test(statutLine(aVert.out)), 'B3 : occ 100k → statut vert');
+  ok(/≈ 100\.0k tokens de contexte/.test(aVert.out), 'B3 : affiche l\'occupation token réelle');
+  ok(/dernier tour \+5\.0k/.test(aVert.out), 'B3 : affiche le delta du dernier tour');
+
+  // Orange : occupation dans [300k, 500k).
+  const rOrange = mkRepo('repo-b3-orange');
+  ledger.recordOccupancy(rOrange, { occ: 350000, delta: 0, sessionId: 'b3-o' });
+  const aOrange = runNode(AUDIT_CTX, ['--cwd', rOrange]);
+  ok(/^Statut : orange /.test(statutLine(aOrange.out)), 'B3 : occ 350k → statut orange');
+
+  // Rouge : occupation ≥ 500k.
+  const rRouge = mkRepo('repo-b3-rouge');
+  ledger.recordOccupancy(rRouge, { occ: 600000, delta: 90000, sessionId: 'b3-r' });
+  const aRouge = runNode(AUDIT_CTX, ['--cwd', rRouge]);
+  ok(/^Statut : rouge /.test(statutLine(aRouge.out)), 'B3 : occ 600k → statut rouge');
+
+  // Fallback annoncé : aucune occupation token (jamais passé par un Stop) → comptage relectures.
+  const rFallback = mkRepo('repo-b3-fallback');
+  const aFallback = runNode(AUDIT_CTX, ['--cwd', rFallback]);
+  ok(/données tokens absentes/.test(aFallback.out), 'B3 : sans occupation token → fallback annoncé explicitement');
+  ok(!/tokens de contexte/.test(aFallback.out), 'B3 : fallback n\'affiche aucun chiffre tokens fantôme');
+}
+
 // ============================ B2. MÉTROLOGIE PAR TOUR ============================
 section('Métrologie par tour (turnstats : delta, anti-spam, baseline, resync, busts)');
 {

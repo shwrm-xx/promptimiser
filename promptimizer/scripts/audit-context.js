@@ -1,10 +1,29 @@
 #!/usr/bin/env node
 'use strict';
 // Advisory court d'économie de contexte (format spec). S'appuie sur les ledgers + git.
-// Le signal de COÛT (occupation par tokens) vient des alertes de palier du hook Stop.
+// Le statut est piloté par les TOKENS RÉELS : occupation courante (miroir posé par le
+// hook Stop dans context-ledger.json.occupancy) combinée au gaspillage de relecture (B1).
+// Fallback annoncé sur le comptage de relectures quand aucune occupation token n'est connue.
 const { gitRoot, isInitialized } = require('../lib/project');
 const { loadReadLedger, loadContextLedger } = require('../lib/ledger');
+const { BUCKETS } = require('../lib/occupancy');
 const { parseCwd } = require('../lib/cli');
+
+// Seuils de statut alignés sur les paliers d'occupation d'occupancy.js (pas d'échelle inventée).
+const ORANGE_AT = BUCKETS[1]; // 300k : session substantielle
+const ROUGE_AT = BUCKETS[2]; // 500k : envisager sérieusement une session fraîche
+
+// Statut token : l'occupation courante domine ; le gaspillage de relecture peut
+// aggraver d'un cran (beaucoup de relectures inutiles = risque même à occupation modérée).
+function tokenStatus(occ, wasteTotal) {
+  let statut = 'vert';
+  if (occ >= ORANGE_AT) statut = 'orange';
+  if (occ >= ROUGE_AT) statut = 'rouge';
+  // Gaspillage significatif (≥ un palier) pousse d'un cran vers le rouge.
+  if (wasteTotal >= BUCKETS[0] && statut === 'vert') statut = 'orange';
+  if (wasteTotal >= ORANGE_AT && statut === 'orange') statut = 'rouge';
+  return statut;
+}
 
 function main() {
   const root = gitRoot(parseCwd());
@@ -14,24 +33,42 @@ function main() {
   }
   const cl = loadContextLedger(root);
   const rl = loadReadLedger(root);
-  const reread = (cl.repeated_reads || []).length;
-  let statut = 'vert';
-  if (reread >= 1 && reread <= 2) statut = 'orange';
-  if (reread > 2) statut = 'rouge';
-
-  const avoidable = (rl.avoid_reread_notes || []).slice(0, 20);
-  const known = Object.keys(cl.files_read || {}).slice(0, 20);
+  const fmtK = (t) => `${(t / 1000).toFixed(1)}k`;
 
   const wasteTotal = cl.estimated_context_waste || 0;
   const wasteEntries = Object.entries(cl.waste_by_file || {})
     .filter(([, t]) => t > 0)
     .sort((a, b) => b[1] - a[1]);
-  const fmtK = (t) => `${(t / 1000).toFixed(1)}k`;
+
+  // Source de vérité du statut : occupation en tokens réels (miroir du hook Stop).
+  const occ = cl.occupancy && typeof cl.occupancy.last === 'number' ? cl.occupancy.last : null;
+  const delta = cl.occupancy && typeof cl.occupancy.delta_last_turn === 'number'
+    ? cl.occupancy.delta_last_turn : null;
+
+  let statut;
+  let baseLabel;
+  if (occ != null) {
+    statut = tokenStatus(occ, wasteTotal);
+    baseLabel = `≈ ${fmtK(occ)} tokens de contexte`
+      + (delta != null ? ` (dernier tour ${delta >= 0 ? '+' : ''}${fmtK(delta)})` : '');
+  } else {
+    // Fallback annoncé : aucune occupation token connue (jamais passé par un Stop
+    // récent, ou hors-git). On retombe sur le comptage de relectures — jamais de
+    // chiffre tokens fantôme.
+    const reread = (cl.repeated_reads || []).length;
+    statut = 'vert';
+    if (reread >= 1 && reread <= 2) statut = 'orange';
+    if (reread > 2) statut = 'rouge';
+    baseLabel = `données tokens absentes — comptage de relectures (${reread})`;
+  }
+
+  const avoidable = (rl.avoid_reread_notes || []).slice(0, 20);
+  const known = Object.keys(cl.files_read || {}).slice(0, 20);
 
   const lines = [];
   lines.push('## Économie de contexte');
   lines.push('');
-  lines.push(`Statut : ${statut}`);
+  lines.push(`Statut : ${statut} — ${baseLabel}`);
   lines.push('');
   lines.push('Gaspillage estimé :');
   if (wasteEntries.length) {

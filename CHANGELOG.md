@@ -2,6 +2,25 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.5.8] — 2026-07-11 (lot B3 — `/budget` et `/check-context` chiffrés en tokens)
+
+Le statut d'économie de contexte de `/budget` et `/check-context` (via `audit-context.js`) n'est
+plus dérivé du **nombre de relectures** mais de l'**occupation en tokens réels**.
+
+- **Statut piloté par tokens réels** (`scripts/audit-context.js`) : vert/orange/rouge calculé à
+  partir du miroir `context-ledger.json.occupancy.last` (posé par le hook `Stop`, métrologie B2)
+  combiné au gaspillage de relecture (B1). Seuils **alignés sur les paliers d'`occupancy.js`**
+  (orange à `BUCKETS[1]`=300k, rouge à `BUCKETS[2]`=500k — pas d'échelle inventée) ; un gaspillage
+  ≥ un palier aggrave d'un cran. La ligne de statut affiche l'occupation réelle et le delta du
+  dernier tour.
+- **Fallback annoncé** : sans occupation token connue (projet jamais passé par un `Stop` récent,
+  ou hors-git), retombe sur l'ancien comptage de relectures et **le dit explicitement**
+  (« données tokens absentes ») — jamais de chiffre tokens fantôme.
+- **Commands** `/budget` et `/check-context` : mises à jour pour reprendre le chiffre du script
+  (elles délèguent, ne dupliquent pas la logique de statut).
+- **Tests** (`test/run-tests.js`, +7) : les 3 statuts token (vert 100k / orange 350k / rouge 600k),
+  l'affichage occupation + delta, et le cas fallback annoncé sans chiffre fantôme.
+
 ## [0.5.7] — 2026-07-10 (lot B2 — métrologie par tour + sécurisation du backlog dans l'ADN)
 
 Deux volets, d'une même consigne. Le lot **B2** du plan (#8) livre la mesure fine du coût par
