@@ -2,6 +2,7 @@
 
 Instructions persistantes. Travailler par petits lots, contexte minimal.
 
+<!-- pmz:rules:start -->
 ## Avant de modifier
 
 Hiérarchie stricte :
@@ -47,3 +48,5 @@ Si la session est longue ou que beaucoup de fichiers ont été lus, signaler :
 
 demande littérale traitée · scope creep évité · vérification ciblée · non-vérifié listé ·
 changelog à jour · commit fait · handoff court produit.
+
+<!-- pmz:rules:end -->

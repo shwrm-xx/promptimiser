@@ -447,6 +447,61 @@ const bootstrapLib = require(path.join(PKG, 'lib', 'bootstrap'));
   ok(!fs.existsSync(path.join(repo, 'CLAUDE.md')), 'projet mature sans /pmz-init → CLAUDE.md toujours NON créé automatiquement');
 }
 
+// ============================ L. INIT PROJET EN COURS (--augment) ============================
+section('Init d\'un projet en cours — augmentation taguée de CLAUDE.md/AGENTS.md existants');
+{
+  const repo = path.join(SANDBOX, 'repo-augment');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'CLAUDE.md'), '# Mon projet\n\nRègles maison.\n');
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'projet en cours']);
+
+  // L1. --augment : fichiers manquants créés + CLAUDE.md existant augmenté (pas écrasé)
+  const r1 = runNode(BOOTSTRAP, ['--cwd', repo, '--augment']);
+  let j1 = {};
+  try { j1 = JSON.parse(r1.out); } catch (_) {}
+  ok(j1.ok === true, '--augment → ok:true');
+  const claude1 = fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8');
+  ok(claude1.startsWith('# Mon projet'), 'CLAUDE.md existant : contenu original préservé en tête');
+  ok(claude1.includes('<!-- pmz:rules:start -->') && claude1.includes('<!-- pmz:rules:end -->'),
+    'CLAUDE.md existant : section PMZ taguée ajoutée en fin');
+  ok(Array.isArray(j1.augmented) && j1.augmented.some((p) => p.endsWith('CLAUDE.md')),
+    'CLAUDE.md listé dans augmented');
+  // AGENTS.md était ABSENT -> créé depuis le template (qui porte déjà le marqueur),
+  // donc PAS ré-augmenté en plus (pas de doublon de règles)
+  const agents1 = fs.readFileSync(path.join(repo, 'AGENTS.md'), 'utf8');
+  ok(Array.isArray(j1.created) && j1.created.some((p) => p.endsWith('AGENTS.md')), 'AGENTS.md absent → créé');
+  ok(agents1.split('pmz:rules:start').length === 2, 'fichier fraîchement créé : une seule section (marqueur du template)');
+
+  // L2. Idempotence : 2e run → rien de neuf, pas de double section
+  const r2 = runNode(BOOTSTRAP, ['--cwd', repo, '--augment']);
+  let j2 = {};
+  try { j2 = JSON.parse(r2.out); } catch (_) {}
+  ok(j2.ok === true && (j2.augmented || []).length === 0, '2e --augment → rien de ré-augmenté');
+  const claude2 = fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8');
+  ok(claude2.split('pmz:rules:start').length === 2, 'idempotent : une seule section PMZ');
+
+  // L3. Sans --augment : comportement historique inchangé (aucune modification d'un existant)
+  const repo3 = path.join(SANDBOX, 'repo-noaugment');
+  fs.mkdirSync(repo3, { recursive: true });
+  execFileSync('git', ['init', '-q', repo3]);
+  fs.writeFileSync(path.join(repo3, 'CLAUDE.md'), 'INTACT');
+  runNode(BOOTSTRAP, ['--cwd', repo3]);
+  ok(fs.readFileSync(path.join(repo3, 'CLAUDE.md'), 'utf8') === 'INTACT',
+    'sans --augment : CLAUDE.md existant strictement intact');
+
+  // L4. L'auto-scaffold des hooks (projet neuf, 0 commit) n'augmente JAMAIS un existant
+  const repo4 = path.join(SANDBOX, 'repo-hook-noaugment');
+  fs.mkdirSync(repo4, { recursive: true });
+  execFileSync('git', ['init', '-q', repo4]);
+  fs.writeFileSync(path.join(repo4, 'CLAUDE.md'), 'INTACT-HOOK');
+  runHook('session-start.js', { source: 'startup', cwd: repo4, session_id: 's-hook-noaug' });
+  ok(fs.readFileSync(path.join(repo4, 'CLAUDE.md'), 'utf8') === 'INTACT-HOOK',
+    'auto-scaffold hook : CLAUDE.md existant jamais modifié');
+}
+
 // ============================ K. HANDOFF DE FIN DE TOUR ============================
 section('Handoff auto (.vibe-agent/handoff.md) — écrasement, manuel, injection, consommation');
 const handoff = require(path.join(PKG, 'lib', 'handoff'));

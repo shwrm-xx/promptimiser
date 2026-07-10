@@ -11,6 +11,8 @@ poursuit trois objectifs :
    `/fresh-session`) et **injecté automatiquement au démarrage de la session suivante**.
 3. **Initialisation prudente des projets** — propose de créer `CLAUDE.md` / `AGENTS.md` /
    `.vibe-agent/` / `CHANGELOG.md`, **uniquement après ta confirmation**, jamais d'écrasement.
+   Sur un **projet en cours** qui a déjà ces fichiers, `/pmz-init` ajoute la section « Règles
+   Promptimizer » taguée en fin de fichier (append-only, idempotent, réversible).
 
 Il fournit aussi un **delta Codex** (`AGENTS.md`) pour porter le même socle de règles.
 

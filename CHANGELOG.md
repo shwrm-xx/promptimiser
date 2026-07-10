@@ -2,6 +2,26 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.4.7] — 2026-07-10
+
+Init des projets **en cours** : `/pmz-init` ne produisait rien de visible sur un projet qui
+avait déjà son `CLAUDE.md`/`AGENTS.md` (`copyIfAbsent` sautait tout) — les règles PMZ
+n'entraient jamais dans les fichiers existants.
+
+- **`bootstrap-project.js --augment`** (+ `lib/bootstrap.js: augmentExisting`) : ajoute en fin
+  des `CLAUDE.md`/`AGENTS.md` existants la section « Règles Promptimizer » taguée
+  (`templates/pmz-rules.md`, bloc `pmz:rules:start/end`) — append-only, idempotent,
+  réversible en supprimant le bloc. Même philosophie que `merge-settings`.
+- **Templates `CLAUDE.md`/`AGENTS.md`** : portent désormais le même marqueur autour de leurs
+  règles — un fichier issu du scaffold n'est jamais ré-augmenté (pas de doublon).
+- **Réservé au flux explicite** : seul `/pmz-init` (après confirmation) augmente ; les hooks
+  (auto-scaffold projet neuf) ne modifient jamais un fichier existant, comme avant.
+- **`/pmz-init` et `SKILL.md`** réécrits pour couvrir le cas « projet en cours » (sortie
+  `created` / `augmented` / `skipped`).
+- **Tests** : section L (10 assertions) — augmentation avec préservation du contenu original,
+  idempotence, comportement historique sans `--augment` intact, auto-scaffold hook inchangé.
+  175 OK.
+
 ## [0.4.6] — 2026-07-10
 
 Handoff de session automatisé : plus besoin de copier-coller le handoff dans la nouvelle

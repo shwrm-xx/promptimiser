@@ -16,9 +16,12 @@ en contexte**. La qualité reste obligatoire ; on l'obtient avec le minimum de r
 ## 1. Initialiser un projet (prudent, après confirmation)
 Quand un projet n'est pas initialisé (présence de `.vibe-agent/` absente) :
 1. **Proposer** la création du socle, ne rien écrire sans accord de l'utilisateur.
-2. Sur accord : `node ~/.claude/promptimizer/scripts/bootstrap-project.js`
-   (crée `.vibe-agent/`, `CLAUDE.md`, `AGENTS.md`, `CHANGELOG.md` — jamais d'écrasement,
-   repo git uniquement, jamais le code applicatif).
+2. Sur accord : `node ~/.claude/promptimizer/scripts/bootstrap-project.js --augment`
+   (crée `.vibe-agent/`, `CLAUDE.md`, `AGENTS.md`, `CHANGELOG.md` s'ils manquent — jamais
+   d'écrasement, repo git uniquement, jamais le code applicatif). Sur un **projet en cours**
+   dont `CLAUDE.md`/`AGENTS.md` existent déjà, `--augment` ajoute en fin de fichier la
+   section « Règles Promptimizer » taguée (`pmz:rules:start/end`) — append-only, idempotent,
+   réversible en supprimant le bloc.
 3. Finaliser `CLAUDE.md`/`AGENTS.md` avec **lecture minimale** (déduire la stack des seuls
    manifestes), sans les rallonger. Puis proposer un premier lot court.
 

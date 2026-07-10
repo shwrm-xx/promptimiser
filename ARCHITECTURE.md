@@ -45,6 +45,12 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
      (`/pmz-init`) sur un projet **mature** (au moins un commit) ; il est posé automatiquement,
      sans confirmation, uniquement sur un projet **neuf** (0 commit, voire aucun `.git` — PMZ fait
      alors `git init` lui-même) où il n'y a par construction rien à écraser.
+   - Sur un projet **en cours** dont `CLAUDE.md`/`AGENTS.md` existent déjà, `/pmz-init`
+     (`bootstrap-project.js --augment`) **ajoute en fin de fichier** la section « Règles
+     Promptimizer » taguée (`pmz:rules:start/end`, `templates/pmz-rules.md`) : append-only,
+     idempotent (les templates portent le même marqueur, donc un fichier issu du scaffold n'est
+     jamais ré-augmenté), réversible en supprimant le bloc. Les hooks n'augmentent **jamais** —
+     ce mode est réservé au flux `/pmz-init` explicite, derrière confirmation.
 4. **PreToolUse étroit** : `deny`/`ask` sur denylist destructive ancrée + whitelist large ;
    aucun `ask` sur Read/Edit (respect `acceptEdits`).
 5. **systemMessage** = canal des rappels : visible utilisateur, **non réinjecté** dans le contexte
@@ -119,6 +125,11 @@ restauration) et **signale** un sidecar corrompu au lieu de l'avaler. Écriture 
   pratiques. Découpler « plomberie invisible » (ledger, auto-créée) de « scaffolding visible »
   (CLAUDE.md/AGENTS.md, toujours confirmé sur un projet mature) fait tourner la couche la plus
   utile sans toucher au consentement sur ce qui affecte réellement le repo de l'utilisateur.
+- **Init d'un projet en cours par augmentation taguée, pas par templates** : sur un projet qui
+  a déjà son `CLAUDE.md`, `copyIfAbsent` sautait tout — `/pmz-init` ne produisait rien de
+  visible et les règles PMZ n'entraient jamais dans les fichiers existants (vécu comme
+  « pmz-init ne marche pas »). Fusionner intelligemment serait fragile ; on applique la même
+  philosophie que `merge-settings` : bloc append-only, tagué, idempotent, réversible.
 - **Handoff : un seul fichier écrasé, pas d'historique** : des fichiers par session
   s'accumuleraient (bloat) et poseraient la question du nettoyage ; le handoff n'a de valeur
   que pour la session suivante — l'état antérieur est déjà dans git/CHANGELOG. Le hook Stop ne

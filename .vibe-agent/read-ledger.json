@@ -162,8 +162,8 @@
     },
     {
       "path": "promptimizer/templates/AGENTS.md",
-      "read_at": 1783698246748,
-      "partial": false
+      "read_at": 1783698982777,
+      "partial": true
     },
     {
       "path": "/Users/marwan.elachmar/.claude/statusline-cost.py",
@@ -192,7 +192,7 @@
     },
     {
       "path": "promptimizer/lib/cli.js",
-      "read_at": 1783697075779,
+      "read_at": 1783698828575,
       "partial": false
     },
     {
@@ -208,6 +208,11 @@
     {
       "path": "skills/promptimizer/SKILL.md",
       "read_at": 1783698246744,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/commands/pmz-init.md",
+      "read_at": 1783698750247,
       "partial": false
     }
   ],
@@ -232,6 +237,7 @@
     "promptimizer/lib/ledger.js",
     "promptimizer/templates/AGENTS.md",
     "README.md",
-    ".gitignore"
+    ".gitignore",
+    "promptimizer/lib/cli.js"
   ]
 }

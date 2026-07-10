@@ -36,16 +36,17 @@
     "promptimizer/lib/project.js": 1781428824139,
     "promptimizer/hooks/post-tool-use.js": 1783696822666,
     "promptimizer/install/package.command": 1781457213008,
-    "promptimizer/templates/AGENTS.md": 1783698246748,
+    "promptimizer/templates/AGENTS.md": 1783698982777,
     "/Users/marwan.elachmar/.claude/hooks/context-guard.py": 1783686979095,
     "/Users/marwan.elachmar/.claude/statusline-cost.py": 1783687113736,
     "/private/tmp/claude-501/bundled-skills/2.1.205/cfe39f1043b108cc3a98aae2c1ccf1e9/dataviz/references/palette.md": 1783687537520,
     "/private/tmp/claude-501/-Users-marwan-elachmar-Documents-GitHub-promptimiser/b00579cd-2f88-4929-8fe9-63b17d6054a6/scratchpad/dashboard-assisthealth-tokens.html": 1783687766376,
     "test/run-tests.js": 1783697956907,
     "promptimizer/lib/fsjson.js": 1783696788550,
-    "promptimizer/lib/cli.js": 1783697075779,
+    "promptimizer/lib/cli.js": 1783698828575,
     "promptimizer/templates/handoff-template.md": 1783697956741,
-    "promptimizer/lib/bootstrap.js": 1783698049222
+    "promptimizer/lib/bootstrap.js": 1783698049222,
+    "promptimizer/commands/pmz-init.md": 1783698750247
   },
   "files_modified": {
     "promptimizer/install/merge-settings.js": 1781428948829,
@@ -54,7 +55,7 @@
     "promptimizer/templates/rules.yaml": 1781426088361,
     ".vibe-agent/rules.yaml": 1781426101445,
     "promptimizer/hooks/pre-tool-use.js": 1781428977080,
-    "CHANGELOG.md": 1783698472202,
+    "CHANGELOG.md": 1783699104685,
     "promptimizer/lib/fsjson.js": 1781427288216,
     "promptimizer/lib/ledger.js": 1781427295966,
     "promptimizer/lib/state.js": 1781427304054,
@@ -66,13 +67,13 @@
     "promptimizer/templates/session-state.json": 1781427403056,
     "promptimizer/lib/cli.js": 1781427430530,
     "promptimizer/scripts/detect-project.js": 1781427445952,
-    "promptimizer/scripts/bootstrap-project.js": 1783697138393,
+    "promptimizer/scripts/bootstrap-project.js": 1783699011074,
     "promptimizer/scripts/audit-batch.js": 1781427457709,
     "promptimizer/scripts/close-batch.js": 1781427462151,
     "promptimizer/scripts/audit-context.js": 1781427466862,
-    "README.md": 1783698442324,
-    "ARCHITECTURE.md": 1783698472301,
-    "test/run-tests.js": 1783698335005,
+    "README.md": 1783699090505,
+    "ARCHITECTURE.md": 1783699090409,
+    "test/run-tests.js": 1783699011172,
     "test/run-tests.command": 1781427685406,
     "CLAUDE.md": 1781427696474,
     "/tmp/pmz-commit-msg.txt": 1781428109327,
@@ -87,20 +88,22 @@
     "promptimizer/install/package.command": 1781457227434,
     "codex/install-codex.command": 1781456623622,
     "codex/AGENTS.md": 1781457748687,
-    "promptimizer/templates/AGENTS.md": 1783698262604,
+    "promptimizer/templates/AGENTS.md": 1783698989247,
     "/tmp/pmz-token-report.js": 1782113248340,
     "/tmp/pmz-token-report.html": 1782113524974,
     "/private/tmp/claude-501/-Users-marwan-elachmar-Documents-GitHub-promptimiser/b00579cd-2f88-4929-8fe9-63b17d6054a6/scratchpad/analyze.js": 1783687343653,
     "/private/tmp/claude-501/-Users-marwan-elachmar-Documents-GitHub-promptimiser/b00579cd-2f88-4929-8fe9-63b17d6054a6/scratchpad/dashboard-assisthealth-tokens.html": 1783688124697,
     "/Users/marwan.elachmar/.claude/plans/crispy-percolating-petal.md": 1783696707714,
     "promptimizer/lib/lot.js": 1783697023494,
-    "promptimizer/lib/bootstrap.js": 1783697124669,
+    "promptimizer/lib/bootstrap.js": 1783699070241,
     "promptimizer/lib/handoff.js": 1783698168790,
     "promptimizer/commands/fresh-session.md": 1783698239684,
     "promptimizer/commands/close-batch.md": 1783698239875,
     "promptimizer/templates/handoff-template.md": 1783698239969,
-    "skills/promptimizer/SKILL.md": 1783698262711,
-    "promptimizer/templates/CLAUDE.md": 1783698262805
+    "skills/promptimizer/SKILL.md": 1783698926675,
+    "promptimizer/templates/CLAUDE.md": 1783698974598,
+    "promptimizer/templates/pmz-rules.md": 1783698879092,
+    "promptimizer/commands/pmz-init.md": 1783698897585
   },
   "repeated_reads": [
     {
@@ -246,6 +249,14 @@
     {
       "path": ".gitignore",
       "at": 1783698522402
+    },
+    {
+      "path": "promptimizer/lib/cli.js",
+      "at": 1783698828575
+    },
+    {
+      "path": "promptimizer/templates/AGENTS.md",
+      "at": 1783698982777
     }
   ],
   "estimated_context_waste": null,

@@ -58,6 +58,46 @@ function runBootstrap(root) {
   return result;
 }
 
+const PMZ_RULES_START = '<!-- pmz:rules:start -->';
+
+// Ajoute la section PMZ taguée (templates/pmz-rules.md) à la FIN d'un fichier
+// existant. Réservé au flux /pmz-init explicite (« projet en cours ») — jamais
+// appelé par les hooks : l'auto-scaffold ne modifie jamais un fichier présent.
+// Append-only, idempotent (marqueur), réversible (bloc pmz:rules:start/end à
+// supprimer pour revenir en arrière).
+function augmentIfPresent(destPath, section, augmented, skipped) {
+  try {
+    if (!fs.existsSync(destPath)) return; // absent -> la création relève de copyIfAbsent
+    const raw = fs.readFileSync(destPath, 'utf8');
+    if (raw.includes(PMZ_RULES_START)) return; // déjà porteur des règles (idempotence, cas normal)
+    fs.appendFileSync(destPath, (raw.endsWith('\n') ? '\n' : '\n\n') + section);
+    augmented.push(destPath);
+  } catch (_) {
+    skipped.push(destPath + ' (erreur)');
+  }
+}
+
+// Augmente CLAUDE.md/AGENTS.md EXISTANTS d'un projet en cours avec les règles PMZ.
+// Un fichier posé depuis les templates porte déjà le marqueur (les templates
+// encadrent leurs règles avec pmz:rules:start/end) : jamais de double section.
+function augmentExisting(root) {
+  const result = { ok: false, root: root || null, augmented: [], skipped: [], reason: null };
+  if (!root) { result.reason = 'not_a_git_repo'; return result; }
+  if (isForbidden(root)) { result.reason = 'forbidden_root'; return result; }
+  let section;
+  try {
+    section = fs.readFileSync(path.join(TEMPLATES, 'pmz-rules.md'), 'utf8');
+  } catch (_) {
+    result.reason = 'template_missing';
+    return result;
+  }
+  for (const name of ['CLAUDE.md', 'AGENTS.md']) {
+    augmentIfPresent(path.join(root, name), section, result.augmented, result.skipped);
+  }
+  result.ok = true;
+  return result;
+}
+
 // Commit initial du socle — best-effort (dépôt sans user.name/email configuré,
 // etc.), jamais bloquant. `git()` (lib/project.js) ne throw jamais, renvoie null
 // sur échec.
@@ -89,4 +129,4 @@ function autoInitGitAndBootstrap(cwd) {
   return result;
 }
 
-module.exports = { runBootstrap, autoInitGitAndBootstrap, commitScaffold, isForbidden, FORBIDDEN };
+module.exports = { runBootstrap, augmentExisting, autoInitGitAndBootstrap, commitScaffold, isForbidden, FORBIDDEN };
