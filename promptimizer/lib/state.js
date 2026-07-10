@@ -8,9 +8,6 @@ const { writeAtomic } = require('./fsjson');
 
 const DEFAULT_STATE = {
   session_id: null,
-  current_batch: null,
-  batch_status: 'not_started',
-  verification_status: 'not_checked',
   session_start_reminded: false, // anti-spam du rappel SessionStart (1×/session)
   closure_reminded_for_batch: false,
   prompt_reminders: {}, // anti-spam des rappels UserPromptSubmit (clé -> true)

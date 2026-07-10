@@ -2,7 +2,7 @@
 'use strict';
 // État de clôture d'un lot, basé sur git. Exporte compute() pour stop.js et close-batch.js.
 const {
-  gitRoot, gitStatusPorcelain, changelogTouched, hasAnyCommit, lastCommitEpoch,
+  gitRoot, gitStatusMeaningful, changelogTouched, hasAnyCommit, lastCommitEpoch,
 } = require('../lib/project');
 const { parseCwd } = require('../lib/cli');
 
@@ -15,7 +15,9 @@ function compute(cwd) {
       needs_closure: false,
     };
   }
-  const modified = gitStatusPorcelain(root);
+  // Même définition de « lot ouvert » que stop.js : le churn .vibe-agent/ (ledgers,
+  // handoff réécrits chaque tour) ne doit pas rendre un lot « non clôturable ».
+  const modified = gitStatusMeaningful(root);
   return {
     is_git_repo: true,
     root,

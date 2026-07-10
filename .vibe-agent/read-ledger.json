@@ -2,7 +2,7 @@
   "reads": [
     {
       "path": "promptimizer/install/merge-settings.js",
-      "read_at": 1781425968698,
+      "read_at": 1783703830961,
       "partial": false
     },
     {
@@ -27,7 +27,7 @@
     },
     {
       "path": "promptimizer/templates/rules.yaml",
-      "read_at": 1781426084712,
+      "read_at": 1783700999692,
       "partial": false
     },
     {
@@ -37,63 +37,63 @@
     },
     {
       "path": "promptimizer/hooks/pre-tool-use.js",
-      "read_at": 1781427010738,
+      "read_at": 1783700986290,
       "partial": false
     },
     {
       "path": "promptimizer/lib/env.js",
-      "read_at": 1781426152294,
+      "read_at": 1783700646249,
       "partial": false
     },
     {
       "path": "CHANGELOG.md",
-      "read_at": 1783697557184,
+      "read_at": 1783704130989,
       "partial": true
     },
     {
       "path": "promptimizer/lib/occupancy.js",
-      "read_at": 1783696261041,
+      "read_at": 1783700974321,
       "partial": false
     },
     {
       "path": "promptimizer/lib/ledger.js",
-      "read_at": 1783697946123,
+      "read_at": 1783701023678,
       "partial": false
     },
     {
       "path": "promptimizer/lib/state.js",
-      "read_at": 1781427023048,
+      "read_at": 1783703830964,
       "partial": false
     },
     {
       "path": "promptimizer/hooks/session-start.js",
-      "read_at": 1783697883644,
+      "read_at": 1783700985220,
       "partial": false
     },
     {
       "path": "promptimizer/lib/messages.js",
-      "read_at": 1783696897345,
+      "read_at": 1783700984940,
       "partial": false
     },
     {
       "path": "promptimizer/hooks/user-prompt-submit.js",
-      "read_at": 1783697197702,
+      "read_at": 1783700977517,
       "partial": false
     },
     {
       "path": "promptimizer/hooks/stop.js",
-      "read_at": 1783697883644,
+      "read_at": 1783700616683,
       "partial": false
     },
     {
       "path": "README.md",
-      "read_at": 1783698418657,
-      "partial": true
+      "read_at": 1783700606935,
+      "partial": false
     },
     {
       "path": "ARCHITECTURE.md",
-      "read_at": 1783697239106,
-      "partial": false
+      "read_at": 1783704057146,
+      "partial": true
     },
     {
       "path": "promptimizer/scripts/detect-project.js",
@@ -102,7 +102,7 @@
     },
     {
       "path": "promptimizer/lib/output.js",
-      "read_at": 1783697894131,
+      "read_at": 1783700992861,
       "partial": false
     },
     {
@@ -127,22 +127,22 @@
     },
     {
       "path": "promptimizer/scripts/close-batch.js",
-      "read_at": 1783696175761,
+      "read_at": 1783700629249,
       "partial": false
     },
     {
       "path": "promptimizer/scripts/audit-context.js",
-      "read_at": 1781427425634,
-      "partial": true
+      "read_at": 1783700980091,
+      "partial": false
     },
     {
       "path": "CLAUDE.md",
-      "read_at": 1781427688816,
-      "partial": true
+      "read_at": 1783700640392,
+      "partial": false
     },
     {
       "path": "promptimizer/lib/project.js",
-      "read_at": 1781428824139,
+      "read_at": 1783701035756,
       "partial": false
     },
     {
@@ -152,7 +152,7 @@
     },
     {
       "path": "promptimizer/hooks/post-tool-use.js",
-      "read_at": 1783696822666,
+      "read_at": 1783700976169,
       "partial": false
     },
     {
@@ -162,8 +162,8 @@
     },
     {
       "path": "promptimizer/templates/AGENTS.md",
-      "read_at": 1783698982777,
-      "partial": true
+      "read_at": 1783700638421,
+      "partial": false
     },
     {
       "path": "/Users/marwan.elachmar/.claude/statusline-cost.py",
@@ -182,7 +182,7 @@
     },
     {
       "path": "test/run-tests.js",
-      "read_at": 1783697956907,
+      "read_at": 1783703871879,
       "partial": false
     },
     {
@@ -192,7 +192,7 @@
     },
     {
       "path": "promptimizer/lib/cli.js",
-      "read_at": 1783698828575,
+      "read_at": 1783703861603,
       "partial": false
     },
     {
@@ -213,6 +213,51 @@
     {
       "path": "promptimizer/commands/pmz-init.md",
       "read_at": 1783698750247,
+      "partial": false
+    },
+    {
+      "path": ".vibe-agent/handoff.md",
+      "read_at": 1783700616678,
+      "partial": false
+    },
+    {
+      "path": "mwn/vsg-01-specification.md",
+      "read_at": 1783700612562,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/commands/close-batch.md",
+      "read_at": 1783701005464,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/commands/check-context.md",
+      "read_at": 1783700995705,
+      "partial": false
+    },
+    {
+      "path": "mwn/vsg-02-prompt-implementation.md",
+      "read_at": 1783700631552,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/lib/handoff.js",
+      "read_at": 1783703924740,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/commands/fresh-session.md",
+      "read_at": 1783701007343,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/commands/budget.md",
+      "read_at": 1783701009850,
+      "partial": false
+    },
+    {
+      "path": "promptimizer/lib/timeouts.js",
+      "read_at": 1783701033526,
       "partial": false
     }
   ],
@@ -238,6 +283,16 @@
     "promptimizer/templates/AGENTS.md",
     "README.md",
     ".gitignore",
-    "promptimizer/lib/cli.js"
+    "promptimizer/lib/cli.js",
+    "promptimizer/lib/state.js",
+    ".vibe-agent/handoff.md",
+    "promptimizer/lib/project.js",
+    "CLAUDE.md",
+    "promptimizer/lib/env.js",
+    "promptimizer/scripts/audit-context.js",
+    "promptimizer/commands/check-context.md",
+    "promptimizer/templates/rules.yaml",
+    "promptimizer/commands/close-batch.md",
+    "promptimizer/lib/handoff.js"
   ]
 }

@@ -48,10 +48,13 @@ const SIDECAR = path.join(STATE_DIR, 'taken-over.json');
 
 const T = SETTINGS_TIMEOUT_S;
 const PMZ_HOOKS = {
-  SessionStart: [{ matcher: 'startup|resume', hooks: [cmd('session-start.js', T.sessionStart)] }],
+  // clear : le hook gère startup|clear depuis toujours, mais le matcher ne couvrait
+  // pas clear → le handoff n'était jamais réinjecté après /clear (le geste recommandé).
+  // compact : passThrough aujourd'hui, branche dédiée prévue (réinjection post-compaction).
+  SessionStart: [{ matcher: 'startup|resume|clear|compact', hooks: [cmd('session-start.js', T.sessionStart)] }],
   UserPromptSubmit: [{ hooks: [cmd('user-prompt-submit.js', T.default)] }],
   PreToolUse: [{ matcher: 'Bash', hooks: [cmd('pre-tool-use.js', T.default)] }],
-  PostToolUse: [{ matcher: 'Read|Edit|Write', hooks: [cmd('post-tool-use.js', T.default)] }],
+  PostToolUse: [{ matcher: 'Read|Edit|Write|TodoWrite', hooks: [cmd('post-tool-use.js', T.default)] }],
   Stop: [{ hooks: [cmd('stop.js', T.default)] }],
 };
 

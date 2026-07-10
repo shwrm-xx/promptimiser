@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 'use strict';
-// SessionStart (startup|resume) : détecte le projet, propose l'init, rappel court.
+// SessionStart (matcher startup|resume|clear|compact) : détecte le projet, propose
+// l'init, rappel court. N'injecte qu'au startup/clear (resume/compact → passThrough).
 // Ne crée RIEN automatiquement, ne scanne jamais le repo.
 // Préambule fail-open AVANT tout require : si un require échoue (module corrompu/absent),
 // l'exception est captée et on sort en exit 0 (jamais exit non-0 qui bruiterait la session).

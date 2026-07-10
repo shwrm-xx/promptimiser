@@ -2,6 +2,28 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.4.8] — 2026-07-10 (lot A0 — correctifs socle)
+
+Correctifs préparatoires au chantier « lotissement + économie de tokens » (plan approuvé) :
+trois incohérences dormantes corrigées avant de bâtir dessus.
+
+- **Matcher SessionStart `startup|resume|clear|compact`** (était `startup|resume`) : le hook
+  gérait `clear` depuis toujours mais n'était jamais déclenché dessus — **le handoff n'était
+  jamais réinjecté après `/clear`**, précisément le geste que PMZ recommande pour repartir au
+  plancher. `compact` est ajouté au matcher (passThrough aujourd'hui, branche de réinjection
+  post-compaction prévue au lot A4).
+- **Matcher PostToolUse `Read|Edit|Write|TodoWrite`** : TodoWrite observé (no-op pour
+  l'instant ; la capture passive des todos arrive au lot A2).
+- **`audit-batch.js` aligné sur `stop.js`** (`gitStatusMeaningful`) : quand seuls des fichiers
+  `.vibe-agent/` étaient sales, `/close-batch` disait « clôture nécessaire » alors que
+  `stop.js` considérait le lot fermé. Une seule définition de « lot ouvert » désormais.
+- **Champs morts supprimés** de `lib/state.js` et `templates/session-state.json`
+  (`current_batch`, `batch_status`, `verification_status` — jamais écrits par aucun code ;
+  l'état de lot vivra dans `backlog.json` à l'échelle projet, pas dans l'état de session).
+- **Réinstallation requise** pour activer les nouveaux matchers (`install.command`).
+- **Tests** : matchers vérifiés après install, régression audit-batch (`.vibe-agent/` seul
+  sale → clôturable), absence des champs morts. 183 OK.
+
 ## [0.4.7] — 2026-07-10
 
 Init des projets **en cours** : `/pmz-init` ne produisait rien de visible sur un projet qui

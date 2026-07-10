@@ -1,11 +1,11 @@
 {
-  "session_id": "684e027d-0ea3-4c90-883e-69bd23a6ec8c",
-  "current_batch": null,
-  "batch_status": "not_started",
-  "verification_status": "not_checked",
+  "session_id": "fe6b1cf2-bf5f-4f32-9c8d-1e755962a75b",
   "session_start_reminded": true,
   "closure_reminded_for_batch": true,
   "prompt_reminders": {
     "broad": true
-  }
+  },
+  "current_batch": null,
+  "batch_status": "not_started",
+  "verification_status": "not_checked"
 }

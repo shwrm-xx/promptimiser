@@ -216,6 +216,13 @@ runNode(MS, [SP], { PMZ_STATE_DIR: STATE });
 s = readSettings();
 ok(hookCmds(s).filter((c) => c.includes('promptimizer/hooks/')).length === 5, 'réinstall → toujours 5 (idempotent)');
 
+// D3bis. Matchers PMZ à jour : clear/compact déclenchent SessionStart, TodoWrite observé.
+function pmzEntry(s2, ev) {
+  return (s2.hooks[ev] || []).find((e) => (e.hooks || []).some((h) => h.command.includes('promptimizer/hooks/')));
+}
+ok(pmzEntry(s, 'SessionStart').matcher === 'startup|resume|clear|compact', 'matcher SessionStart couvre clear et compact');
+ok(pmzEntry(s, 'PostToolUse').matcher === 'Read|Edit|Write|TodoWrite', 'matcher PostToolUse couvre TodoWrite');
+
 // D4. Strip legacy (vibe-session-governor) + double-firing
 writeSettings({
   hooks: {
@@ -582,6 +589,37 @@ const handoff = require(path.join(PKG, 'lib', 'handoff'));
   execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'close']);
   runHook('stop.js', { session_id: 'sess-n1', cwd: repo, transcript_path: empty });
   ok(lot.getLotCounter(repo) === before + 1, 'lot clôturé malgré .vibe-agent non commité (ledgers/handoff)');
+}
+
+// ============================ M. LOT A0 — AUDIT-BATCH & CHAMPS MORTS ============================
+section('audit-batch — gitStatusMeaningful + champs morts retirés');
+const AUDIT = path.join(PKG, 'scripts', 'audit-batch.js');
+{
+  const repo = path.join(SANDBOX, 'repo-auditbatch');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  fs.mkdirSync(path.join(repo, '.vibe-agent'), { recursive: true });
+  fs.writeFileSync(path.join(repo, '.vibe-agent', 'x.json'), '{}');
+  let j = {};
+  try { j = JSON.parse(runNode(AUDIT, ['--cwd', repo, '--json']).out); } catch (_) {}
+  ok(j.needs_closure === false && Array.isArray(j.modified_files) && j.modified_files.length === 0,
+    'audit-batch : seul .vibe-agent/ sale → clôturable (aligné stop.js)');
+  fs.writeFileSync(path.join(repo, 'a.txt'), '2');
+  let j2 = {};
+  try { j2 = JSON.parse(runNode(AUDIT, ['--cwd', repo, '--json']).out); } catch (_) {}
+  ok(j2.needs_closure === true && j2.modified_files.length === 1, 'audit-batch : fichier réel sale → clôture nécessaire');
+}
+{
+  const state = require(path.join(PKG, 'lib', 'state'));
+  for (const k of ['current_batch', 'batch_status', 'verification_status']) {
+    ok(!(k in state.DEFAULT_STATE), `champ mort retiré de DEFAULT_STATE : ${k}`);
+  }
+  const tpl = JSON.parse(fs.readFileSync(path.join(PKG, 'templates', 'session-state.json'), 'utf8'));
+  ok(!('current_batch' in tpl) && !('batch_status' in tpl) && !('verification_status' in tpl),
+    'template session-state.json sans champs morts');
 }
 
 // ============================ RÉSUMÉ ============================
