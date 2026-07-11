@@ -132,7 +132,10 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   (`lib/lot.js: suggestedTitle`, 40c) — priorité : lot **en cours** (travail qui continue) >
   dernier lot **clos** (ce qui vient d'être fait, cas le plus fréquent juste après une clôture —
   sans ce fallback le titre reste nu et ne dit rien de l'avancée réelle) > prochain lot à faire
-  (dernier recours). **Le N affiché est l'ID backlog du lot retenu** (`lib/backlog.js`, le
+  (dernier recours). Parmi les lots clos, le « dernier » est celui au `closed_at` le plus récent,
+  puis au plus grand `id` — **jamais** trié par `lot_number` : ce compteur global peut être `null`
+  ou recyclé sur d'anciennes clôtures, et son plus grand *cohérent* figeait alors la sélection sur
+  un vieux lot (retour utilisateur : renommage bloqué sur « Lot 7 » — fix 2026-07-12). **Le N affiché est l'ID backlog du lot retenu** (`lib/backlog.js`, le
   référentiel que l'utilisateur voit dans `backlog.js show`), **jamais** `lot-counter.json` —
   ce compteur avance à chaque transition working-tree sale → propre, y compris sur un commit de
   bookkeeping de clôture qui n'ajoute aucun lot, et dérivait donc du numéro backlog au fil du

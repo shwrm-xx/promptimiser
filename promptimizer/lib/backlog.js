@@ -179,15 +179,20 @@ function nextLot(b) {
   return b.lots.find((l) => l.status === 'todo') || null;
 }
 
-// Dernier lot clos (plus grand lot_number, sinon closed_at le plus récent) — décrit ce
-// qui vient d'être FAIT, utile pour nommer une session qui vient de clore un lot sans
-// qu'aucun autre ne soit encore in_progress/todo (sinon suggestedTitle retombe sur un
-// titre nu, non descriptif).
+// Dernier lot clos (closed_at le plus récent, sinon plus grand id) — décrit ce qui vient
+// d'être FAIT, utile pour nommer une session qui vient de clore un lot sans qu'aucun autre
+// ne soit encore in_progress/todo (sinon suggestedTitle retombe sur un titre nu).
+// On NE trie PLUS par lot_number : ce compteur global (lot-counter.json) avance
+// indépendamment de l'id, peut être null ou recyclé sur des clôtures anciennes/legacy, et
+// figeait alors la sélection sur le plus grand lot_number cohérent (bug « toujours le
+// même Lot N » session après session). L'id backlog est monotone, jamais recyclé, jamais
+// null (cf. addLot) et c'est déjà le référentiel affiché par titleForBacklogLot : trier
+// dessus rend le nommage de session cohérent bout-en-bout et immunisé aux lot_number sales.
 function lastDoneLot(b) {
   const done = b.lots.filter((l) => l.status === 'done');
   if (!done.length) return null;
-  done.sort((a, c) => (c.lot_number || 0) - (a.lot_number || 0)
-    || String(c.closed_at || '').localeCompare(String(a.closed_at || '')));
+  done.sort((a, c) => String(c.closed_at || '').localeCompare(String(a.closed_at || ''))
+    || (c.id || 0) - (a.id || 0));
   return done[0];
 }
 

@@ -2,6 +2,27 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (fix — renommage de session bloqué sur un vieux lot)
+
+Retour utilisateur : sur un projet, le hook proposait toujours le même « Lot 7 » en renommage
+de session, sans jamais avancer. Cause : `lastDoneLot` (`lib/backlog.js`) triait les lots clos
+par `lot_number` décroissant. Or `lot_number` vient du compteur global `lot-counter.json`, qui
+avance indépendamment de l'`id` et peut être `null` ou recyclé sur d'anciennes clôtures legacy —
+le plus grand `lot_number` *cohérent* restait porté par un vieux lot, sur lequel la sélection se
+figeait. Le titre affiché suivait déjà l'`id` backlog (fix 2026-07-11), mais **la sélection**, en
+amont, faisait toujours confiance à `lot_number`.
+
+- `lib/backlog.js` : `lastDoneLot` trie désormais par `closed_at` le plus récent, puis par `id`
+  décroissant — `lot_number` sort du tri. L'`id` est monotone, jamais recyclé, jamais `null`, et
+  c'est déjà le référentiel affiché : le nommage de session devient cohérent bout-en-bout et
+  immunisé contre tout `lot_number` sale. Aucune migration de donnée requise : les backlogs déjà
+  corrompus se rattrapent seuls au prochain calcul de titre.
+- `test/run-tests.js` : test de régression reproduisant le profil observé (plus grand `lot_number`
+  sur un vieux lot, `lot_number` null/recyclé sur les lots récents) + cas sans `closed_at`
+  exploitable (l'`id` tranche). Échoue sur l'ancien tri.
+- `ARCHITECTURE.md` : ordre de sélection du dernier lot clos documenté (décision non-greppable).
+- Vérifié en bac à sable : `node test/run-tests.js` → 347 OK, 0 échec.
+
 ## 2026-07-11 (fix — popup Gatekeeper qui revenait à chaque `git pull`)
 
 Retour utilisateur : le popup macOS « Apple n'a pas pu confirmer que "install.command" ne

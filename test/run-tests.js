@@ -1007,6 +1007,42 @@ section('suggestedTitle : le numéro affiché suit l\'ID backlog même si lot-co
     'lot suivant démarré : titre passe à Lot <nouvel ID backlog>, indépendamment du compteur');
 }
 
+// ==================== P1ter. lot_number SALE NE FIGE PLUS LA SÉLECTION DU DERNIER LOT CLOS ====
+section('suggestedTitle : lot_number null/recyclé ne fige plus la sélection sur un vieil id');
+{
+  // Reproduit le profil observé sur un projet réel (japlan-app) : le plus grand lot_number
+  // (7) est porté par un VIEUX lot, les lots plus récents ont un lot_number null ou recyclé
+  // (héritage d'anciennes clôtures legacy). Avant le fix, lastDoneLot triait par lot_number
+  // décroissant et retombait donc éternellement sur ce vieux lot 7 — « toujours Lot 7 » en
+  // renommage de session. Après le fix : tri par closed_at le plus récent, puis id.
+  const repo = path.join(SANDBOX, 'repo-lastdone-lotnum-corrupt');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  for (const t of ['Settings scindes', 'CRUD voyage', 'Etapes du trajet', 'Conformite Liquid Glass']) {
+    runNode(BKLG, ['add', '--cwd', repo, '--title', t, '--model', 'sonnet']);
+  }
+  const b = backlogLib.loadBacklog(repo);
+  const byId = (id) => b.lots.find((l) => l.id === id);
+  [[1, 7, '2026-07-01T10:00:00Z'], [2, null, '2026-07-02T10:00:00Z'],
+    [3, 4, '2026-07-03T10:00:00Z'], [4, 5, '2026-07-04T10:00:00Z']].forEach(([id, ln, at]) => {
+    const l = byId(id);
+    l.status = 'done'; l.closed_at = at; l.lot_number = ln; l.closed_commit = 'deadbee';
+  });
+  backlogLib.saveBacklog(repo, b);
+  ok(lot.suggestedTitle(repo) === `${path.basename(repo)} — Lot 4 : Conformite Liquid Glass`,
+    'lastDoneLot : dernier clos = closed_at le plus récent (id 4), PAS le plus grand lot_number (id 1)');
+
+  // Clôtures legacy sans closed_at exploitable : l'id monotone tranche, jamais lot_number.
+  const b2 = backlogLib.loadBacklog(repo);
+  b2.lots.forEach((l) => { l.closed_at = null; });
+  backlogLib.saveBacklog(repo, b2);
+  ok(lot.suggestedTitle(repo) === `${path.basename(repo)} — Lot 4 : Conformite Liquid Glass`,
+    'lastDoneLot : sans closed_at, le plus grand id tranche (pas le lot_number recyclé)');
+}
+
 // ============================ P2. TITRE DE SESSION QUAND TOUT LE PLAN EST FAIT ============================
 section('suggestedTitle : plan entièrement clos (aucun in_progress ni todo)');
 {
