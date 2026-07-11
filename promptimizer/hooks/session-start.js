@@ -107,14 +107,16 @@ function main() {
     if (src !== 'startup' && src !== 'clear') return passThrough();
     const st = loadSessionState(root, input.session_id || null);
     if (st.session_start_reminded) return passThrough();
-    st.session_start_reminded = true;
-    saveSessionState(root, st);
     let msg = MSG_ACTIF;
     try {
+      // suggestedTitle (via previousSessionId) doit lire session-state.json AVANT le
+      // saveSessionState ci-dessous, qui l'écrase avec le session_id de CETTE session.
       msg = msg + '\n\n' + sessionTitleMessage(suggestedTitle(root));
     } catch (_) {
       /* fail-open : le rappel de base part quand même */
     }
+    st.session_start_reminded = true;
+    saveSessionState(root, st);
     return injectContext('SessionStart', withHandoff(root, msg));
   }
   // Non initialisé, et uniquement au vrai démarrage (l'état n'est pas persistable

@@ -2,6 +2,31 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.5.15] — 2026-07-11 (suggestedTitle : ne pas attribuer un lot clos à la mauvaise session)
+
+Suite du lot précédent : `lastDoneLot` décrit ce qui vient d'être fait, mais uniquement en se
+fiant à la chronologie globale des lots — pas aux sessions elles-mêmes. Repéré concrètement en
+renommant la session précédente de CE dépôt : la session la plus récente n'avait clos aucun lot
+(un simple état des lieux) et aurait hérité, à tort, du titre du lot fermé par la session
+d'AVANT. Objectif du projet : que le nom de session serve à retracer l'avancée réelle — un
+lot mal attribué va à l'encontre de ça.
+
+- **`lib/backlog.js`** : nouveau champ `closed_session_id` sur chaque lot, posé par `doneLot`
+  (nouveau param `sessionId`, optionnel) ; `null` si clôture manuelle (CLI) sans id connu.
+- **`lib/state.js`** : nouvelle fonction `previousSessionId` — lit le `session_id` BRUT persisté
+  dans `session-state.json`, sans le reset que fait `loadSessionState`. Doit être lu AVANT que
+  `session-start.js` n'écrase le fichier avec le `session_id` de la session courante.
+- **`hooks/stop.js`** : passe le `sid` courant à `doneLot` lors de l'auto-clôture.
+- **`hooks/session-start.js`** : réordonné — `suggestedTitle` (et donc `previousSessionId`) est
+  calculé AVANT `saveSessionState`, pas après (sinon le `session_id` précédent est déjà perdu).
+- **`lib/lot.js`** : `suggestedTitle` ne retient le dernier lot clos que si aucune preuve
+  contraire n'existe — `closed_session_id` absent (clôture ancienne/manuelle, on l'affiche quand
+  même) ou égal à `previousSessionId` (ça matche) ; s'il diffère, clôture avérée plus ancienne
+  que la session précédente → on tait le suffixe plutôt que de mentir.
+- **`ARCHITECTURE.md`** à jour. **Tests** : 4 assertions ajoutées (closed_session_id posé à
+  l'auto-clôture, suffixe visible juste après clôture, suffixe tu après une session B sans
+  activité de lot, retombée sur la forme nue). 325 OK.
+
 ## [0.5.14] — 2026-07-11 (fix — titre de session nu quand le plan est entièrement clos)
 
 Retour utilisateur : le titre suggéré pour la session précédente ne montrait que « Epic — Lot N »,

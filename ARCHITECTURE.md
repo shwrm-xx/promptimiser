@@ -129,7 +129,14 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   (`lib/lot.js: suggestedTitle`, 40c) — priorité : lot **en cours** (travail qui continue) >
   dernier lot **clos** (ce qui vient d'être fait, cas le plus fréquent juste après une clôture —
   sans ce fallback le titre reste nu et ne dit rien de l'avancée réelle) > prochain lot à faire
-  (dernier recours). Puis demande à l'assistant de **proposer** ce nom en clair
+  (dernier recours). Le dernier lot clos n'est retenu que s'il ne peut pas être attribué à une
+  session **plus ancienne** que la précédente (`lot.closed_session_id`, posé par `stop.js` à la
+  clôture, comparé à `lib/state.js: previousSessionId` — le `session_id` brut lu dans
+  `session-state.json` **avant** que `session-start.js` ne l'écrase avec celui de la session
+  courante) : sans ça, une session qui n'a rien clos (ex. un simple état des lieux) hériterait à
+  tort du titre du lot fermé par une session antérieure. Sans trace de session (clôture
+  manuelle/ancienne, champ absent), on l'affiche quand même — mieux qu'un titre nu, et rien ne
+  prouve que c'est faux. Puis demande à l'assistant de **proposer** ce nom en clair
   (valeur ajoutée : l'utilisateur l'accepte ou en donne un autre) puis de tenter le renommage réel
   et d'accuser explicitement le résultat — un hook ne peut pas appeler un outil MCP lui-même, ce
   n'est donc qu'une instruction, pas une garantie. Le dialogue d'autorisation du tool de renommage
@@ -140,8 +147,9 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
 - **Plan de lots** (`.vibe-agent/backlog.json`, `lib/backlog.js` + CLI `scripts/backlog.js`) :
   le lot comme **objet persistant trans-session** — id, titre, « fait quand », statut
   (`todo|in_progress|done|dropped`), **préconisation de modèle** (`model_hint`, ex. `sonnet`/
-  `opus`), commit de clôture. Au plus un `in_progress` ; cap 20 lots ouverts ; `doneLot`
-  idempotent. `model_hint` est **obligatoire à l'`add` CLI** (refus doux sans `--model`) et
+  `opus`), commit de clôture, et `closed_session_id` (session qui a clos le lot — `null` si
+  clôture manuelle via le CLI sans id, jamais deviné). Au plus un `in_progress` ; cap 20 lots
+  ouverts ; `doneLot` idempotent. `model_hint` est **obligatoire à l'`add` CLI** (refus doux sans `--model`) et
   **réaffiché** partout où un lot est rendu (`show`/`start`/`next`, `summaryLines` → handoff auto)
   sous forme `[modèle : …]` — jamais perdu silencieusement. Écrit par l'assistant (CLI) ; **auto-clos par `stop.js`**
   quand le working tree redevient propre et qu'exactement un lot est `in_progress` (sinon ne

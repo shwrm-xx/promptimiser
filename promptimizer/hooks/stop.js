@@ -92,7 +92,7 @@ function main() {
       const b = loadBacklog(root);
       const inProg = b.lots.filter((l) => l.status === 'in_progress');
       if (inProg.length === 1) {
-        const done = doneLot(root, inProg[0].id, null, closedNumber);
+        const done = doneLot(root, inProg[0].id, null, closedNumber, sid);
         if (done) {
           const after = loadBacklog(root);
           parts.push(lotClosedMessage(done, nextLot(after), progress(after)));

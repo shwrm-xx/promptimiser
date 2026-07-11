@@ -58,18 +58,37 @@ function incrementLot(root) {
   return next;
 }
 
+function withSuffix(base, l) {
+  return `${base} : ${l.title.length > 40 ? l.title.slice(0, 39) + '…' : l.title}`;
+}
+
 function suggestedTitle(root) {
   const base = `${readEpic(root)} — Lot ${getLotCounter(root) + 1}`;
   try {
     // require paresseux : backlog.js require lot.js en tête, un require en tête ici
     // créerait un cycle de modules.
     const backlog = require('./backlog');
+    const { previousSessionId } = require('./state');
     const b = backlog.loadBacklog(root);
-    // Ordre : lot en cours (travail qui continue) > dernier lot clos (ce qui vient
-    // d'être fait — le cas le plus fréquent juste après une clôture, sinon le titre
-    // retombe nu) > prochain lot à faire (dernier recours, encore à venir).
-    const cur = backlog.currentLot(b) || backlog.lastDoneLot(b) || backlog.nextLot(b);
-    if (cur) return `${base} : ${cur.title.length > 40 ? cur.title.slice(0, 39) + '…' : cur.title}`;
+    // Lot en cours (travail qui continue) : toujours le suffixe le plus sûr.
+    const cur = backlog.currentLot(b);
+    if (cur) return withSuffix(base, cur);
+    // Dernier lot clos = ce qui vient d'être fait, cas le plus fréquent juste après une
+    // clôture (sinon le titre retombe nu). Mais un lot clos par une session ANTÉRIEURE à
+    // la précédente ne décrit pas cette session-là (ex. une session « état des lieux »
+    // qui n'a rien clos) : on ne l'affiche que si aucune preuve du contraire n'existe —
+    // closed_session_id absent (clôture manuelle/ancienne, pas de trace) => on l'affiche
+    // quand même (mieux qu'un titre nu) ; closed_session_id présent mais différent de la
+    // session précédente réelle => clôture avérée plus ancienne, on le tait.
+    const last = backlog.lastDoneLot(b);
+    if (last) {
+      const prevSid = previousSessionId(root);
+      const knownStale = last.closed_session_id && prevSid && last.closed_session_id !== prevSid;
+      if (!knownStale) return withSuffix(base, last);
+    }
+    // Prochain lot à faire : dernier recours, encore à venir.
+    const next = backlog.nextLot(b);
+    if (next) return withSuffix(base, next);
   } catch (_) {
     /* fail-open : titre de base */
   }

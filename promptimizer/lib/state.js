@@ -42,4 +42,19 @@ function saveSessionState(root, state) {
   return writeAtomic(stateFile(root), state);
 }
 
-module.exports = { loadSessionState, saveSessionState, DEFAULT_STATE };
+// Lit le session_id BRUT persisté, SANS reset ni écriture (contrairement à
+// loadSessionState, qui remet les flags à zéro dès qu'un session_id différent lui est
+// passé). Sert à retrouver l'id de la session précédente avant que session-start.js
+// n'écrase le fichier avec celui de la session courante — cf. lib/lot.js:suggestedTitle,
+// qui doit savoir quelle session a clos le dernier lot.
+function previousSessionId(root) {
+  if (!isInitialized(root)) return null;
+  try {
+    const st = JSON.parse(fs.readFileSync(stateFile(root), 'utf8'));
+    return (st && typeof st === 'object' && st.session_id) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+module.exports = { loadSessionState, saveSessionState, previousSessionId, DEFAULT_STATE };

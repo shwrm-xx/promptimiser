@@ -51,6 +51,7 @@ function loadBacklog(root) {
       model_hint: l.model_hint ? trunc(l.model_hint, MAX_MODEL_HINT) : null,
       closed_commit: l.closed_commit || null,
       closed_at: l.closed_at || null,
+      closed_session_id: l.closed_session_id || null,
       started_at: l.started_at || null,
       lot_number: Number.isFinite(l.lot_number) ? l.lot_number : null,
       note: l.note ? trunc(l.note, MAX_NOTE) : null,
@@ -106,6 +107,7 @@ function addLot(root, title, scope, modelHint) {
     model_hint: modelHint ? trunc(modelHint, MAX_MODEL_HINT) : null,
     closed_commit: null,
     closed_at: null,
+    closed_session_id: null,
     started_at: null,
     lot_number: null,
     note: null,
@@ -131,7 +133,10 @@ function startLot(root, id) {
 // Idempotent : un lot déjà done est rendu tel quel, sans réécriture.
 // lot_number par défaut = compteur+1 (le numéro du lot en cours de clôture, convention
 // du titre de session « Lot N+1 ») ; stop.js passe la valeur fraîchement incrémentée.
-function doneLot(root, id, commitSha, lotNumber) {
+// sessionId (optionnel) : id de la session qui clôt le lot — permet à suggestedTitle de
+// vérifier que le lot décrit bien LA session précédente et pas une clôture plus ancienne
+// (cf. lib/state.js: previousSessionId). Absent pour une clôture manuelle via le CLI.
+function doneLot(root, id, commitSha, lotNumber, sessionId) {
   const b = loadBacklog(root);
   const lot = findLot(b, id);
   if (!lot) return null;
@@ -139,6 +144,7 @@ function doneLot(root, id, commitSha, lotNumber) {
   lot.status = 'done';
   lot.closed_commit = commitSha || git(['log', '-1', '--format=%h'], root) || null;
   lot.closed_at = now();
+  lot.closed_session_id = sessionId || null;
   lot.lot_number = Number.isFinite(lotNumber) ? lotNumber : getLotCounter(root) + 1;
   return saveBacklog(root, b) ? lot : null;
 }

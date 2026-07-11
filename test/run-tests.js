@@ -963,6 +963,45 @@ section('suggestedTitle : plan entièrement clos (aucun in_progress ni todo)');
     'suggestedTitle : suffixé du dernier lot clos même sans lot en cours/à faire (avant le fix : titre nu)');
 }
 
+// ============================ P3. suggestedTitle NE MENT PAS SUR LA SESSION PRÉCÉDENTE ============================
+section('suggestedTitle : un lot clos par une session plus ancienne ne doit pas être attribué à la précédente');
+{
+  const repo = path.join(SANDBOX, 'repo-backlog-sessionmismatch');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'CLAUDE.md'), 'règles'); // + ledger -> isFullyInitialized
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const empty = path.join(SANDBOX, 'empty.jsonl');
+
+  // Session A : ouvre puis clôt le lot #1 (auto-clôture au Stop, sid tracé).
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Travail session A', '--model', 'sonnet']);
+  runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
+  fs.writeFileSync(path.join(repo, 'w.txt'), 'x');
+  runHook('stop.js', { session_id: 'sess-A', cwd: repo, transcript_path: empty }); // arme closure_reminded_for_batch
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'lot 1 fini']);
+  runHook('stop.js', { session_id: 'sess-A', cwd: repo, transcript_path: empty }); // auto-clôture, closed_session_id = sess-A
+
+  const bA = backlogLib.loadBacklog(repo);
+  ok(bA.lots.find((l) => l.id === 1).closed_session_id === 'sess-A',
+    'doneLot (auto-clôture) : closed_session_id posé au sid de la session qui clôt');
+  ok(/ : Travail session A$/.test(lot.suggestedTitle(repo)),
+    'juste après clôture par sess-A : suffixe visible (session précédente = sess-A, ça matche)');
+
+  // Session B (no-op, ne clôt rien) démarre : session-start.js estampille son propre id
+  // dans session-state.json AVANT que la session C ne démarre.
+  runHook('session-start.js', { source: 'startup', session_id: 'sess-B', cwd: repo, transcript_path: empty });
+
+  // "Session C" (ce test) : la session précédente est désormais sess-B, qui n'a rien
+  // clos -> le lot fermé par sess-A ne doit plus être suggéré (clôture plus ancienne).
+  ok(!/ : Travail session A$/.test(lot.suggestedTitle(repo)),
+    'après une session B sans activité de lot : le lot de sess-A n\'est plus suggéré (mismatch détecté)');
+  ok(lot.suggestedTitle(repo) === `${path.basename(repo)} — Lot ${lot.getLotCounter(repo) + 1}`,
+    'titre retombe sur la forme nue plutôt que de mentir sur ce qui vient de se passer');
+}
+
 // ============================ Q. CONTINUITÉ — PRECOMPACT & SESSIONSTART ============================
 section('Continuité — PreCompact sauve le handoff, compact réinjecte le lot, fallback backlog');
 {
