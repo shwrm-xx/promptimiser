@@ -25,8 +25,8 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
 
 | Hook | Event / matcher | Lit (stdin) | Émet | Rôle |
 |------|-----------------|-------------|------|------|
-| `session-start.js` | SessionStart `startup\|resume\|clear\|compact` (injecte au `startup`/`clear` ; `compact` → réinjection minimale du lot en cours ≤ 300 chars) | `cwd`, `source` | `additionalContext` | détecte projet, auto-scaffold si projet neuf (0 commit), sinon propose init, rappel court + titre de session suggéré + injecte le handoff de la session précédente puis le marque consommé ; sans handoff, le plan de lots sert de filet (2 lignes) |
-| `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large, anti-spam 1×/session |
+| `session-start.js` | SessionStart `startup\|resume\|clear\|compact` (injecte au `startup`/`clear` ; `compact` → réinjection minimale du lot en cours ≤ 300 chars ; `resume` → nudge occupation seul, voir ci-dessous) | `cwd`, `source`, `transcript_path` | `additionalContext` (startup/clear/compact) ou `systemMessage` (resume) | détecte projet, auto-scaffold si projet neuf (0 commit), sinon propose init, rappel court + titre de session suggéré + injecte le handoff de la session précédente puis le marque consommé ; sans handoff, le plan de lots sert de filet (2 lignes) ; au `resume`, si occupation ≥ 300k, `systemMessage` d'occupation (lot B5, zéro token injecté) |
+| `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd`, `transcript_path` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large (anti-spam 1×/session), nudge occupation ≥ 500k en 2 lignes (anti-spam 1×/palier, lot B5) |
 | `pre-tool-use.js` | PreToolUse `Bash` | `tool_input.command` | `permissionDecision` allow/ask/deny | sûreté commandes |
 | `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite` | `tool_input.file_path`, `tool_input.todos` | `additionalContext` (rare, advisory) + effet de bord ledgers | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite), signale une relecture complète redondante (lot B4) |
 | `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), hygiène de lecture, rappel de clôture nommant les skills, incrémente le compteur de lot, auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, écrit le handoff auto (écrasé à chaque tour) |
@@ -68,6 +68,16 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   croissant** (une seule alerte par palier ; pas de redescente intra-session — un vrai reset =
   nouvelle `session_id`). Aucune dépendance aux ledgers projet. → Méthode reprise de l'ancien
   `context-guard.py`.
+- **Nudges haute occupation avant/à la reprise du tour** (`user-prompt-submit.js` /
+  `session-start.js`, lot B5) : distincts de l'alerte de fin de tour (`stop.js`) ci-dessus,
+  volontairement **découplés** de son fichier d'état palier (`occupancy.evaluate`/
+  `resyncBucket`) pour ne pas interférer avec sa cadence propre. `user-prompt-submit.js`
+  relit l'occupation (`readLastOccupancy` + `bucketIndex`, lecture seule) et, si ≥ 500k,
+  injecte un `additionalContext` de 2 lignes plafonné **1×/palier** via une clé `occ_<bucket>`
+  dans `prompt_reminders` (même state que les rappels `broad`/`init_before_code`). `session-start.js`
+  fait de même au `source=resume` si ≥ 300k, mais en `systemMessage` (zéro token injecté,
+  pas d'anti-spam nécessaire) — comble le silence d'une session reprise déjà chargée, qui
+  restait muette jusqu'au premier `Stop`.
 - **Métrologie par tour** (`lib/turnstats.js`, appelée par `stop.js`) : mesure le coût du
   **dernier tour** en ne scannant QUE `[offset, EOF]` du transcript — l'offset (octets) et la
   dernière occupation sont mémorisés au Stop précédent dans `<sha1(sid)>-turns.json` (FIFO 40

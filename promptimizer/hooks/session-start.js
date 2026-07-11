@@ -15,17 +15,20 @@ const { disabled } = require('../lib/env');
 if (disabled()) process.exit(0);
 
 const { parseHookInput } = require('../lib/stdin');
-const { injectContext, passThrough } = require('../lib/output');
+const { injectContext, systemMessage, passThrough } = require('../lib/output');
 const { gitRoot, isFullyInitialized, hasAnyCommit } = require('../lib/project');
 const { runBootstrap, commitScaffold } = require('../lib/bootstrap');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { suggestedTitle } = require('../lib/lot');
 const { readHandoff, markConsumed } = require('../lib/handoff');
 const { loadBacklog, currentLot, nextLot, progress, readTodoSnapshot } = require('../lib/backlog');
+const occupancy = require('../lib/occupancy');
 const {
   MSG_ACTIF, MSG_NON_INIT, MSG_HANDOFF, sessionTitleMessage, autoInitMessage,
-  compactResumeMessage, backlogResumeMessage,
+  compactResumeMessage, backlogResumeMessage, occupancyMessage,
 } = require('../lib/messages');
+
+const OCC_RESUME_THRESHOLD = 300000;
 
 // Filet quand il n'y a pas de handoff à injecter : 2 lignes sur le plan de lots.
 function backlogFallback(root) {
@@ -80,6 +83,22 @@ function main() {
     } catch (_) {
       return passThrough();
     }
+  }
+
+  // Reprise d'une session existante : aucun token injecté (le contexte est déjà là),
+  // seulement un rappel VISIBLE (systemMessage) si l'occupation est déjà haute au
+  // moment de la reprise — sans ça, une session reprise à 400k restait muette
+  // jusqu'au premier Stop.
+  if (src === 'resume') {
+    try {
+      const occ = occupancy.readLastOccupancy(input.transcript_path);
+      if (occ != null && occ >= OCC_RESUME_THRESHOLD) {
+        return systemMessage(occupancyMessage(occ, occupancy.bucketIndex(occ)));
+      }
+    } catch (_) {
+      /* fail-open : reprise silencieuse */
+    }
+    return passThrough();
   }
 
   if (isFullyInitialized(root)) {

@@ -1277,6 +1277,72 @@ section('Advisory intra-tour (PostToolUse : relecture complète redondante, lot 
   ok(advisoryText(readOptout('b4-optout')) !== null, 'B4 : opt-out n\'a pas consommé le plafond (advisory dispo juste après)');
 }
 
+// ============================ B5. NUDGES HAUTE OCCUPATION ============================
+section('Nudges haute occupation (UserPromptSubmit >=500k, SessionStart resume >=300k, lot B5)');
+{
+  const ctxOf = (r) => {
+    if (!r.out.trim()) return null;
+    try { return JSON.parse(r.out).hookSpecificOutput.additionalContext || null; } catch (_) { return null; }
+  };
+
+  // -- UserPromptSubmit : additionalContext 2 lignes, 1x/palier (clé occ_<bucket>) --
+  const repo = path.join(SANDBOX, 'repo-b5-nudge');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  project.ensureLedger(repo); // .vibe-agent présent -> anti-spam (prompt_reminders) persistant
+
+  const promptAt = (occInput, sid) => {
+    const t = writeTranscript(`b5-prompt-${sid}.jsonl`, [usageLine(occInput, 0, 0)]);
+    return runHook('user-prompt-submit.js', { cwd: repo, prompt: 'question anodine', session_id: sid, transcript_path: t });
+  };
+
+  const rBelow = promptAt(400000, 'b5-below'); // < 500k
+  ok(ctxOf(rBelow) === null, 'B5 : occ < 500k -> silence (UserPromptSubmit)');
+
+  const sid = 'b5-high';
+  const t1 = ctxOf(promptAt(520000, sid)); // bucket 3
+  ok(!!t1 && t1.split('\n').length === 2 && /520k/.test(t1), 'B5 : occ >= 500k -> nudge additionalContext de 2 lignes');
+
+  ok(ctxOf(promptAt(521000, sid)) === null, 'B5 : même palier, même session -> silence (anti-spam 1x/palier)');
+
+  const t3 = ctxOf(promptAt(760000, sid)); // bucket 4 (>=750k)
+  ok(!!t3 && /760k/.test(t3), 'B5 : ré-escalade au palier suivant -> nouveau nudge');
+
+  // -- SessionStart resume : systemMessage (zéro token), jamais additionalContext --
+  const repoR = path.join(SANDBOX, 'repo-b5-resume');
+  fs.mkdirSync(repoR, { recursive: true });
+  execFileSync('git', ['init', '-q', repoR]);
+  fs.writeFileSync(path.join(repoR, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoR, 'add', '.']);
+  execFileSync('git', ['-C', repoR, 'commit', '-q', '-m', 'init']);
+
+  const tLowR = writeTranscript('b5-resume-low.jsonl', [usageLine(100000, 0, 0)]); // 100k < 300k
+  const rLow = runHook('session-start.js', { source: 'resume', cwd: repoR, session_id: 'b5-resume-low', transcript_path: tLowR });
+  ok(rLow.code === 0 && !(rLow.out || '').trim(), 'B5 : resume sous 300k -> silence total');
+
+  const tHiR = writeTranscript('b5-resume-hi.jsonl', [usageLine(320000, 0, 0)]); // 320k >= 300k
+  const rHi = runHook('session-start.js', { source: 'resume', cwd: repoR, session_id: 'b5-resume-hi', transcript_path: tHiR });
+  let sysMsg = null;
+  try { sysMsg = JSON.parse(rHi.out).systemMessage || null; } catch (_) {}
+  ok(!!sysMsg && /320k/.test(sysMsg), 'B5 : resume >= 300k -> systemMessage nommant l\'occupation');
+  ok(!/additionalContext/.test(rHi.out), 'B5 : resume -> jamais additionalContext (zéro token injecté)');
+
+  // -- Non-régression startup : le nouveau branchement resume ne touche pas au flux normal --
+  const repoS = path.join(SANDBOX, 'repo-b5-startup');
+  fs.mkdirSync(repoS, { recursive: true });
+  execFileSync('git', ['init', '-q', repoS]);
+  fs.writeFileSync(path.join(repoS, 'CLAUDE.md'), 'règles');
+  fs.writeFileSync(path.join(repoS, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoS, 'add', '.']);
+  execFileSync('git', ['-C', repoS, 'commit', '-q', '-m', 'init']);
+  project.ensureLedger(repoS); // + CLAUDE.md -> isFullyInitialized
+  const rStart = runHook('session-start.js', { source: 'startup', cwd: repoS, session_id: 'b5-startup' });
+  ok(/Promptimizer actif/.test(ctxOf(rStart) || ''), 'B5 : non-régression — startup inchangé (MSG_ACTIF en additionalContext)');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

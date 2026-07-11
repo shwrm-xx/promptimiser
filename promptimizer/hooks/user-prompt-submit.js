@@ -16,7 +16,10 @@ const { gitRoot, isFullyInitialized } = require('../lib/project');
 const { autoInitGitAndBootstrap } = require('../lib/bootstrap');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { loadBacklog, currentLot, progress } = require('../lib/backlog');
-const { MSG_LARGE, MSG_INIT_BEFORE_CODE, autoInitMessage, largeWithPlanMessage } = require('../lib/messages');
+const { MSG_LARGE, MSG_INIT_BEFORE_CODE, autoInitMessage, largeWithPlanMessage, occupancyPromptMessage } = require('../lib/messages');
+const occupancy = require('../lib/occupancy');
+
+const OCC_PROMPT_THRESHOLD = 500000;
 
 const INIT_RE = /(nouveau projet|initialise|initialiser|scaffold|setup|from scratch|cr[ée]er? un projet|bootstrap)/i;
 const BROAD_RE = /(refactor (complet|global|tout)|partout|tout le (projet|code|repo)|et aussi|pendant que tu y es|tant qu'on y est|toutes les|tous les fichiers)/i;
@@ -55,6 +58,9 @@ function main() {
   const sid = input.session_id || null;
   const st = loadSessionState(root, sid);
 
+  st.prompt_reminders = st.prompt_reminders || {};
+  const parts = [];
+
   let msg = null;
   let key = null;
   if (!initialized && INIT_RE.test(prompt)) { key = 'init_before_code'; msg = MSG_INIT_BEFORE_CODE; }
@@ -70,13 +76,30 @@ function main() {
   }
 
   if (msg && key) {
-    st.prompt_reminders = st.prompt_reminders || {};
-    if (st.prompt_reminders[key]) msg = null; // déjà rappelé cette session
-    else st.prompt_reminders[key] = true;
+    if (!st.prompt_reminders[key]) { // déjà rappelé cette session sinon
+      st.prompt_reminders[key] = true;
+      parts.push(msg);
+    }
+  }
+
+  // Nudge occupation haute — indépendant du init/broad ci-dessus, 1×/palier
+  // (clé occ_<bucket> distincte des autres rappels, même state prompt_reminders).
+  try {
+    const occ = occupancy.readLastOccupancy(input.transcript_path);
+    if (occ != null && occ >= OCC_PROMPT_THRESHOLD) {
+      const bucket = occupancy.bucketIndex(occ);
+      const occKey = `occ_${bucket}`;
+      if (!st.prompt_reminders[occKey]) {
+        st.prompt_reminders[occKey] = true;
+        parts.push(occupancyPromptMessage(occ, bucket));
+      }
+    }
+  } catch (_) {
+    /* fail-open : pas de nudge occupation ce tour */
   }
 
   saveSessionState(root, st);
-  if (msg) return injectContext('UserPromptSubmit', msg);
+  if (parts.length) return injectContext('UserPromptSubmit', parts.join('\n\n'));
   return passThrough();
 }
 

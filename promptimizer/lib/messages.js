@@ -73,6 +73,16 @@ function occupancyMessage(occ, bucket) {
   ].join('\n');
 }
 
+// Nudge occupation HAUTE injecté dans UserPromptSubmit (coûte du contexte) — donc
+// volontairement court (2 lignes) et plafonné 1×/palier par l'appelant.
+function occupancyPromptMessage(occ, bucket) {
+  const k = Math.round(occ / 1000);
+  return [
+    `Contexte ≈ ${k}k tokens — occupation haute, ce tour coûtera plus cher en cache.`,
+    "Lot fini → /close-batch. Sinon → commit intermédiaire puis /fresh-session pour repartir au plancher.",
+  ].join('\n');
+}
+
 function fmtK(n) {
   const v = Math.abs(n || 0);
   return v >= 1000 ? `${Math.round(v / 1000)}k` : `${Math.round(v)}`;
@@ -171,7 +181,7 @@ function sessionTitleMessage(title) {
 
 module.exports = {
   MSG_ACTIF, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
-  occupancyMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
+  occupancyMessage, occupancyPromptMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
   compactResumeMessage, backlogResumeMessage, largeWithPlanMessage,
   costlyTurnMessage, bustIntraMessage, pauseTtlMessage,
 };

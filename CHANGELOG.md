@@ -2,6 +2,24 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.5.10] — 2026-07-11 (lot B5 — nudges haute occupation)
+
+Deux nudges d'occupation contexte supplémentaires, complémentaires de l'alerte de fin de tour
+(`stop.js`) : l'un **avant** le tour (coûte du contexte, donc rare et plafonné), l'autre **à la
+reprise** d'une session (gratuit, jamais injecté).
+
+- **`user-prompt-submit.js`** : si l'occupation ≥ 500k, injecte un `additionalContext` de
+  2 lignes (`messages.occupancyPromptMessage`). Plafonné **1×/palier** via une clé `occ_<bucket>`
+  dans `prompt_reminders` (même état que les rappels `broad`/`init_before_code` existants,
+  indépendant du fichier d'état palier de `stop.js`/`occupancy.evaluate`).
+- **`session-start.js`** : au `source=resume`, si l'occupation ≥ 300k, émet un `systemMessage`
+  (réutilise `messages.occupancyMessage`) — **zéro token injecté**, jamais d'`additionalContext`.
+  Comble le silence d'une session reprise déjà haute en contexte, qui restait muette jusqu'au
+  premier `Stop`.
+- **Tests** (`test/run-tests.js`, +8) : silence sous 500k, nudge 2 lignes au palier, anti-spam
+  1×/palier même session, ré-escalade au palier suivant, silence resume sous 300k, `systemMessage`
+  au resume ≥ 300k (jamais d'`additionalContext`), non-régression du `startup` normal.
+
 ## [0.5.9] — 2026-07-11 (lot B4 — advisory intra-tour sur relecture redondante)
 
 `post-tool-use.js` peut désormais **signaler** (jamais bloquer) une relecture complète et

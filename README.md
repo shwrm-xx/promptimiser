@@ -61,6 +61,9 @@ Statut : vert
 - **Pendant le tour** : une relecture **complète** d'un gros fichier (≥ 16 Ko) déjà lu et
   inchangé déclenche une note discrète (~60 tokens, plafonnée à 1×/fichier et 3×/session) —
   jamais de blocage, juste un rappel.
+- **Occupation déjà haute** : au-delà de 500k tokens, un rappel court (2 lignes) est ajouté au
+  prompt suivant (plafonné 1×/palier) ; à la **reprise** d'une session déjà chargée (≥ 300k),
+  un message visible (zéro token ajouté au contexte) le signale sans attendre la fin du tour.
 - **Plan de lots durable** : `.vibe-agent/backlog.json` est versionné par défaut (un
   `.vibe-agent/.gitignore` ignore l'état éphémère mais garde le plan), et stagé à chaque écriture —
   il ne se perd plus entre deux sessions.
