@@ -2,6 +2,25 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-11 (fix — le numéro de lot du titre de session ne reste plus figé)
+
+Retour utilisateur (repro sur un autre projet) : le nom de session proposé affichait
+« Epic — Lot 4 » cinq sessions de suite quel que soit le lot réellement en cours ou clos.
+
+- **`lib/backlog.js`** : `doneLot` — la clôture **manuelle** d'un lot (`backlog.js done`,
+  utilisée par `/close-batch`) lisait le compteur global (`lot-counter.json`) pour étiqueter
+  le lot clos, mais ne l'**écrivait jamais** — seule la clôture automatique du hook Stop le
+  persistait. Résultat : après une clôture manuelle, la session suivante recalculait le même
+  numéro, l'attribuant à un autre lot (collision), et `suggestedTitle` (qui construit toujours
+  son « Lot N » à partir de ce compteur, jamais du `lot_number` propre au lot) répétait
+  indéfiniment le même chiffre. `doneLot` appelle désormais `incrementLot(root)` (qui persiste)
+  quel que soit le chemin de clôture.
+- **Tests** : 3 assertions ajoutées (le compteur avance et est persisté après une clôture
+  manuelle ; deux clôtures manuelles de suite avancent deux fois, jamais figées ; deux lots
+  clos de suite reçoivent des `lot_number` distincts). 333 OK.
+- Le fix ne prend effet qu'après réinstallation du package (`install/install.command`) sur les
+  projets qui utilisent déjà `~/.claude/promptimizer` — le dépôt source seul ne suffit pas.
+
 ## 2026-07-11 (fix — suggestedTitle déduit un titre quand le plan n'en offre aucun)
 
 Retour utilisateur : le nom de session proposé pour la session précédente n'affichait parfois

@@ -124,7 +124,10 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   anti-spam du rappel de clôture par lot. À la fermeture d'un lot (working tree qui redevient
   propre), `stop.js` incrémente aussi le **compteur de lot** (`.vibe-agent/lot-counter.json`,
   `lib/lot.js`) — amorcé depuis le plus grand `(lot N)` déjà présent dans `CHANGELOG.md` s'il en
-  existe. `session-start.js` en déduit un titre de session suggéré (« Epic — Lot N », epic =
+  existe. `backlog.js: doneLot` fait de même par défaut (chemin de clôture **manuelle**, ex.
+  `/close-batch`) : sans ça, le compteur restait figé sur ce chemin et le même « Lot N »
+  revenait indéfiniment d'une session à l'autre (fix 2026-07-11). `session-start.js` en déduit
+  un titre de session suggéré (« Epic — Lot N », epic =
   `.vibe-agent/epic` ou nom du dossier), **suffixé** du titre du lot backlog le plus pertinent
   (`lib/lot.js: suggestedTitle`, 40c) — priorité : lot **en cours** (travail qui continue) >
   dernier lot **clos** (ce qui vient d'être fait, cas le plus fréquent juste après une clôture —

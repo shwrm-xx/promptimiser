@@ -7,7 +7,7 @@
 const path = require('path');
 const { vibeDir, ensureLedger, git } = require('./project');
 const { writeAtomic, readJson } = require('./fsjson');
-const { getLotCounter } = require('./lot');
+const { getLotCounter, incrementLot } = require('./lot');
 
 const MAX_LOTS_OPEN = 20; // lots todo+in_progress ; au-delà c'est un Jira, refus doux
 const MAX_TITLE = 80;
@@ -131,8 +131,12 @@ function startLot(root, id) {
 }
 
 // Idempotent : un lot déjà done est rendu tel quel, sans réécriture.
-// lot_number par défaut = compteur+1 (le numéro du lot en cours de clôture, convention
-// du titre de session « Lot N+1 ») ; stop.js passe la valeur fraîchement incrémentée.
+// lot_number par défaut = incrementLot(root) (avance ET persiste le compteur global) ;
+// stop.js passe la valeur qu'il a déjà fait avancer lui-même pour éviter un double
+// increment. Sans ce fallback qui persiste, une clôture manuelle (CLI `done`, cf.
+// /close-batch) lisait juste compteur+1 SANS l'écrire : la session suivante relisait le
+// même compteur figé et réattribuait le même numéro à un autre lot — d'où un « Lot N »
+// qui se répète session après session au lieu d'avancer.
 // sessionId (optionnel) : id de la session qui clôt le lot — permet à suggestedTitle de
 // vérifier que le lot décrit bien LA session précédente et pas une clôture plus ancienne
 // (cf. lib/state.js: previousSessionId). Absent pour une clôture manuelle via le CLI.
@@ -145,7 +149,7 @@ function doneLot(root, id, commitSha, lotNumber, sessionId) {
   lot.closed_commit = commitSha || git(['log', '-1', '--format=%h'], root) || null;
   lot.closed_at = now();
   lot.closed_session_id = sessionId || null;
-  lot.lot_number = Number.isFinite(lotNumber) ? lotNumber : getLotCounter(root) + 1;
+  lot.lot_number = Number.isFinite(lotNumber) ? lotNumber : incrementLot(root);
   return saveBacklog(root, b) ? lot : null;
 }
 

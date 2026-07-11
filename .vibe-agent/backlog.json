@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "next_id": 16,
+  "next_id": 18,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-11T12:34:08.831Z",
+  "updated_at": "2026-07-11T14:58:21.216Z",
   "lots": [
     {
       "id": 1,
@@ -197,6 +197,32 @@
       "closed_session_id": null,
       "started_at": "2026-07-11T12:33:20.088Z",
       "lot_number": 9,
+      "note": null
+    },
+    {
+      "id": 16,
+      "title": "Fix — numérotation de lot désynchronisée du backlog courant",
+      "scope": "fait quand : le numéro de lot affiché dans le nom de session (suggestedTitle) est dérivé du backlog actif plutôt que d'un compteur global qui peut rester figé après un changement de backlog ; testé sur le cas nouveau backlog après un ancien clos, qui ne doit plus répéter le même numéro",
+      "status": "in_progress",
+      "model_hint": "sonnet",
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "started_at": "2026-07-11T14:58:21.215Z",
+      "lot_number": null,
+      "note": null
+    },
+    {
+      "id": 17,
+      "title": "Version PMZ historisée + commande about",
+      "scope": "fait quand : chaque évolution de PMZ incrémente un numéro de version stocké et historisé (fichier VERSION + trace dans CHANGELOG.md), et une commande/affichage about expose cette version courante ainsi que l'epic/lot en cours",
+      "status": "todo",
+      "model_hint": "sonnet",
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "started_at": null,
+      "lot_number": null,
       "note": null
     }
   ]

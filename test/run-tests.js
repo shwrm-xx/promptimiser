@@ -763,6 +763,36 @@ const BKLG = path.join(PKG, 'scripts', 'backlog.js');
     'backlog hors git : refus doux, rien créé');
 }
 
+// N12. done sans lotNumber (chemin CLI/manuel, ex. /close-batch) PERSISTE l'avance du
+// compteur global (régression du bug « Lot N qui se répète » : avant le fix, seul le
+// Stop hook auto persistait ; une clôture manuelle relisait compteur+1 sans l'écrire,
+// si bien que la session suivante recalculait le même numéro pour un autre lot).
+{
+  const repo = path.join(SANDBOX, 'repo-backlog-counter');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const lotLib = require(path.join(PKG, 'lib', 'lot'));
+
+  const counterBefore = lotLib.getLotCounter(repo);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot quatre', '--model', 'sonnet']);
+  const idQuatre = backlogLib.loadBacklog(repo).lots.find((l) => l.title === 'Lot quatre').id;
+  runNode(BKLG, ['done', '--cwd', repo, '--id', String(idQuatre)]);
+  const counterAfterFirst = lotLib.getLotCounter(repo);
+  ok(counterAfterFirst === counterBefore + 1, 'backlog done manuel : le compteur global avance et est persisté');
+
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot cinq', '--model', 'sonnet']);
+  const idCinq = backlogLib.loadBacklog(repo).lots.find((l) => l.title === 'Lot cinq').id;
+  runNode(BKLG, ['done', '--cwd', repo, '--id', String(idCinq)]);
+  const counterAfterSecond = lotLib.getLotCounter(repo);
+  ok(counterAfterSecond === counterAfterFirst + 1, 'backlog done manuel : deux clôtures de suite avancent deux fois (jamais figé)');
+
+  const closed = backlogLib.loadBacklog(repo).lots.filter((l) => l.id === idQuatre || l.id === idCinq);
+  ok(closed[0].lot_number !== closed[1].lot_number, 'backlog done manuel : deux lots clos de suite reçoivent des lot_number distincts');
+}
+
 // ==================== N-bis. B6 — PRÉCONISATION DE MODÈLE PAR LOT ====================
 section('backlog — model_hint (préconisation de modèle par lot)');
 {
