@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 14,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-11T11:59:38.439Z",
+  "updated_at": "2026-07-11T12:00:12.388Z",
   "lots": [
     {
       "id": 1,
@@ -152,12 +152,12 @@
       "id": 13,
       "title": "Fix — suggestedTitle suffixe le dernier lot clos",
       "scope": "fait quand : titre de session suffixé même quand le plan est entièrement clos (aucun in_progress/todo)",
-      "status": "in_progress",
+      "status": "done",
       "model_hint": "sonnet",
-      "closed_commit": null,
-      "closed_at": null,
+      "closed_commit": "ff60d6b",
+      "closed_at": "2026-07-11T12:00:12.387Z",
       "started_at": "2026-07-11T11:59:38.438Z",
-      "lot_number": null,
+      "lot_number": 8,
       "note": null
     }
   ]
