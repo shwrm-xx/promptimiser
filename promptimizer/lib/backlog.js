@@ -169,6 +169,18 @@ function nextLot(b) {
   return b.lots.find((l) => l.status === 'todo') || null;
 }
 
+// Dernier lot clos (plus grand lot_number, sinon closed_at le plus récent) — décrit ce
+// qui vient d'être FAIT, utile pour nommer une session qui vient de clore un lot sans
+// qu'aucun autre ne soit encore in_progress/todo (sinon suggestedTitle retombe sur un
+// titre nu, non descriptif).
+function lastDoneLot(b) {
+  const done = b.lots.filter((l) => l.status === 'done');
+  if (!done.length) return null;
+  done.sort((a, c) => (c.lot_number || 0) - (a.lot_number || 0)
+    || String(c.closed_at || '').localeCompare(String(a.closed_at || '')));
+  return done[0];
+}
+
 function progress(b) {
   const active = b.lots.filter((l) => l.status !== 'dropped');
   return { done: active.filter((l) => l.status === 'done').length, total: active.length };
@@ -259,7 +271,7 @@ function reconcile(root) {
 
 module.exports = {
   backlogFile, loadBacklog, saveBacklog, addLot, startLot, doneLot, dropLot, noteLot,
-  currentLot, nextLot, progress, summaryLines, reconcile,
+  currentLot, nextLot, lastDoneLot, progress, summaryLines, reconcile,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot,
   MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_NOTE, MAX_TODOS,
 };

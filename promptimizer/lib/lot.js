@@ -65,7 +65,10 @@ function suggestedTitle(root) {
     // créerait un cycle de modules.
     const backlog = require('./backlog');
     const b = backlog.loadBacklog(root);
-    const cur = backlog.currentLot(b) || backlog.nextLot(b);
+    // Ordre : lot en cours (travail qui continue) > dernier lot clos (ce qui vient
+    // d'être fait — le cas le plus fréquent juste après une clôture, sinon le titre
+    // retombe nu) > prochain lot à faire (dernier recours, encore à venir).
+    const cur = backlog.currentLot(b) || backlog.lastDoneLot(b) || backlog.nextLot(b);
     if (cur) return `${base} : ${cur.title.length > 40 ? cur.title.slice(0, 39) + '…' : cur.title}`;
   } catch (_) {
     /* fail-open : titre de base */

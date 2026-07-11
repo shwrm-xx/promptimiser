@@ -125,7 +125,11 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   propre), `stop.js` incrémente aussi le **compteur de lot** (`.vibe-agent/lot-counter.json`,
   `lib/lot.js`) — amorcé depuis le plus grand `(lot N)` déjà présent dans `CHANGELOG.md` s'il en
   existe. `session-start.js` en déduit un titre de session suggéré (« Epic — Lot N », epic =
-  `.vibe-agent/epic` ou nom du dossier) et demande à l'assistant de **proposer** ce nom en clair
+  `.vibe-agent/epic` ou nom du dossier), **suffixé** du titre du lot backlog le plus pertinent
+  (`lib/lot.js: suggestedTitle`, 40c) — priorité : lot **en cours** (travail qui continue) >
+  dernier lot **clos** (ce qui vient d'être fait, cas le plus fréquent juste après une clôture —
+  sans ce fallback le titre reste nu et ne dit rien de l'avancée réelle) > prochain lot à faire
+  (dernier recours). Puis demande à l'assistant de **proposer** ce nom en clair
   (valeur ajoutée : l'utilisateur l'accepte ou en donne un autre) puis de tenter le renommage réel
   et d'accuser explicitement le résultat — un hook ne peut pas appeler un outil MCP lui-même, ce
   n'est donc qu'une instruction, pas une garantie. Le dialogue d'autorisation du tool de renommage

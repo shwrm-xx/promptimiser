@@ -919,6 +919,8 @@ section('Backlog — auto-clôture au Stop, handoff enrichi, titre de session');
   ok(done1.status === 'done' && !!done1.closed_commit && Number.isFinite(done1.lot_number),
     'auto-clôture : done + commit + lot_number posés');
   ok(backlogLib.currentLot(b1) === null, 'auto-clôture : pas de promotion automatique du suivant');
+  ok(/ : Premier périmètre$/.test(lot.suggestedTitle(repo)),
+    'suggestedTitle après clôture : suffixe = dernier lot CLOS (pas « Deuxième périmètre », le suivant à faire)');
 
   // P5. handoff après clôture : avancement à jour
   runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empty });
@@ -940,6 +942,25 @@ section('Backlog — auto-clôture au Stop, handoff enrichi, titre de session');
   ok(!/clos \(/.test(msg3), 'ambigu : aucun message de clôture');
   const b2 = backlogLib.loadBacklog(repo);
   ok(b2.lots.filter((l) => l.status === 'done').length === 1, 'ambigu : backlog non touché (un seul done)');
+}
+
+// ============================ P2. TITRE DE SESSION QUAND TOUT LE PLAN EST FAIT ============================
+section('suggestedTitle : plan entièrement clos (aucun in_progress ni todo)');
+{
+  const repo = path.join(SANDBOX, 'repo-backlog-alldone');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Correctifs socle', '--model', 'sonnet']);
+  runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
+  runNode(BKLG, ['done', '--cwd', repo, '--id', '1']);
+  const b = backlogLib.loadBacklog(repo);
+  ok(backlogLib.currentLot(b) === null && backlogLib.nextLot(b) === null,
+    'plan sans lot in_progress/todo (précondition du test)');
+  ok(/ : Correctifs socle$/.test(lot.suggestedTitle(repo)),
+    'suggestedTitle : suffixé du dernier lot clos même sans lot en cours/à faire (avant le fix : titre nu)');
 }
 
 // ============================ Q. CONTINUITÉ — PRECOMPACT & SESSIONSTART ============================

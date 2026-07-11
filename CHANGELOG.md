@@ -2,6 +2,24 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.5.14] — 2026-07-11 (fix — titre de session nu quand le plan est entièrement clos)
+
+Retour utilisateur : le titre suggéré pour la session précédente ne montrait que « Epic — Lot N »,
+sans rien qui décrive ce qui avait été fait — le but (suivre l'avancée des développements via le nom
+de session) n'était pas atteint. Cause : `suggestedTitle` (`lib/lot.js`) ne suffixait le titre qu'à
+partir du lot **en cours** ou **à faire** du backlog (`currentLot(b) || nextLot(b)`) ; juste après
+la clôture du dernier lot d'un plan (aucun in_progress, aucun todo restant — le cas le plus courant
+en fin de session), les deux sont `null` et le titre retombe nu.
+
+- **`lib/backlog.js`** : nouvelle fonction `lastDoneLot(b)` — dernier lot clos (plus grand
+  `lot_number`, sinon `closed_at` le plus récent).
+- **`lib/lot.js`** : `suggestedTitle` suffixe désormais avec
+  `currentLot(b) || lastDoneLot(b) || nextLot(b)` — décrit ce qui vient d'être fait plutôt que de
+  retomber nu ou de pointer vers un lot pas encore commencé.
+- **`ARCHITECTURE.md`** : documente le fallback et sa raison d'être.
+- **Tests** : régression couverte (suffixe = dernier lot clos, pas le suivant à faire) + nouveau
+  cas plan entièrement clos (aucun in_progress/todo) → titre suffixé au lieu de nu. 321 OK.
+
 ## [0.5.13] — 2026-07-11 (renommage de session : proposition à valeur ajoutée)
 
 Le dialogue d'autorisation du renommage (`mcp__ccd_session_mgmt__set_session_title`) est un `ask`
