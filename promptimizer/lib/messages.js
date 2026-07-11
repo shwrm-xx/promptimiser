@@ -174,8 +174,8 @@ function backlogResumeMessage(cur, next, prog) {
 function sessionTitleMessage(title) {
   return [
     `Titre de session suggéré : « ${title} ».`,
-    "Essaie de renommer cette session avec ce titre via l'outil de renommage de session s'il est disponible dans ce contexte.",
-    "Confirme ensuite explicitement à l'utilisateur si le renommage a réussi, ou explique pourquoi ce n'était pas possible (outil absent, erreur…) — jamais silencieux sur ce point.",
+    "Renomme la session PRÉCÉDENTE (jamais la session courante — l'outil de renommage la refuse) avec ce titre, via l'outil de renommage de session s'il est disponible dans ce contexte. N'essaie pas de renommer la session courante, ne t'interroge pas dessus : cible directement la précédente.",
+    "Confirme ensuite explicitement à l'utilisateur si le renommage a réussi, ou explique pourquoi ce n'était pas possible (outil absent, session précédente introuvable, erreur…) — jamais silencieux sur ce point.",
   ].join('\n');
 }
 

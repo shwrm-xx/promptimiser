@@ -2,6 +2,16 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.5.12] — 2026-07-11 (fix — formulation du renommage de session)
+
+`sessionTitleMessage` (`lib/messages.js`) disait littéralement « renomme **cette** session » —
+or l'outil de renommage refuse explicitement la session active. L'assistant suivait la
+consigne à la lettre, tentait, échouait, puis expliquait pourquoi au lieu d'agir directement.
+
+- **`lib/messages.js`** : consigne réécrite pour cibler explicitement la session
+  **précédente** ("jamais la session courante — l'outil la refuse"), sans détour ni
+  justification a priori.
+
 ## [0.5.11] — 2026-07-11 (lot B6 — préconisation de modèle par lot)
 
 Chaque lot du plan porte désormais une **préconisation de modèle** (`model_hint`, ex. `sonnet`
