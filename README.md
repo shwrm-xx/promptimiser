@@ -74,7 +74,11 @@ Statut : vert
 
 ## Slash commands (secours)
 
-`/pmz-init` · `/pmz-scope` · `/budget` · `/check-context` · `/close-batch` · `/fresh-session`
+`/pmz-init` · `/pmz-scope` · `/budget` · `/check-context` · `/close-batch` · `/fresh-session` ·
+`/about`
+
+`/about` affiche la version installée de PMZ (`promptimizer/VERSION`, historisée dans
+`CHANGELOG.md` à chaque évolution) ainsi que l'epic et le lot en cours du projet courant.
 
 `/budget` et `/check-context` chiffrent leur statut vert/orange/rouge en **tokens réels**
 (occupation courante du contexte + gaspillage de relecture), avec repli annoncé sur le comptage

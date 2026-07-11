@@ -2,6 +2,24 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-11 (lot 17 — version PMZ historisée + commande about) — PMZ v1
+
+Lot #17 du plan (16/17 → 17/17). Le package n'avait jusqu'ici aucun numéro de version : deux
+installations pouvaient tourner avec un comportement différent sans moyen de le vérifier.
+
+- **`promptimizer/VERSION`** : entier simple (pas de semver, un seul mainteneur), copié tel
+  quel à l'installation. Version actuelle : **1** — ce lot introduit le suivi.
+- **`lib/version.js`** : `readVersion()` (fail-open, `null` si absent/illisible) et
+  `bumpVersion()` (réservé au mainteneur du dépôt source — incrémente et persiste ; jamais
+  appelé par les hooks installés dans un projet cible, qui n'ont pas leur propre version).
+- **`scripts/about.js` + commande `/about`** : affiche la version installée de PMZ, l'epic du
+  projet courant et l'état du backlog (progression, lot en cours ou prochain lot todo). Fail-open
+  partout (hors-git, projet non initialisé, backlog vide → statuts annoncés, jamais de throw).
+- Chaque future évolution notable bumpera `VERSION` et tracera le changement ici — ce fichier
+  devient l'historique de version, pas seulement un journal de commits.
+- **Tests** : 8 assertions ajoutées (lecture VERSION, `/about` sans backlog, avec epic +
+  progression, lot in_progress, hors-git fail-open). 342 OK.
+
 ## 2026-07-11 (fix — le numéro de lot du titre de session ne reste plus figé)
 
 Retour utilisateur (repro sur un autre projet) : le nom de session proposé affichait

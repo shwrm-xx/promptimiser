@@ -186,6 +186,15 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   « lot ouvert » de `stop.js` utilise `gitStatusMeaningful` (porcelain **sans** `.vibe-agent/`) :
   le churn ledgers/handoff ne compte pas comme lot ouvert et ne bloque pas sa clôture.
 
+- **Version de PMZ** (`promptimizer/VERSION`, `lib/version.js`) : entier simple (pas de semver —
+  un seul mainteneur, aucune distinction major/minor/patch utile) versionné avec le package,
+  copié tel quel à l'install. Bumpé **manuellement** par le mainteneur (`bumpVersion()`) à chaque
+  évolution notable, tracé dans `CHANGELOG.md` — jamais incrémenté par les hooks installés dans
+  un projet cible (ce n'est pas leur version à eux). `scripts/about.js` (commande `/about`)
+  l'affiche avec l'epic (`readEpic`) et l'état du backlog (`currentLot`/`nextLot`/`progress`) du
+  projet courant — deux informations distinctes : la version est celle du **package**, l'epic/lot
+  est celui du **projet**.
+
 ## Mapping source → cible & installation
 
 `merge-settings.js` : parse strict (échec → **abort**), backup horodaté vérifié (suffixe `-N`

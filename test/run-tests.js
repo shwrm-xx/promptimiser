@@ -1559,6 +1559,50 @@ section('Nudges haute occupation (UserPromptSubmit >=500k, SessionStart resume >
   ok(/Promptimizer actif/.test(ctxOf(rStart) || ''), 'B5 : non-régression — startup inchangé (MSG_ACTIF en additionalContext)');
 }
 
+// ============================ VERSION PMZ + COMMANDE ABOUT (LOT 17) ============================
+section('Version PMZ historisée + commande about');
+{
+  const version = require(path.join(PKG, 'lib', 'version'));
+  const ABOUT = path.join(PKG, 'scripts', 'about.js');
+
+  ok(/^\d+$/.test(String(version.readVersion())), 'version.js : VERSION du dépôt lisible, entier');
+
+  const repoAbout = path.join(SANDBOX, 'repo-about');
+  fs.mkdirSync(repoAbout, { recursive: true });
+  execFileSync('git', ['init', '-q', repoAbout]);
+  fs.writeFileSync(path.join(repoAbout, 'a.txt'), 'a');
+  execFileSync('git', ['-C', repoAbout, 'add', '.']);
+  execFileSync('git', ['-C', repoAbout, 'commit', '-q', '-m', 'init']);
+
+  // Hors projet initialisé : version affichée quand même, epic/lot annoncés absents.
+  const aBare = runNode(ABOUT, ['--cwd', repoAbout]);
+  ok(/^Version : \d+/m.test(aBare.out), 'about : affiche la version même sans backlog');
+  ok(/non initialisé/.test(aBare.out), 'about : projet non initialisé annoncé explicitement');
+
+  // Projet initialisé avec un plan de lots : epic + progression + lot en cours/prochain.
+  const backlog = require(path.join(PKG, 'lib', 'backlog'));
+  const project = require(path.join(PKG, 'lib', 'project'));
+  project.ensureLedger(repoAbout);
+  fs.writeFileSync(path.join(repoAbout, '.vibe-agent', 'epic'), 'mon-epic-test\n');
+  backlog.addLot(repoAbout, 'Premier lot', 'scope test', null);
+  const aPlan = runNode(ABOUT, ['--cwd', repoAbout]);
+  ok(/Epic : mon-epic-test/.test(aPlan.out), 'about : affiche l\'epic du projet');
+  ok(/Progression : 0\/1 lots faits/.test(aPlan.out), 'about : affiche la progression du backlog');
+  ok(/Prochain lot : #\d+ Premier lot/.test(aPlan.out), 'about : affiche le prochain lot todo');
+
+  const b = backlog.loadBacklog(repoAbout);
+  backlog.startLot(repoAbout, b.lots[0].id);
+  const aInProgress = runNode(ABOUT, ['--cwd', repoAbout]);
+  ok(/Lot en cours : #\d+ Premier lot/.test(aInProgress.out), 'about : affiche le lot in_progress');
+
+  // Fail-open : dossier hors-git -> jamais de throw, exit 0.
+  const outside = path.join(SANDBOX, 'no-git-about');
+  fs.mkdirSync(outside, { recursive: true });
+  const aOutside = runNode(ABOUT, ['--cwd', outside]);
+  ok(aOutside.code === 0, 'about : hors-git -> exit 0 (fail-open)');
+  ok(/non initialisé/.test(aOutside.out), 'about : hors-git -> statut non initialisé annoncé');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);
