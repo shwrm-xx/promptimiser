@@ -2,6 +2,16 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-11 (fix — commande renommée /about → /pmz-about)
+
+Retour utilisateur : le nom `/about` était trop générique (risque de collision avec d'autres
+plugins/commandes). Renommée en `/pmz-about`, préfixée comme les autres commandes structurantes
+du package (`/pmz-init`, `/pmz-scope`).
+
+- `promptimizer/commands/about.md` → `promptimizer/commands/pmz-about.md` (contenu inchangé,
+  le script sous-jacent `scripts/about.js` garde son nom).
+- README/ARCHITECTURE mis à jour.
+
 ## 2026-07-11 (lot 17 — version PMZ historisée + commande about) — PMZ v1
 
 Lot #17 du plan (16/17 → 17/17). Le package n'avait jusqu'ici aucun numéro de version : deux
