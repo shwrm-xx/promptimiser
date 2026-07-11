@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 13,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-10T22:39:31.015Z",
+  "updated_at": "2026-07-11T06:47:57.268Z",
   "lots": [
     {
       "id": 1,
@@ -118,11 +118,11 @@
       "id": 11,
       "title": "Lot B5 — nudges haute occupation",
       "scope": "fait quand : UserPromptSubmit injecte additionalContext 2 lignes si occ>=500k (1x/palier, cle occ_<bucket> dans prompt_reminders) ; SessionStart source=resume si occ>=300k emet systemMessage (zero token injecte) ; tests injection 1x + silence sous seuil + resume systemMessage + non-regression startup verts.",
-      "status": "todo",
-      "closed_commit": null,
-      "closed_at": null,
-      "started_at": null,
-      "lot_number": null,
+      "status": "done",
+      "closed_commit": "6848313",
+      "closed_at": "2026-07-11T06:47:57.267Z",
+      "started_at": "2026-07-11T06:47:57.152Z",
+      "lot_number": 4,
       "note": null
     },
     {
