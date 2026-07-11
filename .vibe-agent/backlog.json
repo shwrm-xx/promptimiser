@@ -218,7 +218,7 @@
       "scope": "fait quand : chaque évolution de PMZ incrémente un numéro de version stocké et historisé (fichier VERSION + trace dans CHANGELOG.md), et une commande/affichage about expose cette version courante ainsi que l'epic/lot en cours",
       "status": "done",
       "model_hint": "sonnet",
-      "closed_commit": "d856599",
+      "closed_commit": "6d2af97",
       "closed_at": "2026-07-11T15:15:37.955Z",
       "closed_session_id": null,
       "started_at": null,
