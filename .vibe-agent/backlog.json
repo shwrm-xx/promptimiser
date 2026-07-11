@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 15,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-11T12:15:01.691Z",
+  "updated_at": "2026-07-11T12:15:20.604Z",
   "lots": [
     {
       "id": 1,
@@ -177,13 +177,13 @@
       "id": 14,
       "title": "Fix — suggestedTitle n'attribue pas un lot à la mauvaise session",
       "scope": "fait quand : closed_session_id trace la session qui clot un lot ; suggestedTitle ne suffixe le dernier lot clos que si la session precedente correspond (previousSessionId), sinon retombe au lieu de mentir",
-      "status": "in_progress",
+      "status": "done",
       "model_hint": "sonnet",
-      "closed_commit": null,
-      "closed_at": null,
+      "closed_commit": "83060b8",
+      "closed_at": "2026-07-11T12:15:20.603Z",
       "closed_session_id": null,
       "started_at": "2026-07-11T12:15:01.690Z",
-      "lot_number": null,
+      "lot_number": 8,
       "note": null
     }
   ]
