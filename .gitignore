@@ -9,3 +9,6 @@ node_modules/
 
 # État PMZ éphémère (réécrit à chaque fin de tour)
 .vibe-agent/handoff.md
+
+# Dépôt git imbriqué (checkout séparé), hors périmètre de ce dépôt
+/pmz/

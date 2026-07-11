@@ -2,6 +2,12 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-11 (chore — /pmz/ ignoré)
+
+`/pmz/` est un dépôt git imbriqué (checkout séparé, hors périmètre) qui traînait non suivi à la
+racine et empêchait l'auto-clôture des lots au Stop (working tree jamais « propre »). Ajouté au
+`.gitignore` sur confirmation de l'utilisateur.
+
 ## [0.5.15] — 2026-07-11 (suggestedTitle : ne pas attribuer un lot clos à la mauvaise session)
 
 Suite du lot précédent : `lastDoneLot` décrit ce qui vient d'être fait, mais uniquement en se
