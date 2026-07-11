@@ -2,6 +2,24 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-11 (fix — suggestedTitle déduit un titre quand le plan n'en offre aucun)
+
+Retour utilisateur : le nom de session proposé pour la session précédente n'affichait parfois
+que « Epic — Lot N », sans rien qui décrive ce qui avait été fait — cas du backlog absent ou
+vide (`lots: []`), où aucun lot n'existe pour fournir un titre à suffixer.
+
+- **`lib/lot.js`** : `suggestedTitle` — quand le plan de lots n'a lui-même **aucun titre à
+  offrir** (backlog absent ou vide), déduit un intitulé des infos disponibles au lieu de
+  retomber nu : dernier résumé `CHANGELOG.md` (parenthèse finale du dernier titre `##` ;
+  ignorée si ce n'est qu'un marqueur `(lot N)` non descriptif), sinon sujet du dernier commit.
+- Cette déduction ne s'applique **jamais** quand un lot existe dans le plan mais est écarté
+  comme périmé (cf. lot #14) : un titre existe alors, il est volontairement tu — le remplacer
+  par une supposition externe reviendrait à mentir.
+- **`ARCHITECTURE.md`** à jour. **Tests** : 5 assertions ajoutées (déduction CHANGELOG, repli
+  git quand la parenthèse n'est qu'un marqueur `(lot N)`, aucune info disponible → titre nu,
+  `backlog.json` avec `lots:[]` traité comme absent, non-régression du cas « lot périmé » qui ne
+  doit jamais utiliser cette déduction). 330 OK.
+
 ## 2026-07-11 (chore — /pmz/ ignoré)
 
 `/pmz/` est un dépôt git imbriqué (checkout séparé, hors périmètre) qui traînait non suivi à la

@@ -4,7 +4,7 @@
 // Fail-silent partout : au pire on retombe sur lot 1 / nom de dossier.
 const fs = require('fs');
 const path = require('path');
-const { vibeDir } = require('./project');
+const { vibeDir, git } = require('./project');
 const { writeAtomic, readJson } = require('./fsjson');
 
 function counterFile(root) {
@@ -62,6 +62,35 @@ function withSuffix(base, l) {
   return `${base} : ${l.title.length > 40 ? l.title.slice(0, 39) + '…' : l.title}`;
 }
 
+// Intitulé déduit du dernier titre `## ...` de CHANGELOG.md (parenthèse finale de la
+// ligne, convention de ce dépôt : « ## [x.y.z] — date (résumé) » ou « ## date (résumé) »).
+// Ignore une parenthèse qui n'est qu'un marqueur « (lot N) » : déjà repris par le
+// numéro de la base, pas descriptif en soi.
+function deduceFromChangelog(root) {
+  try {
+    const content = fs.readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8');
+    const heading = content.split(/\r?\n/).find((l) => /^##\s+/.test(l));
+    if (!heading) return null;
+    const m = heading.match(/\(([^)]+)\)\s*$/);
+    if (!m) return null;
+    const text = m[1].trim();
+    if (!text || /^lot\s+\d+$/i.test(text)) return null;
+    return text;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Dernier recours : sujet du dernier commit (quasi toujours présent — un lot, c'est
+// un commit, cf. discipline de dépôt).
+function deduceFromGit(root) {
+  return git(['log', '-1', '--format=%s'], root) || null;
+}
+
+function deduceTitle(root) {
+  return deduceFromChangelog(root) || deduceFromGit(root);
+}
+
 function suggestedTitle(root) {
   const base = `${readEpic(root)} — Lot ${getLotCounter(root) + 1}`;
   try {
@@ -70,29 +99,40 @@ function suggestedTitle(root) {
     const backlog = require('./backlog');
     const { previousSessionId } = require('./state');
     const b = backlog.loadBacklog(root);
-    // Lot en cours (travail qui continue) : toujours le suffixe le plus sûr.
-    const cur = backlog.currentLot(b);
-    if (cur) return withSuffix(base, cur);
-    // Dernier lot clos = ce qui vient d'être fait, cas le plus fréquent juste après une
-    // clôture (sinon le titre retombe nu). Mais un lot clos par une session ANTÉRIEURE à
-    // la précédente ne décrit pas cette session-là (ex. une session « état des lieux »
-    // qui n'a rien clos) : on ne l'affiche que si aucune preuve du contraire n'existe —
-    // closed_session_id absent (clôture manuelle/ancienne, pas de trace) => on l'affiche
-    // quand même (mieux qu'un titre nu) ; closed_session_id présent mais différent de la
-    // session précédente réelle => clôture avérée plus ancienne, on le tait.
-    const last = backlog.lastDoneLot(b);
-    if (last) {
-      const prevSid = previousSessionId(root);
-      const knownStale = last.closed_session_id && prevSid && last.closed_session_id !== prevSid;
-      if (!knownStale) return withSuffix(base, last);
+    if (b.lots.length) {
+      // Lot en cours (travail qui continue) : toujours le suffixe le plus sûr.
+      const cur = backlog.currentLot(b);
+      if (cur) return withSuffix(base, cur);
+      // Dernier lot clos = ce qui vient d'être fait, cas le plus fréquent juste après une
+      // clôture (sinon le titre retombe nu). Mais un lot clos par une session ANTÉRIEURE à
+      // la précédente ne décrit pas cette session-là (ex. une session « état des lieux »
+      // qui n'a rien clos) : on ne l'affiche que si aucune preuve du contraire n'existe —
+      // closed_session_id absent (clôture manuelle/ancienne, pas de trace) => on l'affiche
+      // quand même (mieux qu'un titre nu) ; closed_session_id présent mais différent de la
+      // session précédente réelle => clôture avérée plus ancienne, on le tait.
+      const last = backlog.lastDoneLot(b);
+      if (last) {
+        const prevSid = previousSessionId(root);
+        const knownStale = last.closed_session_id && prevSid && last.closed_session_id !== prevSid;
+        if (!knownStale) return withSuffix(base, last);
+      }
+      // Prochain lot à faire : dernier recours, encore à venir.
+      const next = backlog.nextLot(b);
+      if (next) return withSuffix(base, next);
+      // Plan non vide mais rien d'exploitable pour CETTE session (lot clos périmé, rien
+      // à faire ensuite) : un titre EXISTE dans le plan mais ne décrit pas la session
+      // précédente — le taire plutôt que le remplacer par une autre supposition (même
+      // logique que le fix « ne jamais mentir sur ce qui a été fait »).
+      return base;
     }
-    // Prochain lot à faire : dernier recours, encore à venir.
-    const next = backlog.nextLot(b);
-    if (next) return withSuffix(base, next);
   } catch (_) {
-    /* fail-open : titre de base */
+    /* fail-open : on tente quand même la déduction ci-dessous */
   }
-  return base;
+  // Aucun titre dans le plan (backlog absent ou vide) : on en déduit un des infos
+  // disponibles (dernier titre CHANGELOG, sinon dernier commit) plutôt que de retomber
+  // sur un titre nu, non descriptif.
+  const deduced = deduceTitle(root);
+  return deduced ? withSuffix(base, { title: deduced }) : base;
 }
 
 module.exports = { readEpic, getLotCounter, incrementLot, suggestedTitle };

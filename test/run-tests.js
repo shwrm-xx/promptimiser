@@ -1002,6 +1002,77 @@ section('suggestedTitle : un lot clos par une session plus ancienne ne doit pas 
     'titre retombe sur la forme nue plutôt que de mentir sur ce qui vient de se passer');
 }
 
+// ============================ P4. suggestedTitle DÉDUIT UN TITRE SANS PLAN DE LOTS ============================
+section('suggestedTitle : déduction depuis CHANGELOG/git quand le plan n\'a aucun titre à offrir');
+{
+  // Pas de backlog du tout + CHANGELOG.md avec un résumé descriptif en parenthèse
+  // finale du dernier titre « ## » -> déduit comme intitulé de session.
+  const repo = path.join(SANDBOX, 'repo-deduce-changelog');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'CHANGELOG.md'),
+    '# Changelog\n\n## 2026-07-11 (chore — /pmz/ ignoré)\n\ntexte\n\n## 2026-07-10 (ancien)\n');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  ok(/ : chore — \/pmz\/ ignoré$/.test(lot.suggestedTitle(repo)),
+    'pas de backlog : titre déduit du dernier résumé CHANGELOG');
+}
+{
+  // CHANGELOG présent mais parenthèse = simple marqueur « (lot N) », pas descriptif
+  // -> ignoré, on retombe sur le sujet du dernier commit.
+  const repo = path.join(SANDBOX, 'repo-deduce-git');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'CHANGELOG.md'), '## 2026-07-11 (lot 3)\n');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'fix: corrige le calcul du quota']);
+  ok(/ : fix: corrige le calcul du quota$/.test(lot.suggestedTitle(repo)),
+    '« (lot N) » écarté (non descriptif) : titre déduit du sujet du dernier commit');
+}
+{
+  // Ni CHANGELOG ni commit exploitable -> titre nu (comportement inchangé, non-régression).
+  const repo = path.join(SANDBOX, 'repo-deduce-none');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  ok(lot.suggestedTitle(repo) === `${path.basename(repo)} — Lot ${lot.getLotCounter(repo) + 1}`,
+    'aucune info disponible : titre nu (pas de déduction possible)');
+}
+{
+  // Backlog.json présent mais lots vides ([]) -> même déduction que backlog absent.
+  const repo = path.join(SANDBOX, 'repo-deduce-emptybacklog');
+  fs.mkdirSync(path.join(repo, '.vibe-agent'), { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, '.vibe-agent', 'backlog.json'),
+    JSON.stringify({ version: 1, next_id: 1, lots: [] }));
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'chore: mise en place du socle']);
+  ok(/ : chore: mise en place du socle$/.test(lot.suggestedTitle(repo)),
+    'backlog.json avec lots:[] traité comme « pas de titre dans le plan » -> déduction');
+}
+{
+  // Backlog non vide mais rien d'exploitable pour CETTE session (lot clos périmé,
+  // rien à faire ensuite) : la déduction NE DOIT PAS s'appliquer (un titre existe dans
+  // le plan, il est juste tu à raison — cf. P3) même si CHANGELOG/git offrent un texte.
+  const repo = path.join(SANDBOX, 'repo-deduce-notstale-skip');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'CLAUDE.md'), 'règles');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const empty = path.join(SANDBOX, 'empty.jsonl');
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Travail session A', '--model', 'sonnet']);
+  runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
+  fs.writeFileSync(path.join(repo, 'w.txt'), 'x');
+  runHook('stop.js', { session_id: 'sess-A2', cwd: repo, transcript_path: empty });
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'fix: ceci ne doit PAS apparaître dans le titre']);
+  runHook('stop.js', { session_id: 'sess-A2', cwd: repo, transcript_path: empty });
+  runHook('session-start.js', { source: 'startup', session_id: 'sess-B2', cwd: repo, transcript_path: empty });
+  const t = lot.suggestedTitle(repo);
+  ok(!/ceci ne doit PAS apparaître/.test(t) && !/ : Travail session A$/.test(t),
+    'lot clos périmé sans lot suivant : pas de repli sur git/CHANGELOG (ça mentirait)');
+}
+
 // ============================ Q. CONTINUITÉ — PRECOMPACT & SESSIONSTART ============================
 section('Continuité — PreCompact sauve le handoff, compact réinjecte le lot, fallback backlog');
 {

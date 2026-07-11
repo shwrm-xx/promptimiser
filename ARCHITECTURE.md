@@ -136,7 +136,15 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   courante) : sans ça, une session qui n'a rien clos (ex. un simple état des lieux) hériterait à
   tort du titre du lot fermé par une session antérieure. Sans trace de session (clôture
   manuelle/ancienne, champ absent), on l'affiche quand même — mieux qu'un titre nu, et rien ne
-  prouve que c'est faux. Puis demande à l'assistant de **proposer** ce nom en clair
+  prouve que c'est faux. Si le plan de lots n'a **lui-même aucun titre à offrir** (backlog absent
+  ou `lots: []` — retour utilisateur : un titre nu ne sert à rien pour retracer l'avancée),
+  `suggestedTitle` **déduit** un intitulé des infos disponibles plutôt que de retomber nu : dernier
+  résumé `CHANGELOG.md` (parenthèse finale du dernier titre `##` — convention de ce dépôt — ignorée
+  si ce n'est qu'un marqueur `(lot N)` non descriptif), sinon sujet du dernier commit. Cette
+  déduction ne s'applique **jamais** quand le plan contient un lot mais qu'il est écarté comme
+  périmé (cas ci-dessus) : un titre existe alors dans le plan, il est volontairement tu — le
+  remplacer par une supposition externe reviendrait à mentir de la même façon que ce que le fix
+  visait à éliminer. Puis demande à l'assistant de **proposer** ce nom en clair
   (valeur ajoutée : l'utilisateur l'accepte ou en donne un autre) puis de tenter le renommage réel
   et d'accuser explicitement le résultat — un hook ne peut pas appeler un outil MCP lui-même, ce
   n'est donc qu'une instruction, pas une garantie. Le dialogue d'autorisation du tool de renommage
