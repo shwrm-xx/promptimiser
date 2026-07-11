@@ -241,3 +241,12 @@ restauration) et **signale** un sidecar corrompu au lieu de l'avaler. Écriture 
   fois sur 76 sessions malgré des rappels de coût réguliers — l'écart entre « le mécanisme
   passif tourne » et « le mécanisme actif est suivi » vient en partie du fait qu'il fallait
   deviner la commande.
+- **Clôture proposée en fenêtre à choix (OK/Non), jamais auto-exécutée** : quand le LLM estime
+  un lot fini, il doit poser la question via l'outil de question à choix cliquable (pas du texte
+  de chat), et attendre le OK avant de dérouler `/close-batch` (commit inclus). C'est une
+  instruction comportementale (`MSG_ACTIF`, `MSG_CLOTURE` dans `lib/messages.js`, et
+  `templates/CLAUDE.md`) — les hooks restent fail-open et ne peuvent pas ouvrir de dialogue
+  bloquant, donc ils ne font que *rappeler* de poser la question, jamais la poser eux-mêmes ni
+  committer. Alternative écartée : auto-exécution complète (commit compris) sans attendre de
+  validation — rejetée parce qu'elle casse le principe « fait = prouvé » (personne ne vérifie le
+  jugement du LLM sur « j'ai fini ») et la règle « ne jamais committer sans demande explicite ».

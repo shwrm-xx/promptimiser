@@ -2,6 +2,20 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-11 (lot 18 — clôture de lot proposée en fenêtre OK/Non)
+
+Retour utilisateur : la clôture de lot doit être demandée via une fenêtre de question à choix
+cliquable (OK/Non), pas en texte libre dans le chat. Auto-exécution complète (commit compris)
+écartée : casse « fait = prouvé » et « ne jamais committer sans demande explicite ».
+
+- `promptimizer/lib/messages.js` : `MSG_ACTIF` et `MSG_CLOTURE` demandent désormais de proposer
+  la clôture via une question à choix (OK/Non) avant de dérouler `/close-batch`.
+- `promptimizer/templates/CLAUDE.md` : même règle ajoutée en Priorité 2, pour qu'elle persiste
+  dans les projets qui déploient PMZ.
+- `ARCHITECTURE.md` : décision documentée (pourquoi pas l'auto-exécution complète).
+- Tests : `node test/run-tests.js` inchangés et verts (342 OK) — les assertions existantes sur
+  `MSG_CLOTURE`/`MSG_ACTIF` restent satisfaites (contenu étendu, pas remplacé).
+
 ## 2026-07-11 (fix — commande renommée /about → /pmz-about)
 
 Retour utilisateur : le nom `/about` était trop générique (risque de collision avec d'autres

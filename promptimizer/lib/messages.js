@@ -6,7 +6,8 @@ const MSG_ACTIF = [
   'Promptimizer actif.',
   'Priorité : réduire les relectures de contexte.',
   'Utilise git grep/git diff avant Read complet.',
-  'Clôture chaque lot par vérif ciblée + changelog + commit + handoff court.',
+  'Lot terminé : propose la clôture via une question à choix (OK / Non), jamais en texte',
+  'libre ; sur OK, déroule /close-batch (vérif ciblée + changelog + commit + handoff court).',
 ].join('\n');
 
 const MSG_NON_INIT = [
@@ -24,7 +25,8 @@ const MSG_LECTURE = [
 
 const MSG_CLOTURE = [
   'Lot modifié sans clôture complète.',
-  'Lance /close-batch pour la checklist et l\'audit complets (vérif ciblée, CHANGELOG, commit, handoff).',
+  'Propose la clôture via une question à choix (OK / Non) — pas en texte libre ; sur OK,',
+  'lance /close-batch pour la checklist et l\'audit complets (vérif ciblée, CHANGELOG, commit, handoff).',
 ].join('\n');
 
 const MSG_HANDOFF = [

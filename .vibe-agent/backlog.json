@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "next_id": 18,
+  "next_id": 19,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-11T15:15:37.956Z",
+  "updated_at": "2026-07-11T15:32:59.900Z",
   "lots": [
     {
       "id": 1,
@@ -223,6 +223,19 @@
       "closed_session_id": null,
       "started_at": null,
       "lot_number": 11,
+      "note": null
+    },
+    {
+      "id": 18,
+      "title": "Clôture de lot proposée en fenêtre OK/Non",
+      "scope": "fait quand : instruction cohérente (MSG_ACTIF + MSG_CLOTURE + templates/CLAUDE.md) pour proposer la clôture via question à choix cliquable au lieu de texte libre ; ARCHITECTURE.md documente le contrat ; tests ajustés/verts (node test/run-tests.js)",
+      "status": "in_progress",
+      "model_hint": "sonnet",
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "started_at": "2026-07-11T15:32:59.900Z",
+      "lot_number": null,
       "note": null
     }
   ]

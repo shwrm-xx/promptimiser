@@ -19,6 +19,8 @@ Ce fichier doit rester court : il est chargé à chaque session.
 - Vérifier uniquement ce qui a changé.
 - Mettre à jour `CHANGELOG.md`.
 - Un lot = un commit.
+- Lot terminé : proposer la clôture via une question à choix (OK / Non), jamais en texte
+  libre. Sur OK, dérouler `/close-batch` ; sur Non, continuer.
 
 ## Définition de « fini »
 - demande traitée ;
