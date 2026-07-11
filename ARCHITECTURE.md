@@ -132,7 +132,14 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   (`lib/lot.js: suggestedTitle`, 40c) — priorité : lot **en cours** (travail qui continue) >
   dernier lot **clos** (ce qui vient d'être fait, cas le plus fréquent juste après une clôture —
   sans ce fallback le titre reste nu et ne dit rien de l'avancée réelle) > prochain lot à faire
-  (dernier recours). Le dernier lot clos n'est retenu que s'il ne peut pas être attribué à une
+  (dernier recours). **Le N affiché est l'ID backlog du lot retenu** (`lib/backlog.js`, le
+  référentiel que l'utilisateur voit dans `backlog.js show`), **jamais** `lot-counter.json` —
+  ce compteur avance à chaque transition working-tree sale → propre, y compris sur un commit de
+  bookkeeping de clôture qui n'ajoute aucun lot, et dérivait donc du numéro backlog au fil du
+  projet (retour utilisateur : titre « Lot 14 » alors que le backlog affichait déjà #17 — fix
+  2026-07-11). `lot-counter.json`/`getLotCounter` restent le seul recours quand le plan n'a
+  **aucun** lot exploitable (backlog absent/vide, ou lot écarté comme périmé — cas ci-dessous) :
+  il n'existe alors aucun autre référentiel pour numéroter. Le dernier lot clos n'est retenu que s'il ne peut pas être attribué à une
   session **plus ancienne** que la précédente (`lot.closed_session_id`, posé par `stop.js` à la
   clôture, comparé à `lib/state.js: previousSessionId` — le `session_id` brut lu dans
   `session-state.json` **avant** que `session-start.js` ne l'écrase avec celui de la session

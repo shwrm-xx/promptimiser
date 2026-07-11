@@ -2,6 +2,23 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-11 (fix — numérotation du titre de session dérivait du numéro backlog)
+
+Retour utilisateur : le titre de session affichait un numéro de lot (« Lot 14 ») déconnecté
+du référentiel réel (`backlog.js show` affichait déjà #17). Cause : `suggestedTitle`
+(`lib/lot.js`) construisait le numéro depuis `lot-counter.json`, un compteur qui avance à
+chaque transition working-tree sale → propre — y compris sur un commit de bookkeeping de
+clôture backlog qui n'ajoute aucun lot — et dérivait donc de l'ID backlog au fil du projet.
+
+- `lib/lot.js` : le numéro affiché dans le titre de session est désormais l'**ID du lot
+  backlog** retenu (lot en cours / dernier clos / suivant à faire), jamais `lot-counter.json`.
+  Le compteur reste le seul recours quand le plan n'offre aucun lot exploitable (backlog
+  absent/vide, ou lot écarté comme périmé) — faute d'un autre référentiel dans ce cas.
+- `ARCHITECTURE.md` mis à jour (mécanisme + raison de l'ancien comportement).
+- Tests : 3 nouvelles assertions simulant la dérive du compteur (`test/run-tests.js`) —
+  vérifient que le titre suit l'ID backlog même quand `lot-counter.json` a avancé plus vite.
+  `node test/run-tests.js` : 345 OK, 0 échec.
+
 ## 2026-07-11 (lot 18 — clôture de lot proposée en fenêtre OK/Non)
 
 Retour utilisateur : la clôture de lot doit être demandée via une fenêtre de question à choix

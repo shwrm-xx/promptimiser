@@ -58,8 +58,20 @@ function incrementLot(root) {
   return next;
 }
 
+function truncateTitle(title) {
+  return title.length > 40 ? title.slice(0, 39) + '…' : title;
+}
+
 function withSuffix(base, l) {
-  return `${base} : ${l.title.length > 40 ? l.title.slice(0, 39) + '…' : l.title}`;
+  return `${base} : ${truncateTitle(l.title)}`;
+}
+
+// Numéro affiché dans le titre pour un lot backlog donné : l'ID du backlog (le
+// référentiel que l'utilisateur voit dans `backlog.js show`), jamais le compteur
+// lot-counter.json qui avance indépendamment (y compris sur des commits de
+// bookkeeping de clôture) et dérive donc du numéro backlog au fil du projet.
+function titleForBacklogLot(epic, l) {
+  return `${epic} — Lot ${l.id} : ${truncateTitle(l.title)}`;
 }
 
 // Intitulé déduit du dernier titre `## ...` de CHANGELOG.md (parenthèse finale de la
@@ -92,7 +104,8 @@ function deduceTitle(root) {
 }
 
 function suggestedTitle(root) {
-  const base = `${readEpic(root)} — Lot ${getLotCounter(root) + 1}`;
+  const epic = readEpic(root);
+  const base = `${epic} — Lot ${getLotCounter(root) + 1}`;
   try {
     // require paresseux : backlog.js require lot.js en tête, un require en tête ici
     // créerait un cycle de modules.
@@ -100,9 +113,13 @@ function suggestedTitle(root) {
     const { previousSessionId } = require('./state');
     const b = backlog.loadBacklog(root);
     if (b.lots.length) {
-      // Lot en cours (travail qui continue) : toujours le suffixe le plus sûr.
+      // Lot en cours (travail qui continue) : toujours le suffixe le plus sûr. Le numéro
+      // affiché est l'ID backlog du lot (référentiel vu par l'utilisateur dans
+      // `backlog.js show`), pas le compteur lot-counter.json — ce dernier avance
+      // indépendamment (y compris sur des commits de bookkeeping de clôture) et dérive
+      // donc du numéro backlog au fil du projet.
       const cur = backlog.currentLot(b);
-      if (cur) return withSuffix(base, cur);
+      if (cur) return titleForBacklogLot(epic, cur);
       // Dernier lot clos = ce qui vient d'être fait, cas le plus fréquent juste après une
       // clôture (sinon le titre retombe nu). Mais un lot clos par une session ANTÉRIEURE à
       // la précédente ne décrit pas cette session-là (ex. une session « état des lieux »
@@ -114,11 +131,11 @@ function suggestedTitle(root) {
       if (last) {
         const prevSid = previousSessionId(root);
         const knownStale = last.closed_session_id && prevSid && last.closed_session_id !== prevSid;
-        if (!knownStale) return withSuffix(base, last);
+        if (!knownStale) return titleForBacklogLot(epic, last);
       }
       // Prochain lot à faire : dernier recours, encore à venir.
       const next = backlog.nextLot(b);
-      if (next) return withSuffix(base, next);
+      if (next) return titleForBacklogLot(epic, next);
       // Plan non vide mais rien d'exploitable pour CETTE session (lot clos périmé, rien
       // à faire ensuite) : un titre EXISTE dans le plan mais ne décrit pas la session
       // précédente — le taire plutôt que le remplacer par une autre supposition (même

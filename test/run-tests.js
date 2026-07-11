@@ -974,6 +974,39 @@ section('Backlog — auto-clôture au Stop, handoff enrichi, titre de session');
   ok(b2.lots.filter((l) => l.status === 'done').length === 1, 'ambigu : backlog non touché (un seul done)');
 }
 
+// ============================ P1bis. LE NUMÉRO DU TITRE SUIT L'ID BACKLOG, PAS lot-counter =====
+section('suggestedTitle : le numéro affiché suit l\'ID backlog même si lot-counter a dérivé');
+{
+  // lot-counter.json avance à chaque transition working-tree sale -> propre (y compris
+  // des commits de bookkeeping de clôture backlog qui n'ajoutent aucun lot) : il peut
+  // donc être très en avance sur l'ID backlog réel. Le titre doit rester fidèle à l'ID
+  // backlog (le référentiel que l'utilisateur voit dans `backlog.js show`), jamais au
+  // compteur interne.
+  const repo = path.join(SANDBOX, 'repo-lotnum-driftguard');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Huitième périmètre', '--model', 'sonnet']);
+  runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
+  // Simule la dérive : plusieurs commits de bookkeeping ont fait avancer lot-counter
+  // bien au-delà de l'ID backlog (ici #1).
+  lot.incrementLot(repo);
+  lot.incrementLot(repo);
+  lot.incrementLot(repo);
+  lot.incrementLot(repo);
+  ok(lot.getLotCounter(repo) === 4, 'précondition : lot-counter a dérivé à 4 (≠ ID backlog 1)');
+  ok(lot.suggestedTitle(repo) === `${path.basename(repo)} — Lot 1 : Huitième périmètre`,
+    'lot en cours : titre = Lot <ID backlog>, pas Lot <lot-counter dérivé>');
+
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Neuvième périmètre', '--model', 'sonnet']);
+  runNode(BKLG, ['done', '--cwd', repo, '--id', '1']);
+  runNode(BKLG, ['start', '--cwd', repo, '--id', '2']);
+  ok(lot.suggestedTitle(repo) === `${path.basename(repo)} — Lot 2 : Neuvième périmètre`,
+    'lot suivant démarré : titre passe à Lot <nouvel ID backlog>, indépendamment du compteur');
+}
+
 // ============================ P2. TITRE DE SESSION QUAND TOUT LE PLAN EST FAIT ============================
 section('suggestedTitle : plan entièrement clos (aucun in_progress ni todo)');
 {
