@@ -2,6 +2,24 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.5.13] — 2026-07-11 (renommage de session : proposition à valeur ajoutée)
+
+Le dialogue d'autorisation du renommage (`mcp__ccd_session_mgmt__set_session_title`) est un `ask`
+**câblé côté serveur** par Claude Code Desktop : vérifié (guide Claude Code) qu'aucune config user
+ne le supprime — ni `permissions.allow`, ni `bypassPermissions`, ni un hook PreToolUse « allow ».
+Ce tool n'appartient pas à ce dépôt (`git grep` → 0 occurrence), PMZ ne fait que l'appeler.
+
+Puisque l'autorisation est incontournable, on la transforme en **valeur ajoutée** plutôt que de la
+subir : l'assistant annonce désormais le nom proposé **en clair dans sa réponse** (pas seulement
+enfoui dans le JSON du dialogue) et invite explicitement l'utilisateur à l'accepter ou à en donner
+un autre. Le clic « Autoriser » devient une simple validation de nom.
+
+- **`lib/messages.js`** : `sessionTitleMessage` réécrit — proposition de nommage en clair +
+  invitation à changer le nom + cadrage de l'autorisation comme validation (non contournable).
+- **`ARCHITECTURE.md`** : documente le `ask` câblé côté serveur et le pourquoi du cadrage.
+- Feedback remonté à Anthropic (`/feedback`) : permettre d'auto-approuver les tools de gestion de
+  session.
+
 ## [0.5.12] — 2026-07-11 (fix — formulation du renommage de session)
 
 `sessionTitleMessage` (`lib/messages.js`) disait littéralement « renomme **cette** session » —

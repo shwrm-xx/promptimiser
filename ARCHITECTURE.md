@@ -125,9 +125,14 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   propre), `stop.js` incrémente aussi le **compteur de lot** (`.vibe-agent/lot-counter.json`,
   `lib/lot.js`) — amorcé depuis le plus grand `(lot N)` déjà présent dans `CHANGELOG.md` s'il en
   existe. `session-start.js` en déduit un titre de session suggéré (« Epic — Lot N », epic =
-  `.vibe-agent/epic` ou nom du dossier) et demande à l'assistant de tenter le renommage réel puis
-  d'accuser explicitement le résultat (réussite, ou pourquoi pas) — un hook ne peut pas appeler un
-  outil MCP lui-même, ce n'est donc qu'une instruction, pas une garantie.
+  `.vibe-agent/epic` ou nom du dossier) et demande à l'assistant de **proposer** ce nom en clair
+  (valeur ajoutée : l'utilisateur l'accepte ou en donne un autre) puis de tenter le renommage réel
+  et d'accuser explicitement le résultat — un hook ne peut pas appeler un outil MCP lui-même, ce
+  n'est donc qu'une instruction, pas une garantie. Le dialogue d'autorisation du tool de renommage
+  (`mcp__ccd_session_mgmt__set_session_title`, fourni par Claude Code Desktop, hors de ce dépôt)
+  est un `ask` **câblé côté serveur** : ni `permissions.allow`, ni `bypassPermissions`, ni un hook
+  PreToolUse « allow » ne le suppriment. PMZ ne peut donc pas l'auto-approuver — il le transforme
+  en simple validation du nom proposé.
 - **Plan de lots** (`.vibe-agent/backlog.json`, `lib/backlog.js` + CLI `scripts/backlog.js`) :
   le lot comme **objet persistant trans-session** — id, titre, « fait quand », statut
   (`todo|in_progress|done|dropped`), **préconisation de modèle** (`model_hint`, ex. `sonnet`/

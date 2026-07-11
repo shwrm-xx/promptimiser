@@ -173,9 +173,11 @@ function backlogResumeMessage(cur, next, prog) {
 
 function sessionTitleMessage(title) {
   return [
-    `Titre de session suggéré : « ${title} ».`,
-    "Renomme la session PRÉCÉDENTE (jamais la session courante — l'outil de renommage la refuse) avec ce titre, via l'outil de renommage de session s'il est disponible dans ce contexte. N'essaie pas de renommer la session courante, ne t'interroge pas dessus : cible directement la précédente.",
-    "Confirme ensuite explicitement à l'utilisateur si le renommage a réussi, ou explique pourquoi ce n'était pas possible (outil absent, session précédente introuvable, erreur…) — jamais silencieux sur ce point.",
+    `Titre suggéré pour la session PRÉCÉDENTE : « ${title} ».`,
+    `Présente-le d'abord comme une PROPOSITION de nommage, en clair dans ta réponse (pas seulement dans le dialogue) : « Je propose de renommer la session précédente en « ${title} » — valide le dialogue pour l'accepter, ou donne-moi un autre nom. »`,
+    "Puis, dans le même tour, déclenche le renommage de la session PRÉCÉDENTE (jamais la courante — l'outil de renommage la refuse ; cible directement la précédente, ne t'interroge pas dessus). Si l'utilisateur indique un autre nom, renomme avec CE nom.",
+    "L'autorisation à chaque appel est imposée par l'outil Anthropic (non contournable côté config) : assume-la comme la simple validation du nom proposé, pas comme un obstacle.",
+    "Confirme ensuite explicitement le résultat (réussi / raison de l'échec : outil absent, session introuvable, erreur…) — jamais silencieux sur ce point.",
   ].join('\n');
 }
 
