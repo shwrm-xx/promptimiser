@@ -11,8 +11,10 @@ poursuit trois objectifs :
    le handoff est écrit dans `.vibe-agent/handoff.md` (auto à chaque fin de tour, riche via
    `/fresh-session`) et **injecté automatiquement au démarrage de la session suivante**.
    Une grosse demande peut être **lotie** (`/pmz-scope`) en un plan de 2-5 lots persistant
-   (`.vibe-agent/backlog.json`) : chaque lot est clos automatiquement au commit, le suivant
-   est annoncé, et le plan survit aux sessions comme à la compaction.
+   (`.vibe-agent/backlog.json`), **chaque lot portant une préconisation de modèle**
+   (`sonnet`/`opus`, réaffichée à chaque `show`/`start` et dans le handoff) : chaque lot est
+   clos automatiquement au commit, le suivant est annoncé, et le plan survit aux sessions
+   comme à la compaction.
 3. **Initialisation prudente des projets** — propose de créer `CLAUDE.md` / `AGENTS.md` /
    `.vibe-agent/` / `CHANGELOG.md`, **uniquement après ta confirmation**, jamais d'écrasement.
    Sur un **projet en cours** qui a déjà ces fichiers, `/pmz-init` ajoute la section « Règles

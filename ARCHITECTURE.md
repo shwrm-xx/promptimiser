@@ -130,8 +130,11 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   outil MCP lui-même, ce n'est donc qu'une instruction, pas une garantie.
 - **Plan de lots** (`.vibe-agent/backlog.json`, `lib/backlog.js` + CLI `scripts/backlog.js`) :
   le lot comme **objet persistant trans-session** — id, titre, « fait quand », statut
-  (`todo|in_progress|done|dropped`), commit de clôture. Au plus un `in_progress` ; cap 20 lots
-  ouverts ; `doneLot` idempotent. Écrit par l'assistant (CLI) ; **auto-clos par `stop.js`**
+  (`todo|in_progress|done|dropped`), **préconisation de modèle** (`model_hint`, ex. `sonnet`/
+  `opus`), commit de clôture. Au plus un `in_progress` ; cap 20 lots ouverts ; `doneLot`
+  idempotent. `model_hint` est **obligatoire à l'`add` CLI** (refus doux sans `--model`) et
+  **réaffiché** partout où un lot est rendu (`show`/`start`/`next`, `summaryLines` → handoff auto)
+  sous forme `[modèle : …]` — jamais perdu silencieusement. Écrit par l'assistant (CLI) ; **auto-clos par `stop.js`**
   quand le working tree redevient propre et qu'exactement un lot est `in_progress` (sinon ne
   touche à rien — réconciliation bête via `backlog.js reconcile`). Jamais de promotion
   automatique du suivant. **Durabilité par défaut** (le backlog ne doit JAMAIS être perdu) : le

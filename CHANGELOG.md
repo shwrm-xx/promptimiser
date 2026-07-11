@@ -2,6 +2,24 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## [0.5.11] — 2026-07-11 (lot B6 — préconisation de modèle par lot)
+
+Chaque lot du plan porte désormais une **préconisation de modèle** (`model_hint`, ex. `sonnet`
+pour du mécanique, `opus` pour du raisonnement lourd), imposée au découpage et jamais perdue.
+
+- **`lib/backlog.js`** : nouveau champ `model_hint` (capé `MAX_MODEL_HINT=40`, normalisé au
+  chargement, valeur `null` pour les lots legacy pré-B6). `addLot(root, title, scope, modelHint)`.
+  `summaryLines` réaffiche `[modèle : …]` sur le lot en cours **et** les suivants → le handoff
+  auto (`lib/handoff.js`, qui consomme `summaryLines`) en hérite sans changement.
+- **`scripts/backlog.js`** : `--model` **obligatoire** sur `add` (refus doux sans lui — la
+  préconisation est imposée, pas optionnelle) ; `[modèle : …]` réaffiché dans `show`, `start`
+  et `next`.
+- **`commands/pmz-scope.md`** : l'étape de découpage impose une préconisation de modèle par lot,
+  validée avec le découpage en une question, persistée via `--model`.
+- **Tests** (`test/run-tests.js`, +12) : refus sans `--model`, persistance, réaffichage
+  `show`/`start`/`next`/`summaryLines`, troncature au cap, lot legacy sans `model_hint` (chargé
+  sans crash, affiché sans tag). Appels `add` existants mis à jour avec `--model`.
+
 ## [0.5.10] — 2026-07-11 (lot B5 — nudges haute occupation)
 
 Deux nudges d'occupation contexte supplémentaires, complémentaires de l'alerte de fin de tour

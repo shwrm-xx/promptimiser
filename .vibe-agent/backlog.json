@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 13,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-11T06:47:57.268Z",
+  "updated_at": "2026-07-11T06:56:38.695Z",
   "lots": [
     {
       "id": 1,
@@ -129,10 +129,10 @@
       "id": 12,
       "title": "Lot B6 — préconisation de modèle par lot",
       "scope": "fait quand : pmz-scope.md impose une préconisation de modèle (ex. sonnet/opus) par lot au moment du découpage ; le champ est persisté dans backlog.json (lots[].model_hint) ; il est réaffiché à chaque node backlog.js show/start et dans le handoff auto — jamais perdu silencieusement.",
-      "status": "todo",
+      "status": "in_progress",
       "closed_commit": null,
       "closed_at": null,
-      "started_at": null,
+      "started_at": "2026-07-11T06:56:38.694Z",
       "lot_number": null,
       "note": null
     }

@@ -680,9 +680,9 @@ const BKLG = path.join(PKG, 'scripts', 'backlog.js');
   execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
 
   // N1. add ×3 via CLI : ids monotones, ledger auto-créé
-  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot un', '--scope', 'fait quand : test A']);
-  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot deux']);
-  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot trois']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot un', '--scope', 'fait quand : test A', '--model', 'sonnet']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot deux', '--model', 'opus']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot trois', '--model', 'haiku']);
   let b = backlogLib.loadBacklog(repo);
   ok(b.lots.length === 3 && b.lots.map((l) => l.id).join(',') === '1,2,3' && b.next_id === 4,
     'backlog add ×3 : ids 1,2,3 et next_id=4');
@@ -728,11 +728,11 @@ const BKLG = path.join(PKG, 'scripts', 'backlog.js');
   ok(!!long && long.title.length <= 80 && long.scope.length <= 400, 'backlog : troncatures titre 80 / scope 400');
 
   // N8. cap de lots ouverts (refus doux)
-  for (let i = 0; i < 25; i++) runNode(BKLG, ['add', '--cwd', repo, '--title', 'lot ' + i]);
+  for (let i = 0; i < 25; i++) runNode(BKLG, ['add', '--cwd', repo, '--title', 'lot ' + i, '--model', 'sonnet']);
   b = backlogLib.loadBacklog(repo);
   ok(b.lots.filter((l) => l.status === 'todo' || l.status === 'in_progress').length <= backlogLib.MAX_LOTS_OPEN,
     'backlog cap : jamais plus de 20 lots ouverts');
-  const refused = runNode(BKLG, ['add', '--cwd', repo, '--title', 'un de trop']);
+  const refused = runNode(BKLG, ['add', '--cwd', repo, '--title', 'un de trop', '--model', 'sonnet']);
   ok(/Refusé/.test(refused.out) && refused.code === 0, 'backlog cap : refus doux, exit 0');
 
   // N9. fichier corrompu → backlog vide valide, jamais de crash
@@ -761,6 +761,61 @@ const BKLG = path.join(PKG, 'scripts', 'backlog.js');
   const rNo = runNode(BKLG, ['add', '--cwd', noRepo, '--title', 'x']);
   ok(rNo.code === 0 && /Pas un dépôt git/.test(rNo.out) && !fs.existsSync(path.join(noRepo, '.vibe-agent')),
     'backlog hors git : refus doux, rien créé');
+}
+
+// ==================== N-bis. B6 — PRÉCONISATION DE MODÈLE PAR LOT ====================
+section('backlog — model_hint (préconisation de modèle par lot)');
+{
+  const repo = path.join(SANDBOX, 'repo-model-hint');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+
+  // M1. add sans --model : refusé (préconisation imposée), rien créé
+  const rNoModel = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Sans modèle']);
+  ok(rNoModel.code === 0 && /--model/.test(rNoModel.out) && /Refus/.test(rNoModel.out),
+    'add sans --model : refusé, exit 0');
+  ok(backlogLib.loadBacklog(repo).lots.length === 0, 'add sans --model : aucun lot persisté');
+
+  // M2. add avec --model : model_hint persisté + affiché dans la sortie add
+  const rAdd = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot mécanique', '--scope', 'fait quand : OK', '--model', 'sonnet']);
+  ok(/\[modèle : sonnet\]/.test(rAdd.out), 'add : model_hint réaffiché dans la sortie');
+  let b = backlogLib.loadBacklog(repo);
+  ok(b.lots[0].model_hint === 'sonnet', 'add : model_hint persisté dans backlog.json');
+
+  // M3. show : model_hint réaffiché sur chaque ligne
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot archi', '--model', 'opus']);
+  const rShow = runNode(BKLG, ['show', '--cwd', repo]);
+  ok(/#1.*\[modèle : sonnet\]/.test(rShow.out) && /#2.*\[modèle : opus\]/.test(rShow.out),
+    'show : model_hint réaffiché sur chaque lot');
+
+  // M4. start : model_hint réaffiché dans la sortie
+  const rStart = runNode(BKLG, ['start', '--cwd', repo, '--id', '2']);
+  ok(/\[modèle : opus\]/.test(rStart.out), 'start : model_hint réaffiché');
+
+  // M5. next : model_hint réaffiché
+  const rNext = runNode(BKLG, ['next', '--cwd', repo]);
+  ok(/\[modèle : sonnet\]/.test(rNext.out), 'next : model_hint réaffiché');
+
+  // M6. summaryLines (→ handoff auto) : model_hint sur lot en cours + suivants
+  const sum = backlogLib.summaryLines(repo);
+  ok(/\[modèle : opus\]/.test(sum[0]), 'summaryLines : model_hint sur le lot en cours');
+  ok(sum.some((l) => /#1.*\[modèle : sonnet\]/.test(l)), 'summaryLines : model_hint sur les suivants');
+
+  // M7. troncature du model_hint au cap
+  const long = backlogLib.addLot(repo, 'Lot long', null, 'x'.repeat(200));
+  ok(!!long && long.model_hint.length <= backlogLib.MAX_MODEL_HINT, 'addLot : model_hint tronqué au cap');
+
+  // M8. lot legacy sans model_hint (pré-B6) : chargé sans crash, affiché sans tag
+  fs.writeFileSync(path.join(repo, '.vibe-agent', 'backlog.json'), JSON.stringify({
+    version: 1, next_id: 2, lots: [{ id: 1, title: 'Legacy', status: 'todo' }],
+  }));
+  b = backlogLib.loadBacklog(repo);
+  ok(b.lots[0].model_hint === null, 'legacy : model_hint absent → null, pas de crash');
+  const rShowLegacy = runNode(BKLG, ['show', '--cwd', repo]);
+  ok(rShowLegacy.code === 0 && !/\[modèle :/.test(rShowLegacy.out), 'legacy : show sans tag modèle, exit 0');
 }
 
 // ============================ O. CAPTURE TODOWRITE ============================
@@ -827,9 +882,9 @@ section('Backlog — auto-clôture au Stop, handoff enrichi, titre de session');
   execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
   const empty = path.join(SANDBOX, 'empty.jsonl');
   const sid = 'sess-bf1';
-  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Premier périmètre', '--scope', 'fait quand : X vert']);
-  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Deuxième périmètre']);
-  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Troisième périmètre']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Premier périmètre', '--scope', 'fait quand : X vert', '--model', 'sonnet']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Deuxième périmètre', '--model', 'opus']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Troisième périmètre', '--model', 'sonnet']);
   runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
 
   // P1. titre de session enrichi du lot en cours
@@ -898,8 +953,8 @@ section('Continuité — PreCompact sauve le handoff, compact réinjecte le lot,
   execFileSync('git', ['-C', repo, 'add', '.']);
   execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
   const hf = path.join(repo, '.vibe-agent', 'handoff.md');
-  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot continuité', '--scope', 'fait quand : OK']);
-  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot suivant']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot continuité', '--scope', 'fait quand : OK', '--model', 'sonnet']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot suivant', '--model', 'opus']);
   runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
   runHook('post-tool-use.js', { tool_name: 'TodoWrite', cwd: repo, session_id: 's-q1',
     tool_input: { todos: [
@@ -978,7 +1033,7 @@ section('Couche explicite — MSG_LARGE v2, audit/close-batch avec plan de lots'
   ok(/2 à 5 lots/.test(m1) && /backlog\.js add/.test(m1), 'broad sans plan : consigne de découpage persisté');
 
   // R2. broad avec plan → rattacher au lot en cours, pas de redécoupage
-  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot R']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot R', '--model', 'sonnet']);
   runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
   const r2 = runHook('user-prompt-submit.js', { cwd: repo, prompt: 'refactor complet du projet', session_id: 's-r2' });
   let m2 = '';

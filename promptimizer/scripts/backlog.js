@@ -30,6 +30,7 @@ function show(root, json) {
   out('');
   for (const l of b.lots) {
     let line = `- [${LABELS[l.status]}] #${l.id} « ${l.title} »`;
+    if (l.model_hint) line += ` [modèle : ${l.model_hint}]`;
     if (l.status === 'done' && l.closed_commit) line += ` — commit ${l.closed_commit}`;
     else if (l.scope) line += ` — ${l.scope}`;
     if (l.note) line += ` (note : ${l.note})`;
@@ -47,7 +48,11 @@ function main() {
   if (cmd === 'show') return show(root, json);
 
   if (cmd === 'add') {
-    const lot = backlog.addLot(root, flag('title'), flag('scope'));
+    const model = flag('model');
+    if (!model) {
+      return out('Refusé : --model manquant. Une préconisation de modèle par lot est obligatoire (ex. --model sonnet ou --model opus).');
+    }
+    const lot = backlog.addLot(root, flag('title'), flag('scope'), model);
     if (!lot) {
       const b = backlog.loadBacklog(root);
       if (b.lots.filter((l) => l.status === 'todo' || l.status === 'in_progress').length >= backlog.MAX_LOTS_OPEN) {
@@ -55,13 +60,13 @@ function main() {
       }
       return out('Refusé : --title manquant ou vide.');
     }
-    return out(`Lot #${lot.id} « ${lot.title} » ajouté (à faire).`);
+    return out(`Lot #${lot.id} « ${lot.title} » ajouté (à faire) [modèle : ${lot.model_hint}].`);
   }
 
   if (cmd === 'start') {
     const lot = backlog.startLot(root, id);
-    return out(lot ? `Lot #${lot.id} « ${lot.title} » démarré (en cours).`
-      : `Lot #${id} introuvable ou déjà clos/abandonné.`);
+    if (!lot) return out(`Lot #${id} introuvable ou déjà clos/abandonné.`);
+    return out(`Lot #${lot.id} « ${lot.title} » démarré (en cours)${lot.model_hint ? ` [modèle : ${lot.model_hint}]` : ''}.`);
   }
 
   if (cmd === 'done') {
@@ -84,7 +89,7 @@ function main() {
   if (cmd === 'next') {
     const lot = backlog.nextLot(backlog.loadBacklog(root));
     if (json) return out(JSON.stringify(lot));
-    return out(lot ? `Prochain lot : #${lot.id} « ${lot.title} »${lot.scope ? ` — ${lot.scope}` : ''}.`
+    return out(lot ? `Prochain lot : #${lot.id} « ${lot.title} »${lot.model_hint ? ` [modèle : ${lot.model_hint}]` : ''}${lot.scope ? ` — ${lot.scope}` : ''}.`
       : 'Aucun lot à faire.');
   }
 
