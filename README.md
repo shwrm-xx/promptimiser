@@ -26,7 +26,9 @@ Il fournit aussi un **delta Codex** (`AGENTS.md`) pour porter le même socle de 
 
 1. Double-clique sur `promptimizer/install/install.command`.
    _(1re fois : si macOS bloque, clic droit → Ouvrir, ou retire la quarantaine —
-   `xattr -dr com.apple.quarantine promptimizer`.)_
+   `xattr -dr com.apple.quarantine promptimizer`. Ce premier lancement active aussi un hook
+   git local — `.githooks/post-merge` — qui lève automatiquement la quarantaine sur les
+   `.command` du dépôt après chaque `git pull` : le popup Gatekeeper ne revient plus.)_
    L'installeur copie le package dans `~/.claude/`, **sauvegarde** ton `settings.json`, fusionne
    les hooks **sans rien écraser**, et te **propose** de laisser PMZ reprendre le rôle d'un
    éventuel hook `Stop` existant (réversible).

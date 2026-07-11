@@ -12,6 +12,13 @@ echo "Source : $PMZ_SRC"
 echo "Cible  : $DEST"
 echo
 
+# 0. Hook git local : lève la quarantaine macOS sur les .command après chaque
+# pull/merge/checkout, pour ne plus jamais revoir le popup Gatekeeper (une fois
+# par clone — persiste ensuite tout seul).
+if [ -d "$REPO/.git" ] && [ -d "$REPO/.githooks" ]; then
+  git -C "$REPO" config core.hooksPath .githooks 2>/dev/null || true
+fi
+
 # 1. Pré-requis : node
 if ! command -v node >/dev/null 2>&1; then
   echo "ERREUR : 'node' introuvable dans le PATH. Installe Node.js puis relance." >&2

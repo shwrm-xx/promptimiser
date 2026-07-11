@@ -2,6 +2,23 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-11 (fix — popup Gatekeeper qui revenait à chaque `git pull`)
+
+Retour utilisateur : le popup macOS « Apple n'a pas pu confirmer que "install.command" ne
+contenait pas de logiciel malveillant » réapparaissait à chaque récupération d'une nouvelle
+version du dépôt, car `git pull` réécrit le contenu des `.command` et macOS réapplique la
+quarantaine sur le fichier modifié.
+
+- `.githooks/post-merge` et `.githooks/post-checkout` : lèvent automatiquement
+  `com.apple.quarantine` sur tous les `.command` du dépôt après chaque pull/merge/checkout.
+  Fail-open (jamais d'échec de `git pull`).
+- `promptimizer/install/install.command` : active `core.hooksPath=.githooks` sur le dépôt
+  source dès le premier lancement — le fix devient permanent sans étape manuelle répétée.
+- `README.md` : note d'installation mise à jour.
+- Vérifié en bac à sable (copie du repo) : clone frais → install → quarantaine posée
+  artificiellement → hook `post-merge` → quarantaine levée. `node test/run-tests.js` :
+  345 OK, 0 échec.
+
 ## 2026-07-11 (fix — numérotation du titre de session dérivait du numéro backlog)
 
 Retour utilisateur : le titre de session affichait un numéro de lot (« Lot 14 ») déconnecté
