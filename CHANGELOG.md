@@ -2,6 +2,22 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-13 (v1.1.3 — restauration des commandes /pmz:pmz-scope, pmz-init, pmz-about)
+
+Retour utilisateur : « y'a plus pmz-scope ? ». Cause : le commit de cleanup `7533d72`
+(2026-07-12 14:16) a supprimé `pmz-scope.md`, `pmz-init.md` et `pmz-about.md` de
+`promptimizer/commands/` sur un raisonnement faux (« le plugin fournit les versions
+namespacées ») — or le plugin **dérive** ses commandes de ces fichiers source ; le namespace
+`/pmz:*` vient du nom du plugin, pas de fichiers séparés. Invisible tant que le cache restait
+figé en 1.0.0 (buildé avant le cleanup) ; le redéploiement v1.1.2 a propagé la perte.
+
+- `promptimizer/commands/pmz-{scope,init,about}.md` : restaurés depuis `7533d72^`.
+- `pmz-scope.md` : rattrape la mise à jour v1.1.0 ratée pendant sa suppression — le nom de
+  plan proposé au découpage est **court (≤ 3 mots)** et nommera le titre de session
+  (`[XXX] NomDePlan #N · résumé`), aligné sur la SKILL.
+- `promptimizer/VERSION` + `plugin.json` : 1.1.2 → **1.1.3** ; rebuild (7 commandes réécrites
+  `${CLAUDE_PLUGIN_ROOT}`) + cache mis à jour, doctor vert, tests **522 OK** (redémarrage requis).
+
 ## 2026-07-13 (v1.1.2 — doctor : détection de la dérive de version source ↔ plugin installé)
 
 Suite directe du post-mortem v1.1.1 (à la demande de l'utilisateur) : le doctor détecte
