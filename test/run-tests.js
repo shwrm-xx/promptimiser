@@ -913,6 +913,86 @@ section('backlog — champ epic optionnel du lot (lot #28)');
   ok(new RegExp(`Epic : ${long.epic}`).test(rAbout.out), 'about : epic du lot en cours prioritaire');
 }
 
+section('backlog — verify + closed_occupancy (lot #29)');
+{
+  const repo = path.join(SANDBOX, 'repo-lot-verify');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+
+  // V1. add --verify : champ persisté + réaffiché
+  const rAdd = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot avec verify', '--model', 'sonnet', '--verify', 'true']);
+  ok(/\[verify : true\]/.test(rAdd.out), 'add --verify : réaffiché dans la sortie');
+  let b = backlogLib.loadBacklog(repo);
+  ok(b.lots[0].verify === 'true', 'add --verify : persisté dans backlog.json');
+
+  // V2. add sans --verify : champ absent, pas de crash
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot sans verify', '--model', 'sonnet']);
+  b = backlogLib.loadBacklog(repo);
+  ok(b.lots[1].verify === null, 'add sans --verify : champ verify = null');
+
+  // V3. verify --set : édite un lot existant
+  const rSet = runNode(BKLG, ['verify', '--cwd', repo, '--id', String(b.lots[1].id), '--set', 'exit 1']);
+  ok(/enregistrée/.test(rSet.out), 'verify --set : confirmation');
+  b = backlogLib.loadBacklog(repo);
+  ok(b.lots[1].verify === 'exit 1', 'verify --set : persisté');
+
+  // V4. verify sans --set : lecture
+  const rGet = runNode(BKLG, ['verify', '--cwd', repo, '--id', String(b.lots[1].id)]);
+  ok(rGet.out.includes('exit 1'), 'verify sans --set : affiche la commande courante');
+
+  // V5. troncature au cap
+  const long = backlogLib.addLot(repo, 'Lot long verify', null, 'sonnet', null, 'x'.repeat(300));
+  ok(!!long && long.verify.length <= backlogLib.MAX_VERIFY, 'addLot : verify tronqué au cap');
+
+  // V6. close-batch : verify OK → ligne "OK", jamais bloquant (exit 0)
+  const lotOk = backlogLib.addLot(repo, 'Lot verify OK', null, 'sonnet', null, 'true');
+  backlogLib.startLot(repo, lotOk.id);
+  const rCloseOk = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', repo]);
+  ok(rCloseOk.code === 0, 'close-batch : exit 0 même avec verify posée');
+  ok(/Verify \(`true`\) : OK/.test(rCloseOk.out), 'close-batch : verify réussie → OK');
+  backlogLib.doneLot(repo, lotOk.id);
+
+  // V7. close-batch : verify en échec → ligne "ÉCHEC", refus doux, toujours exit 0
+  const lotFail = backlogLib.addLot(repo, 'Lot verify KO', null, 'sonnet', null, 'exit 1');
+  backlogLib.startLot(repo, lotFail.id);
+  const rCloseFail = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', repo]);
+  ok(rCloseFail.code === 0, 'close-batch : exit 0 même si verify échoue (jamais bloquant)');
+  ok(/Verify \(`exit 1`\) : ÉCHEC — refus doux/.test(rCloseFail.out), 'close-batch : verify en échec → ÉCHEC, refus doux');
+  backlogLib.dropLot(repo, lotFail.id);
+
+  // V8. close-batch : pas de verify posée → pas de ligne Verify, comportement inchangé
+  const lotNone = backlogLib.addLot(repo, 'Lot sans verify posee', null, 'sonnet');
+  backlogLib.startLot(repo, lotNone.id);
+  const rCloseNone = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', repo]);
+  ok(!/Verify \(/.test(rCloseNone.out), 'close-batch : sans verify posée, aucune ligne Verify');
+  backlogLib.dropLot(repo, lotNone.id);
+
+  // V9. doneLot(occupancy) : closed_occupancy figé, réaffiché par show
+  const lotOcc = backlogLib.addLot(repo, 'Lot occupancy', null, 'sonnet');
+  backlogLib.startLot(repo, lotOcc.id);
+  const closedOcc = backlogLib.doneLot(repo, lotOcc.id, null, null, 's-occ', 123456);
+  ok(closedOcc.closed_occupancy === 123456, 'doneLot(occupancy) : closed_occupancy persisté');
+  const rShowOcc = runNode(BKLG, ['show', '--cwd', repo]);
+  ok(/occupation à la clôture : 123456/.test(rShowOcc.out), 'show : closed_occupancy réaffiché');
+
+  // V10. doneLot sans occupancy (clôture manuelle CLI) : closed_occupancy reste null
+  const lotNoOcc = backlogLib.addLot(repo, 'Lot sans occupancy', null, 'sonnet');
+  backlogLib.startLot(repo, lotNoOcc.id);
+  const closedNoOcc = backlogLib.doneLot(repo, lotNoOcc.id);
+  ok(closedNoOcc.closed_occupancy === null, 'doneLot sans occupancy : closed_occupancy = null');
+
+  // V11. lot legacy sans verify/closed_occupancy : chargé sans crash
+  fs.writeFileSync(path.join(repo, '.vibe-agent', 'backlog.json'), JSON.stringify({
+    version: 1, next_id: 2, lots: [{ id: 1, title: 'Legacy', status: 'done', closed_commit: 'abc' }],
+  }));
+  b = backlogLib.loadBacklog(repo);
+  ok(b.lots[0].verify === null && b.lots[0].closed_occupancy === null,
+    'legacy : verify/closed_occupancy absents → null, pas de crash');
+}
+
 // ============================ O. CAPTURE TODOWRITE ============================
 section('TodoWrite — snapshot passif (.vibe-agent/todo-snapshot.json)');
 {

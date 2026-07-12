@@ -1,10 +1,24 @@
 #!/usr/bin/env node
 'use strict';
 // Checklist de clôture (format spec). Pré-rempli via audit-batch quand détectable.
+const { execSync } = require('child_process');
 const { compute } = require('./audit-batch');
 const { parseCwd } = require('../lib/cli');
 
 function yn(v) { return v ? 'oui' : 'non'; }
+
+// Exécute la commande verify du lot en cours (si posée) AVANT le `done` — preuve de
+// clôture. Jamais bloquant : un échec ne fait qu'ajouter une ligne « à corriger » dans
+// la checklist, la décision de marquer le lot fait reste à l'humain/l'assistant.
+function runVerify(root, cmd) {
+  try {
+    execSync(cmd, { cwd: root, timeout: 20000, stdio: 'pipe' });
+    return { ok: true };
+  } catch (e) {
+    const raw = String((e && e.stderr) || (e && e.stdout) || (e && e.message) || '').trim();
+    return { ok: false, tail: raw.split(/\r?\n/).slice(-5).join('\n  ') };
+  }
+}
 
 function main() {
   const d = compute(parseCwd());
@@ -13,11 +27,18 @@ function main() {
   const closable = d.is_git_repo && !d.needs_closure;
 
   const bl = d.backlog;
+  let verifyLine = '';
+  if (bl && bl.current && bl.current.verify) {
+    const v = runVerify(d.root, bl.current.verify);
+    verifyLine = v.ok
+      ? `\n- Verify (\`${bl.current.verify}\`) : OK`
+      : `\n- Verify (\`${bl.current.verify}\`) : ÉCHEC — refus doux, corriger avant de marquer fait (clôture non bloquée automatiquement) :\n  ${v.tail}`;
+  }
   const backlogBlock = bl ? `
 ## Plan de lots
 
 - Avancement : ${bl.done}/${bl.total} faits${bl.current ? ` — en cours : #${bl.current.id} « ${bl.current.title} »` : ' — aucun lot en cours'}
-- Périmètre conforme au lot du backlog : à confirmer (dévié → node ~/.claude/promptimizer/scripts/backlog.js note --id N --note "…")
+- Périmètre conforme au lot du backlog : à confirmer (dévié → node ~/.claude/promptimizer/scripts/backlog.js note --id N --note "…")${verifyLine}
 - Après le commit : node ~/.claude/promptimizer/scripts/backlog.js done --id ${bl.current ? bl.current.id : 'N'} (SHA du HEAD pris automatiquement ; le hook Stop le fait aussi tout seul)${bl.next ? `
 - Lot suivant à reprendre dans le handoff : #${bl.next.id} « ${bl.next.title} »` : ''}
 ` : '';

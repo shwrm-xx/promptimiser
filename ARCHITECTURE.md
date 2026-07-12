@@ -180,7 +180,14 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   sous forme `[modèle : …]` — jamais perdu silencieusement. Écrit par l'assistant (CLI) ; **auto-clos par `stop.js`**
   quand le working tree redevient propre et qu'exactement un lot est `in_progress` (sinon ne
   touche à rien — réconciliation bête via `backlog.js reconcile`). Jamais de promotion
-  automatique du suivant. **Durabilité par défaut** (le backlog ne doit JAMAIS être perdu) : le
+  automatique du suivant. Champ optionnel `verify` (cap 150c, `MAX_VERIFY`, lot #29) : commande
+  shell de preuve de clôture, posée à l'`add --verify` ou éditée après coup (`backlog.js verify
+  --id N --set "…"`) — `/close-batch` (`scripts/close-batch.js`) l'exécute avant d'indiquer le
+  `done` et affiche OK/ÉCHEC (refus doux, **jamais bloquant** — même en échec la checklist reste
+  exit 0, la décision de clore reste humaine/assistant). Champ `closed_occupancy` (lot #29) :
+  occupation contexte du tour figée par `stop.js` à l'auto-clôture (`turnstats.computeTurn().occ`,
+  métrologie de coût par lot) — `null` sur une clôture manuelle via le CLI (pas de transcript à ce
+  niveau). **Durabilité par défaut** (le backlog ne doit JAMAIS être perdu) : le
   bootstrap pose un `.vibe-agent/.gitignore` **whitelist** (`*` puis `!.gitignore`, `!backlog.json`,
   `!rules.yaml`) — l'état éphémère (ledgers, handoff, session-state, snapshot) reste hors git, seul
   le plan durable est suivi ; et `saveBacklog` **stage** le fichier à chaque écriture (survit à un

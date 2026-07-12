@@ -18,7 +18,7 @@ function backlogSummary(root) {
     return {
       done: p.done,
       total: p.total,
-      current: cur ? { id: cur.id, title: cur.title } : null,
+      current: cur ? { id: cur.id, title: cur.title, verify: cur.verify || null } : null,
       next: nxt ? { id: nxt.id, title: nxt.title } : null,
     };
   } catch (_) {

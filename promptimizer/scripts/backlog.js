@@ -34,8 +34,10 @@ function show(root, json, epicFilter) {
     let line = `- [${LABELS[l.status]}] #${l.id} « ${l.title} »`;
     if (l.epic) line += ` [epic : ${l.epic}]`;
     if (l.model_hint) line += ` [modèle : ${l.model_hint}]`;
+    if (l.verify) line += ` [verify : ${l.verify}]`;
     if (l.status === 'done' && l.closed_commit) line += ` — commit ${l.closed_commit}`;
     else if (l.scope) line += ` — ${l.scope}`;
+    if (l.status === 'done' && Number.isFinite(l.closed_occupancy)) line += ` (occupation à la clôture : ${l.closed_occupancy})`;
     if (l.note) line += ` (note : ${l.note})`;
     out(line);
   }
@@ -63,7 +65,7 @@ function main() {
     if (!model) {
       return out('Refusé : --model manquant. Une préconisation de modèle par lot est obligatoire (ex. --model sonnet ou --model opus).');
     }
-    const newLot = backlog.addLot(root, flag('title'), flag('scope'), model, flag('epic'));
+    const newLot = backlog.addLot(root, flag('title'), flag('scope'), model, flag('epic'), flag('verify'));
     if (!newLot) {
       const b = backlog.loadBacklog(root);
       if (b.lots.filter((l) => l.status === 'todo' || l.status === 'in_progress').length >= backlog.MAX_LOTS_OPEN) {
@@ -71,7 +73,18 @@ function main() {
       }
       return out('Refusé : --title manquant ou vide.');
     }
-    return out(`Lot #${newLot.id} « ${newLot.title} » ajouté (à faire) [modèle : ${newLot.model_hint}]${newLot.epic ? ` [epic : ${newLot.epic}]` : ''}.`);
+    return out(`Lot #${newLot.id} « ${newLot.title} » ajouté (à faire) [modèle : ${newLot.model_hint}]${newLot.epic ? ` [epic : ${newLot.epic}]` : ''}${newLot.verify ? ` [verify : ${newLot.verify}]` : ''}.`);
+  }
+
+  if (cmd === 'verify') {
+    const set = flag('set');
+    if (!set) {
+      const b = backlog.loadBacklog(root);
+      const l = b.lots.find((x) => x.id === Number(id));
+      return out(l ? `Verify du lot #${l.id} : ${l.verify || '(aucune)'}` : `Lot #${id} introuvable.`);
+    }
+    const l = backlog.setVerify(root, id, set);
+    return out(l ? `Verify du lot #${l.id} enregistrée : ${l.verify}` : `Lot #${id} introuvable ou commande vide.`);
   }
 
   if (cmd === 'start') {
@@ -112,7 +125,7 @@ function main() {
     return;
   }
 
-  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | next | reconcile | epic.`);
+  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | next | reconcile | epic | verify.`);
 }
 
 if (require.main === module) {

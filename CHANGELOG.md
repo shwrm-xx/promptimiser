@@ -2,6 +2,29 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (Lot P2 — Preuve de clôture verify + closed_occupancy)
+
+**Lot #29**. Un lot backlog peut désormais porter une commande de preuve de clôture, et la
+métrologie de coût par lot capture l'occupation contexte au moment où il se ferme.
+
+- `promptimizer/lib/backlog.js` : nouveau champ optionnel `verify` sur le lot (cap 150c,
+  `MAX_VERIFY`), normalisé au chargement, tronqué à l'ajout/édition ; nouvelle fonction
+  `setVerify(root, id, verify)` pour poser la commande après coup. Nouveau champ
+  `closed_occupancy` (occupation contexte à la clôture), posé par `doneLot(..., occupancy)`.
+- `promptimizer/scripts/backlog.js` : `add --verify "…"` persiste le champ à la création ;
+  nouvelle commande `verify --id N --set "…"` (édite) / `verify --id N` (lit) ; `show` réaffiche
+  `[verify : …]` et, sur un lot fait, l'occupation figée à la clôture.
+- `promptimizer/scripts/audit-batch.js` : le résumé backlog expose la commande `verify` du lot
+  en cours.
+- `promptimizer/scripts/close-batch.js` : exécute la commande `verify` du lot en cours (si posée)
+  avant d'indiquer le `done` — refus doux, jamais bloquant (exit 0 dans tous les cas), affiche
+  OK ou ÉCHEC (avec les dernières lignes de sortie) dans la checklist.
+- `promptimizer/hooks/stop.js` : l'auto-clôture d'un lot backlog (cas univoque) fige désormais
+  l'occupation contexte du tour (`turnstats.computeTurn().occ`) dans `closed_occupancy` — une
+  clôture manuelle via le CLI laisse ce champ à `null` (pas de transcript à ce niveau).
+- `test/run-tests.js` : section « backlog — verify + closed_occupancy (lot #29) » (+15).
+  Suite **438 OK**.
+
 ## 2026-07-12 (Lot P1 — Epic-label + règle de découpe)
 
 **Lot #28**. Epic reste un simple label (pas un conteneur) : `/pmz-scope` peut désormais l'écrire

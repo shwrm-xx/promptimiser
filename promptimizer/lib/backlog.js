@@ -14,6 +14,7 @@ const MAX_TITLE = 80;
 const MAX_SCOPE = 400;
 const MAX_MODEL_HINT = 40; // préconisation de modèle par lot (ex. « sonnet », « opus »)
 const MAX_EPIC = 60; // label d'epic optionnel du lot, cf. .vibe-agent/epic (lib/lot.js)
+const MAX_VERIFY = 150; // commande shell de preuve de clôture, exécutée par /close-batch avant done
 const MAX_NOTE = 200;
 const MAX_TODOS = 30;
 const MAX_TODO_CHARS = 120;
@@ -51,9 +52,11 @@ function loadBacklog(root) {
       status: STATUSES.includes(l.status) ? l.status : 'todo',
       model_hint: l.model_hint ? trunc(l.model_hint, MAX_MODEL_HINT) : null,
       epic: l.epic ? trunc(l.epic, MAX_EPIC) : null,
+      verify: l.verify ? trunc(l.verify, MAX_VERIFY) : null,
       closed_commit: l.closed_commit || null,
       closed_at: l.closed_at || null,
       closed_session_id: l.closed_session_id || null,
+      closed_occupancy: Number.isFinite(l.closed_occupancy) ? l.closed_occupancy : null,
       started_at: l.started_at || null,
       lot_number: Number.isFinite(l.lot_number) ? l.lot_number : null,
       note: l.note ? trunc(l.note, MAX_NOTE) : null,
@@ -96,7 +99,7 @@ function openCount(b) {
 }
 
 // null si titre vide ou plan déjà au cap (refus doux, c'est au CLI de l'expliquer).
-function addLot(root, title, scope, modelHint, epic) {
+function addLot(root, title, scope, modelHint, epic, verify) {
   const t = trunc(title, MAX_TITLE);
   if (!t) return null;
   const b = loadBacklog(root);
@@ -108,15 +111,29 @@ function addLot(root, title, scope, modelHint, epic) {
     status: 'todo',
     model_hint: modelHint ? trunc(modelHint, MAX_MODEL_HINT) : null,
     epic: epic ? trunc(epic, MAX_EPIC) : null,
+    verify: verify ? trunc(verify, MAX_VERIFY) : null,
     closed_commit: null,
     closed_at: null,
     closed_session_id: null,
+    closed_occupancy: null,
     started_at: null,
     lot_number: null,
     note: null,
   };
   b.lots.push(lot);
   b.next_id += 1;
+  return saveBacklog(root, b) ? lot : null;
+}
+
+// Édite la commande de preuve de clôture d'un lot existant (ex. posée après coup, une
+// fois le lot déjà créé sans --verify). null si lot introuvable/clos ou commande vide.
+function setVerify(root, id, verify) {
+  const v = trunc(verify, MAX_VERIFY);
+  if (!v) return null;
+  const b = loadBacklog(root);
+  const lot = findLot(b, id);
+  if (!lot) return null;
+  lot.verify = v;
   return saveBacklog(root, b) ? lot : null;
 }
 
@@ -143,7 +160,10 @@ function startLot(root, id) {
 // sessionId (optionnel) : id de la session qui clôt le lot — permet à suggestedTitle de
 // vérifier que le lot décrit bien LA session précédente et pas une clôture plus ancienne
 // (cf. lib/state.js: previousSessionId). Absent pour une clôture manuelle via le CLI.
-function doneLot(root, id, commitSha, lotNumber, sessionId) {
+// occupancy (optionnel) : occupation contexte du tour de clôture (turnstats.computeTurn().occ),
+// figée dans closed_occupancy — métrologie de coût par lot. Posée par stop.js à l'auto-clôture ;
+// absente sur une clôture manuelle via le CLI (pas de transcript à ce niveau).
+function doneLot(root, id, commitSha, lotNumber, sessionId, occupancy) {
   const b = loadBacklog(root);
   const lot = findLot(b, id);
   if (!lot) return null;
@@ -152,6 +172,7 @@ function doneLot(root, id, commitSha, lotNumber, sessionId) {
   lot.closed_commit = commitSha || git(['log', '-1', '--format=%h'], root) || null;
   lot.closed_at = now();
   lot.closed_session_id = sessionId || null;
+  lot.closed_occupancy = Number.isFinite(occupancy) ? occupancy : null;
   lot.lot_number = Number.isFinite(lotNumber) ? lotNumber : incrementLot(root);
   return saveBacklog(root, b) ? lot : null;
 }
@@ -288,8 +309,8 @@ function reconcile(root) {
 }
 
 module.exports = {
-  backlogFile, loadBacklog, saveBacklog, addLot, startLot, doneLot, dropLot, noteLot,
+  backlogFile, loadBacklog, saveBacklog, addLot, setVerify, startLot, doneLot, dropLot, noteLot,
   currentLot, nextLot, lastDoneLot, progress, summaryLines, reconcile,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot,
-  MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_NOTE, MAX_TODOS,
+  MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_NOTE, MAX_TODOS,
 };
