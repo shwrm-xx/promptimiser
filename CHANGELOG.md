@@ -2,6 +2,40 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (Lot D2 — Packaging plugin Claude Code)
+
+**Lot #31**. Promptimizer est désormais packageable en **plugin Claude Code natif**, en plus du
+canal d'install manuelle (conservé). Le format plugin impose `commands/`, `skills/`,
+`hooks/hooks.json` à la racine du plugin, sans chemin personnalisable : plutôt que de casser le
+miroir plat source, un assembleur en **dérive** un dossier plugin self-contained (zéro
+duplication committée). Validé en bac à sable (CLI desktop v2.1.205, vrai `~/.claude` non touché) :
+`validate` OK, install effective, `plugin details` → **6 hooks + 7 commandes + skill**, hooks
+réellement déclenchés via le wrapper.
+
+- `promptimizer/lib/claude-dir.js` : **découplage `pmzDir()` / `stateDir()`**. `pmzDir()` renvoie
+  `CLAUDE_PLUGIN_ROOT` en mode plugin (sinon `~/.claude/promptimizer`) ; `stateDir()` vise
+  `CLAUDE_PLUGIN_DATA/state` (état **persistant** survivant aux updates), découplé de `pmzDir()`
+  pour ne jamais être effacé à chaque update. Repli install manuelle inchangé (0 régression).
+- `promptimizer/.claude-plugin/plugin.json` : manifeste du plugin (name, version, description).
+- `promptimizer/hooks/hooks.json` : câblage statique des 6 hooks (remplace l'écriture dans
+  `settings.json` de `merge-settings.js`). Mêmes matchers/timeouts. Commande =
+  `sh "${CLAUDE_PLUGIN_ROOT}/bin/pmz-hook" "${CLAUDE_PLUGIN_ROOT}/hooks/x.js"`.
+- `promptimizer/bin/pmz-hook` : wrapper fail-open qui **résout `node` au runtime** (remplace le
+  `resolveNodeBin()` de `merge-settings.js`, inutilisable en plugin distribué). Invoqué via `sh`
+  (le bit +x n'est pas préservé en `.zip`). `node` introuvable → exit 0 silencieux.
+- `promptimizer/install/build-plugin.js` : **assembleur** `dist/marketplace/` (gitignoré) au
+  layout conventionnel (install/ exclu, skill replacée, chemins `~/.claude/promptimizer` réécrits
+  en `${CLAUDE_PLUGIN_ROOT}` dans commands + skill, version alignée sur `VERSION`, marketplace
+  locale à source relative).
+- `promptimizer/scripts/backlog.js` + `close-batch.js` : les chemins d'aide affichés passent par
+  `CLAUDE_PLUGIN_ROOT` (sinon `~/.claude/promptimizer`) — corrects dans les deux canaux.
+- `test/run-tests.js` : +14 assertions (découplage claude-dir mode plugin ; layout et réécriture
+  de l'assembleur). 458 OK.
+- Doc : `ARCHITECTURE.md` (canal plugin + assemblage), `README.md`, `CLAUDE.md` (deux canaux).
+- Diagnostic en mode plugin = `claude plugin details promptimizer` (le `doctor.js` bespoke reste
+  l'outil du canal manuel). Limite connue reportée en D3 : chemins d'aide des scripts corrects
+  seulement si `CLAUDE_PLUGIN_ROOT` est exporté au shell du modèle.
+
 ## 2026-07-12 (Lot D1 — Spike plugin Claude Code : verdict go/no-go)
 
 **Lot #30** (spike, session jetable, zéro code de portage mergé). Évaluation de faisabilité du

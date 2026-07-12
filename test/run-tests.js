@@ -1968,6 +1968,50 @@ section('claude-dir — résolution CLAUDE_CONFIG_DIR (portabilité, lot A)');
   }
 }
 
+section('claude-dir — mode plugin (découplage CLAUDE_PLUGIN_ROOT / CLAUDE_PLUGIN_DATA, lot D2)');
+{
+  const cdir = require(path.join(PKG, 'lib', 'claude-dir.js'));
+  const savedRoot = process.env.CLAUDE_PLUGIN_ROOT;
+  const savedData = process.env.CLAUDE_PLUGIN_DATA;
+  const savedCfg = process.env.CLAUDE_CONFIG_DIR;
+  const home = os.homedir();
+  delete process.env.CLAUDE_CONFIG_DIR;
+
+  const fakeRoot = path.join(SANDBOX, 'plugin-root');
+  const fakeData = path.join(SANDBOX, 'plugin-data');
+
+  // 1. CLAUDE_PLUGIN_ROOT posée → pmzDir() = racine du plugin, hooksDir() dessous.
+  process.env.CLAUDE_PLUGIN_ROOT = fakeRoot;
+  delete process.env.CLAUDE_PLUGIN_DATA;
+  ok(cdir.pmzDir() === fakeRoot,
+    'claude-dir : CLAUDE_PLUGIN_ROOT posée → pmzDir = racine plugin');
+  ok(cdir.hooksDir() === path.join(fakeRoot, 'hooks'),
+    'claude-dir : hooksDir sous CLAUDE_PLUGIN_ROOT');
+
+  // 2. Découplage clé : ROOT posée mais DATA absente → l'état NE vit PAS sous la racine
+  //    du plugin (sinon il serait effacé à chaque update). Repli install manuelle.
+  ok(cdir.stateDir() === path.join(home, '.claude', 'promptimizer', 'state'),
+    'claude-dir : stateDir découplé de pmzDir (pas sous CLAUDE_PLUGIN_ROOT)');
+
+  // 3. CLAUDE_PLUGIN_DATA posée → stateDir() = <data>/state (persistant, survit aux updates).
+  process.env.CLAUDE_PLUGIN_DATA = fakeData;
+  ok(cdir.stateDir() === path.join(fakeData, 'state'),
+    'claude-dir : CLAUDE_PLUGIN_DATA posée → stateDir sous data');
+
+  // 4. Sans aucune variable plugin → repli install manuelle (pas de régression).
+  delete process.env.CLAUDE_PLUGIN_ROOT;
+  delete process.env.CLAUDE_PLUGIN_DATA;
+  ok(cdir.pmzDir() === path.join(home, '.claude', 'promptimizer'),
+    'claude-dir : sans variable plugin → pmzDir = install manuelle');
+  ok(cdir.stateDir() === path.join(home, '.claude', 'promptimizer', 'state'),
+    'claude-dir : sans variable plugin → stateDir = install manuelle');
+
+  // Restaure l'env.
+  if (savedRoot === undefined) delete process.env.CLAUDE_PLUGIN_ROOT; else process.env.CLAUDE_PLUGIN_ROOT = savedRoot;
+  if (savedData === undefined) delete process.env.CLAUDE_PLUGIN_DATA; else process.env.CLAUDE_PLUGIN_DATA = savedData;
+  if (savedCfg === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = savedCfg;
+}
+
 // ============================ P. INSTALLEUR NODE (lot B) ============================
 section('install.js — bout-en-bout cross-platform (bac à sable, source sans .git)');
 {
@@ -2120,6 +2164,48 @@ section('Autonomie du package — package.js → unzip hors dépôt → install 
     fs.rmSync(fakeHome, { recursive: true, force: true });
   }
   fs.rmSync(workOut, { recursive: true, force: true });
+}
+
+// ============================ Q. ASSEMBLEUR PLUGIN (lot D2) ============================
+section('build-plugin.js — assemble le plugin Claude Code (layout conventionnel + réécriture chemins)');
+{
+  const BUILD = path.join(PKG, 'install', 'build-plugin.js');
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'pmz-plugin-'));
+  const r = runNode(BUILD, [out], {});
+  ok(r.code === 0, 'build-plugin : exit 0');
+
+  const plugin = path.join(out, 'marketplace', 'promptimizer');
+  // Emplacements conventionnels imposés par le format plugin (racine du plugin).
+  ok(fs.existsSync(path.join(plugin, '.claude-plugin', 'plugin.json')), 'build-plugin : .claude-plugin/plugin.json à la racine');
+  ok(fs.existsSync(path.join(plugin, 'hooks', 'hooks.json')), 'build-plugin : hooks/hooks.json à la racine');
+  ok(fs.existsSync(path.join(plugin, 'skills', 'promptimizer', 'SKILL.md')), 'build-plugin : skills/promptimizer/SKILL.md à la racine (hors miroir source)');
+  ok(fs.existsSync(path.join(plugin, 'commands', 'close-batch.md')), 'build-plugin : commands/ présentes');
+  ok(fs.existsSync(path.join(plugin, 'bin', 'pmz-hook')), 'build-plugin : bin/pmz-hook présent');
+  ok(fs.existsSync(path.join(plugin, 'lib', 'claude-dir.js')), 'build-plugin : lib/ présent (require voisin)');
+  // Installeur manuel EXCLU du plugin (obsolète en mode plugin).
+  ok(!fs.existsSync(path.join(plugin, 'install')), 'build-plugin : install/ exclu du plugin');
+
+  // Manifeste : JSON valide, version alignée sur VERSION (entier → semver majeur).
+  let manifest = null;
+  try { manifest = JSON.parse(fs.readFileSync(path.join(plugin, '.claude-plugin', 'plugin.json'), 'utf8')); } catch (_) { /* laissé null */ }
+  ok(manifest && manifest.name === 'promptimizer', 'build-plugin : plugin.json valide, name=promptimizer');
+  const vfile = (fs.readFileSync(path.join(PKG, 'VERSION'), 'utf8') || '').trim();
+  ok(manifest && manifest.version === `${parseInt(vfile, 10)}.0.0`, 'build-plugin : version manifeste alignée sur VERSION');
+
+  // Réécriture des chemins : plus de ~/.claude/promptimizer, un ${CLAUDE_PLUGIN_ROOT} à la place.
+  const cmd = fs.readFileSync(path.join(plugin, 'commands', 'close-batch.md'), 'utf8');
+  ok(cmd.indexOf('~/.claude/promptimizer') === -1, 'build-plugin : commands sans ~/.claude/promptimizer (réécrit)');
+  ok(cmd.indexOf('${CLAUDE_PLUGIN_ROOT}') !== -1, 'build-plugin : commands avec ${CLAUDE_PLUGIN_ROOT}');
+  const skill = fs.readFileSync(path.join(plugin, 'skills', 'promptimizer', 'SKILL.md'), 'utf8');
+  ok(skill.indexOf('~/.claude/promptimizer') === -1, 'build-plugin : skill sans ~/.claude/promptimizer (réécrit)');
+
+  // Marketplace locale : source = string relative (cf. D1).
+  let market = null;
+  try { market = JSON.parse(fs.readFileSync(path.join(out, 'marketplace', '.claude-plugin', 'marketplace.json'), 'utf8')); } catch (_) { /* null */ }
+  ok(market && market.plugins && market.plugins[0] && market.plugins[0].source === './promptimizer',
+    'build-plugin : marketplace.json source = "./promptimizer" (string relative)');
+
+  fs.rmSync(out, { recursive: true, force: true });
 }
 
 // ============================ RÉSUMÉ ============================

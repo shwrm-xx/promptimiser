@@ -42,6 +42,24 @@ Il fournit aussi un **delta Codex** (`AGENTS.md`) pour porter le même socle de 
 
 Aucun `sudo` n'est demandé.
 
+### Installation en plugin Claude Code (alternatif)
+
+PMZ peut aussi s'installer comme **plugin Claude Code natif** (updates/versioning gérés par
+Claude Code). Le dossier plugin est **assemblé** depuis la source :
+
+```
+node promptimizer/install/build-plugin.js
+claude plugin marketplace add dist/marketplace
+claude plugin install promptimizer@pmz-local
+```
+
+Vérification : `claude plugin details promptimizer` (doit afficher **6 hooks** et les
+**7 commandes** ; commandes namespacées `/promptimizer:*`). Distribution interne (ex. MH) :
+partager le dossier `dist/marketplace/` (ou un dépôt git interne) et `marketplace add` en local —
+zéro réseau externe requis. Les deux canaux (manuel / plugin) sont détaillés dans
+[ARCHITECTURE.md](ARCHITECTURE.md) ; le verdict de faisabilité dans
+[docs/decisions/D1-plugin-go-nogo.md](docs/decisions/D1-plugin-go-nogo.md).
+
 ## Vérification
 
 ```

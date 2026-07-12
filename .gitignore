@@ -4,6 +4,9 @@ node_modules/
 
 # Artéfacts de test en bac à sable
 /.sandbox/
+
+# Plugin Claude Code assemblé (build-plugin.js) — dérivé de la source, jamais committé
+/dist/
 *.pmz-backup-*.json
 *.vsg-backup-*.json
 

@@ -6,6 +6,8 @@ const { compute } = require('./audit-batch');
 const { parseCwd } = require('../lib/cli');
 
 function yn(v) { return v ? 'oui' : 'non'; }
+// Base des chemins d'aide affichés : racine du plugin en mode plugin, sinon install manuelle.
+const PMZ_BASE = (process.env.CLAUDE_PLUGIN_ROOT || '').trim() || '~/.claude/promptimizer';
 
 // Exécute la commande verify du lot en cours (si posée) AVANT le `done` — preuve de
 // clôture. Jamais bloquant : un échec ne fait qu'ajouter une ligne « à corriger » dans
@@ -38,8 +40,8 @@ function main() {
 ## Plan de lots
 
 - Avancement : ${bl.done}/${bl.total} faits${bl.current ? ` — en cours : #${bl.current.id} « ${bl.current.title} »` : ' — aucun lot en cours'}
-- Périmètre conforme au lot du backlog : à confirmer (dévié → node ~/.claude/promptimizer/scripts/backlog.js note --id N --note "…")${verifyLine}
-- Après le commit : node ~/.claude/promptimizer/scripts/backlog.js done --id ${bl.current ? bl.current.id : 'N'} (SHA du HEAD pris automatiquement ; le hook Stop le fait aussi tout seul)${bl.next ? `
+- Périmètre conforme au lot du backlog : à confirmer (dévié → node ${PMZ_BASE}/scripts/backlog.js note --id N --note "…")${verifyLine}
+- Après le commit : node ${PMZ_BASE}/scripts/backlog.js done --id ${bl.current ? bl.current.id : 'N'} (SHA du HEAD pris automatiquement ; le hook Stop le fait aussi tout seul)${bl.next ? `
 - Lot suivant à reprendre dans le handoff : #${bl.next.id} « ${bl.next.title} »` : ''}
 ` : '';
   const out = `## Clôture du lot

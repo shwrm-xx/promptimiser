@@ -16,6 +16,9 @@ function flag(name) {
   return i !== -1 && process.argv[i + 1] != null ? process.argv[i + 1] : null;
 }
 function out(s) { process.stdout.write(s + '\n'); }
+// Base des chemins d'aide affichés : racine du plugin en mode plugin (substituée par
+// Claude Code / exportée aux hooks), sinon l'emplacement de l'install manuelle.
+const PMZ_BASE = (process.env.CLAUDE_PLUGIN_ROOT || '').trim() || '~/.claude/promptimizer';
 
 function show(root, json, epicFilter) {
   const b = backlog.loadBacklog(root);
@@ -23,7 +26,7 @@ function show(root, json, epicFilter) {
   if (json) return out(JSON.stringify(epicFilter ? { ...b, lots } : b, null, 2));
   if (!lots.length) {
     out(epicFilter ? `Aucun lot pour l'epic « ${epicFilter} ».` : 'Aucun plan de lots.');
-    if (!epicFilter) out('Créer : node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "fait quand : …"');
+    if (!epicFilter) out(`Créer : node ${PMZ_BASE}/scripts/backlog.js add --title "…" --scope "fait quand : …"`);
     return;
   }
   const p = epicFilter ? { done: lots.filter((l) => l.status === 'done').length, total: lots.length } : backlog.progress(b);

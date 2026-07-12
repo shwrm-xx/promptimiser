@@ -18,6 +18,13 @@ vers `~/.claude/` (ou `$CLAUDE_CONFIG_DIR`) ; les lanceurs `install.command`/`.s
 que l'appeler. La spec d'origine est dans `mwn/` ; l'architecture vivante est dans
 [ARCHITECTURE.md](ARCHITECTURE.md) (source de vérité pour le contrat des hooks).
 
+**Deux canaux de déploiement** (lot D2) : (1) **install manuelle** = ce miroir plat ci-dessus ;
+(2) **plugin Claude Code** = `promptimizer/install/build-plugin.js` **dérive** un dossier plugin
+self-contained dans `dist/marketplace/` (gitignoré), au layout imposé par le format plugin
+(`commands/`/`skills/`/`hooks/hooks.json` à la racine, sans chemin custom). La source reste en
+miroir plat ; le plugin est un **artefact de build**, jamais committé. Détail : section « Canal
+plugin » d'[ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Règles de travail
 
 - **Zéro dépendance externe** : tous les scripts Node n'utilisent que la stdlib (`fs`, `path`,

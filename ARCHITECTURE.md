@@ -22,6 +22,9 @@ Hooks invoqués via `"<node-absolu>" ~/.claude/promptimizer/hooks/<x>.js`. Le ch
 de `node` est figé à l'install (résolu vers un symlink stable, ex. `/opt/homebrew/bin/node`),
 pour éviter `exit 127` quand Claude Code lance les hooks via `sh -c` avec un PATH épuré (apps
 GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON sur stdout, exit 0.
+En **mode plugin** (lot D2), le câblage vient de `hooks/hooks.json` et `node` est résolu au runtime
+par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. Le contrat par hook
+(events, stdin, sortie) ci-dessous est identique dans les deux canaux.
 
 | Hook | Event / matcher | Lit (stdin) | Émet | Rôle |
 |------|-----------------|-------------|------|------|
@@ -263,7 +266,13 @@ honore `CLAUDE_CONFIG_DIR` pour relocaliser `~/.claude` ; PMZ le respecte **part
 d'install via `claude-dir.js`, runtime JS aussi). Un seul point de calcul évite qu'install et
 hooks divergent (install au bon endroit mais hooks aveugles sur un `~/.claude` inexistant). Repli
 sur `~/.claude` si la variable est absente **ou vide** (JS `trim()`). `PMZ_STATE_DIR` reste un
-override prioritaire pour les tests.
+override prioritaire pour les tests (appliqué par les **appelants** `occupancy.js`/
+`merge-settings.js`, pas par `claude-dir.js` — sinon un test posant `PMZ_STATE_DIR` globalement
+fausserait les assertions sur le repli manuel). **Découplage `pmzDir()` / `stateDir()`** (lot D2) :
+`pmzDir()` (racine du code) renvoie `CLAUDE_PLUGIN_ROOT` en mode plugin, sinon `~/.claude/promptimizer` ;
+`stateDir()` (état persistant) vise `CLAUDE_PLUGIN_DATA/state` en plugin — **jamais sous `pmzDir()`**,
+qui est remplacé à chaque update du plugin, sinon l'état serait effacé. Repli manuel des deux :
+`~/.claude/promptimizer[/state]` (inchangé).
 
 `merge-settings.js` : parse strict (échec → **abort**), backup horodaté vérifié (suffixe `-N`
 anti-collision, perms 0600), fusion **append-only par event** taguée (idempotente). La purge
@@ -273,6 +282,29 @@ tout hook tiers. Prise de relais de `context-guard.py` (`--takeover`) : ses entr
 retirées sont sérialisées dans le **sidecar** `state/taken-over.json` ; `--remove` **restaure
 depuis ce sidecar** (le backup horodaté n'est qu'un filet de secours, pas la source de
 restauration) et **signale** un sidecar corrompu au lieu de l'avaler. Écriture atomique, perms 0600.
+
+### Canal plugin Claude Code (lot D2, alternatif à l'install manuelle)
+
+Le format plugin impose `commands/`, `skills/`, `hooks/hooks.json` **à la racine du plugin**, sans
+chemin personnalisable — incompatible avec le miroir plat source. Plutôt que de casser ce miroir
+(canal manuel conservé), `install/build-plugin.js` en **dérive** un dossier plugin self-contained
+dans `dist/marketplace/` (gitignoré) : copie de `promptimizer/` **moins `install/`**, skill
+replacée sous `skills/promptimizer/`, chemins `~/.claude/promptimizer` réécrits en
+`${CLAUDE_PLUGIN_ROOT}` dans commands + skill (substitués inline par Claude Code), version du
+manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string relative**
+(`"./promptimizer"`). Zéro duplication committée — le plugin est un artefact de build.
+
+- **Câblage des hooks** : `hooks/hooks.json` statique (6 hooks, mêmes matchers/timeouts que
+  `merge-settings.js`) remplace l'écriture dans `settings.json`. Commande =
+  `sh "${CLAUDE_PLUGIN_ROOT}/bin/pmz-hook" "${CLAUDE_PLUGIN_ROOT}/hooks/x.js"`.
+- **Wrapper `bin/pmz-hook`** : résout `node` **au runtime** (PATH puis emplacements usuels absents
+  du PATH GUI macOS) — remplace le `resolveNodeBin()` de `merge-settings.js`, inutilisable pour un
+  plugin distribué (chemin machine-spécifique). Invoqué via `sh` car le bit +x n'est pas préservé
+  en `.zip`. Fail-open : `node` introuvable → exit 0 silencieux.
+- **Diagnostic** = `claude plugin details promptimizer` (natif). `doctor.js` reste l'outil du
+  canal manuel (exclu du plugin).
+- **Régression assumée** (cf. D1) : pas de takeover réversible d'un hook Stop tiers en plugin ;
+  commandes namespacées `/promptimizer:*`.
 
 ## Décisions & pourquoi
 
