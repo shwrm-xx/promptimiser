@@ -12,12 +12,15 @@
 //   node merge-settings.js [settingsPath] --remove        (désinstall, restaure si possible)
 //   node merge-settings.js [settingsPath] --check         (diagnostic JSON)
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const { SETTINGS_TIMEOUT_S } = require('../lib/timeouts');
+const cdir = require('../lib/claude-dir');
+// path reste requis (join des backups, tmp, etc.).
 
-// Chemin ABSOLU (plus de dépendance à l'expansion du ~ par Claude Code dans le champ command).
-const HOOK_BASE = path.join(os.homedir(), '.claude', 'promptimizer', 'hooks');
+// Chemin ABSOLU (plus de dépendance à l'expansion du ~ par Claude Code dans le champ
+// command). Respecte CLAUDE_CONFIG_DIR : si la config Claude est relocalisée, les hooks
+// vivent sous $CLAUDE_CONFIG_DIR/promptimizer/hooks — sinon settings.json pointerait à vide.
+const HOOK_BASE = cdir.hooksDir();
 // Tags reconnus comme « hooks PMZ à nous » : courant + héritage (ancien nom du paquet).
 // Permet à stripVsg() de purger les entrées orphelines d'une version précédente
 // (sinon un renommage du paquet laisse des hooks fantômes => double-firing).
@@ -42,8 +45,7 @@ function resolveNodeBin() {
   return exec;
 }
 const NODE_BIN = resolveNodeBin();
-const STATE_DIR = process.env.PMZ_STATE_DIR ||
-  path.join(os.homedir(), '.claude', 'promptimizer', 'state');
+const STATE_DIR = process.env.PMZ_STATE_DIR || cdir.stateDir();
 const SIDECAR = path.join(STATE_DIR, 'taken-over.json');
 
 const T = SETTINGS_TIMEOUT_S;
@@ -156,8 +158,7 @@ function writeSettings(settingsPath, obj) {
 
 function main() {
   const args = process.argv.slice(2);
-  const settingsPath = args.find((a) => !a.startsWith('--')) ||
-    path.join(os.homedir(), '.claude', 'settings.json');
+  const settingsPath = args.find((a) => !a.startsWith('--')) || cdir.settingsPath();
   const mode = args.includes('--remove') ? 'remove' : args.includes('--check') ? 'check' : 'install';
   const doTakeover = args.includes('--takeover');
 

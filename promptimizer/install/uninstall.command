@@ -2,7 +2,7 @@
 # Désinstalleur Promptimizer — retire UNIQUEMENT les hooks PMZ, restaure l'existant.
 set -u
 
-DEST="$HOME/.claude"
+DEST="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 SETTINGS="$DEST/settings.json"
 MS="$DEST/promptimizer/install/merge-settings.js"
 

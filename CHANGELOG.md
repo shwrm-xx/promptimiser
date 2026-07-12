@@ -2,6 +2,30 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (export — Lot A : portabilité CLAUDE_CONFIG_DIR)
+
+Épic « rendre PMZ totalement exportable » (plan 4 lots : A portabilité, B installeur Node
+cross-platform, C versioning d'upgrade, D verrou de découplage). **Lot A** : PMZ calculait le
+dossier de config en `~/.claude` codé en dur (installeur + runtime). Or Claude Code honore
+`CLAUDE_CONFIG_DIR` pour relocaliser cette config : sur une machine où l'utilisateur l'a déplacée,
+l'install visait le bon dossier mais les hooks restaient aveugles sur un `~/.claude` inexistant.
+
+- `promptimizer/lib/claude-dir.js` (nouveau) : source de vérité **unique** du dossier config —
+  `CLAUDE_CONFIG_DIR` si posée (non vide, `trim()`), sinon `~/.claude`. Expose
+  `claudeDir/pmzDir/stateDir/hooksDir/settingsPath` (call-time, sensibles à l'env). Fail-open.
+- Câblage runtime : `lib/occupancy.js` (STATE_DIR) et `install/merge-settings.js` (HOOK_BASE,
+  STATE_DIR, settings.json par défaut) passent par le helper — `require('os')` mort retiré des deux.
+- Câblage installeur : `install.command`, `pmz-doctor.command`, `uninstall.command` résolvent
+  `DEST="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"`. Comportement shell `:-` (vide → repli) aligné sur
+  le `trim()` JS.
+- `test/run-tests.js` : section dédiée — helper direct (absente/posée/vide) + bout-en-bout
+  merge-settings (settings.json et HOOK_BASE relocalisés sous `CLAUDE_CONFIG_DIR`).
+- `ARCHITECTURE.md` : note « source de vérité unique » du dossier config.
+- Vérifié en bac à sable : `node test/run-tests.js` → **357 OK, 0 échec** ; résolution shell
+  `DEST` prouvée (posée/absente/vide) ; require des consommateurs OK.
+- Limite connue (non traitée) : chaînes d'aide **affichées** (`messages.js`/`backlog.js`/
+  `close-batch.js`) citent encore `~/.claude/...` en dur — cosmétique, aucun chemin fonctionnel.
+
 ## 2026-07-12 (fix — renommage de session bloqué sur un vieux lot)
 
 Retour utilisateur : sur un projet, le hook proposait toujours le même « Lot 7 » en renommage

@@ -4,7 +4,8 @@ set -u
 
 PMZ_SRC="$(cd "$(dirname "$0")/.." && pwd)"   # .../promptimizer
 REPO="$(cd "$PMZ_SRC/.." && pwd)"             # racine du dépôt source
-DEST="$HOME/.claude"
+# Respecte CLAUDE_CONFIG_DIR (Claude Code permet de relocaliser ~/.claude) ; sinon ~/.claude.
+DEST="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 SETTINGS="$DEST/settings.json"
 
 echo "── Promptimizer — installation ──"

@@ -207,6 +207,13 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
 
 ## Mapping source → cible & installation
 
+**Dossier de config Claude — source de vérité unique** (`lib/claude-dir.js`) : Claude Code
+honore `CLAUDE_CONFIG_DIR` pour relocaliser `~/.claude` ; PMZ le respecte **partout** (installeur
+`.command` via `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`, runtime JS via `claude-dir.js`). Un seul
+point de calcul évite qu'install et hooks divergent (install au bon endroit mais hooks aveugles
+sur un `~/.claude` inexistant). Repli sur `~/.claude` si la variable est absente **ou vide**
+(shell `:-` et JS `trim()` alignés). `PMZ_STATE_DIR` reste un override prioritaire pour les tests.
+
 `merge-settings.js` : parse strict (échec → **abort**), backup horodaté vérifié (suffixe `-N`
 anti-collision, perms 0600), fusion **append-only par event** taguée (idempotente). La purge
 reconnaît les tags **courant + hérités** (`PMZ_TAGS`) → un renommage du paquet ne laisse pas de

@@ -1672,6 +1672,57 @@ section('Version PMZ historisée + commande about');
   ok(/non initialisé/.test(aOutside.out), 'about : hors-git -> statut non initialisé annoncé');
 }
 
+section('claude-dir — résolution CLAUDE_CONFIG_DIR (portabilité, lot A)');
+{
+  // Fonctions call-time : je pose/retire l'env AVANT chaque appel, sans recharger le module.
+  const cdir = require(path.join(PKG, 'lib', 'claude-dir.js'));
+  const savedCfg = process.env.CLAUDE_CONFIG_DIR;
+  const home = os.homedir();
+
+  // 1. Variable absente → repli ~/.claude, dérivés cohérents.
+  delete process.env.CLAUDE_CONFIG_DIR;
+  ok(cdir.claudeDir() === path.join(home, '.claude'),
+    'claude-dir : sans CLAUDE_CONFIG_DIR → ~/.claude');
+  ok(cdir.stateDir() === path.join(home, '.claude', 'promptimizer', 'state'),
+    'claude-dir : stateDir dérive de ~/.claude');
+  ok(cdir.settingsPath() === path.join(home, '.claude', 'settings.json'),
+    'claude-dir : settingsPath dérive de ~/.claude');
+
+  // 2. Variable posée → tout pointe dessous.
+  const relocated = path.join(SANDBOX, 'relocated-config');
+  process.env.CLAUDE_CONFIG_DIR = relocated;
+  ok(cdir.claudeDir() === relocated,
+    'claude-dir : CLAUDE_CONFIG_DIR posée → utilisée telle quelle');
+  ok(cdir.hooksDir() === path.join(relocated, 'promptimizer', 'hooks'),
+    'claude-dir : hooksDir sous CLAUDE_CONFIG_DIR');
+  ok(cdir.settingsPath() === path.join(relocated, 'settings.json'),
+    'claude-dir : settingsPath sous CLAUDE_CONFIG_DIR');
+
+  // 3. Vide/espaces → repli ~/.claude (jamais un dossier "   ").
+  process.env.CLAUDE_CONFIG_DIR = '   ';
+  ok(cdir.claudeDir() === path.join(home, '.claude'),
+    'claude-dir : CLAUDE_CONFIG_DIR vide → repli ~/.claude');
+
+  // Restaure l'env pour ne pas polluer les tests suivants.
+  if (savedCfg === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+  else process.env.CLAUDE_CONFIG_DIR = savedCfg;
+
+  // 4. Bout-en-bout : merge-settings sans arg chemin écrit sous CLAUDE_CONFIG_DIR
+  //    et fige HOOK_BASE (commandes des hooks) sous ce même dossier relocalisé.
+  const relocMs = path.join(SANDBOX, 'reloc-ms');
+  fs.mkdirSync(relocMs, { recursive: true });
+  const rMs = runNode(MS, [], { CLAUDE_CONFIG_DIR: relocMs });
+  ok(rMs.code === 0, 'merge-settings : install sous CLAUDE_CONFIG_DIR → exit 0');
+  const writtenSettings = path.join(relocMs, 'settings.json');
+  ok(fs.existsSync(writtenSettings),
+    'merge-settings : settings.json écrit sous CLAUDE_CONFIG_DIR (pas ~/.claude)');
+  if (fs.existsSync(writtenSettings)) {
+    const raw = fs.readFileSync(writtenSettings, 'utf8');
+    ok(raw.indexOf(path.join(relocMs, 'promptimizer', 'hooks')) !== -1,
+      'merge-settings : HOOK_BASE des commandes pointe sous CLAUDE_CONFIG_DIR');
+  }
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

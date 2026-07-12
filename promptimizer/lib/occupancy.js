@@ -5,16 +5,15 @@
 // Anti-spam : un seul franchissement par palier et par session ; reset si le contexte redescend.
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const crypto = require('crypto');
+const cdir = require('./claude-dir');
 
 const BUCKETS = [150000, 300000, 500000, 750000];
 // Au-delà du dernier palier fixe, on continue d'alerter tous les +250k au lieu de
 // se taire pour le reste de la session (les sessions marathon dépassent 750k et
 // restaient jusqu'ici silencieuses jusqu'à la fin).
 const FLOATING_STEP = 250000;
-const STATE_DIR = process.env.PMZ_STATE_DIR ||
-  path.join(os.homedir(), '.claude', 'promptimizer', 'state');
+const STATE_DIR = process.env.PMZ_STATE_DIR || cdir.stateDir();
 
 const MAX_TAIL = 8 * 1024 * 1024; // plafond dur de lecture du transcript
 

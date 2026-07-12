@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "next_id": 21,
+  "next_id": 25,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-11T23:08:16.326Z",
+  "updated_at": "2026-07-12T08:12:44.816Z",
   "lots": [
     {
       "id": 1,
@@ -255,12 +255,64 @@
       "id": 20,
       "title": "Fix — sélection du dernier lot clos par id/closed_at, plus par lot_number",
       "scope": "lastDoneLot ne trie plus par lot_number (compteur global recyclable/null) ; tri recence closed_at + id decroissant. Immunise le nommage de session contre les lot_number sales. + test regression.",
+      "status": "done",
+      "model_hint": "opus",
+      "closed_commit": "ff1c66b",
+      "closed_at": "2026-07-11T23:10:32.320Z",
+      "closed_session_id": null,
+      "started_at": "2026-07-11T23:08:16.326Z",
+      "lot_number": 9,
+      "note": null
+    },
+    {
+      "id": 21,
+      "title": "Helper claude-dir + CLAUDE_CONFIG_DIR",
+      "scope": "fait quand : lib/claude-dir.js résout le dossier config (CLAUDE_CONFIG_DIR sinon ~/.claude) et est câblé dans tous les .js (merge-settings, occupancy) + .command (install/pmz-doctor/uninstall) ; tests : variable posée -> tout pointe ailleurs, absente -> ~/.claude ; node test/run-tests.js vert",
       "status": "in_progress",
       "model_hint": "opus",
       "closed_commit": null,
       "closed_at": null,
       "closed_session_id": null,
-      "started_at": "2026-07-11T23:08:16.326Z",
+      "started_at": "2026-07-12T08:12:44.816Z",
+      "lot_number": null,
+      "note": null
+    },
+    {
+      "id": 22,
+      "title": "Installeur Node cross-platform",
+      "scope": "fait quand : install.js (stdlib) installe sur macOS/Linux/Windows via claude-dir, xattr/quarantine gardé à darwin ; lanceurs .command (mac) + .sh (linux) + .ps1 (windows) appellent node install.js ; package.command idem cross-platform ; tests bac-à-sable verts",
+      "status": "todo",
+      "model_hint": "opus",
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "started_at": null,
+      "lot_number": null,
+      "note": null
+    },
+    {
+      "id": 23,
+      "title": "Versioning d'upgrade",
+      "scope": "fait quand : install lit la VERSION installée avant écrasement, compare à l'entrante et imprime réinstallation/mise à jour vN->vM/downgrade ; package nomme l'archive Promptimizer-vN-YYYYMMDD ; pmz-doctor affiche la version installée ; tests verts",
+      "status": "todo",
+      "model_hint": "sonnet",
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "started_at": null,
+      "lot_number": null,
+      "note": null
+    },
+    {
+      "id": 24,
+      "title": "Verrou de découplage + doc autonomie",
+      "scope": "fait quand : test/run-tests.js couvre package->unzip hors dépôt->install vers faux HOME->pmz-doctor vert sans dépôt source ni git ; grep de garde 0 réf au chemin source dans l'arbre installé ; ARCHITECTURE.md documente le contrat d'autonomie",
+      "status": "todo",
+      "model_hint": "sonnet",
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "started_at": null,
       "lot_number": null,
       "note": null
     }

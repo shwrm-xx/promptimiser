@@ -2,7 +2,7 @@
 # Diagnostic Promptimizer.
 set -u
 
-DEST="$HOME/.claude"
+DEST="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 SETTINGS="$DEST/settings.json"
 PMZ="$DEST/promptimizer"
 MS="$PMZ/install/merge-settings.js"
