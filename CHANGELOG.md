@@ -2,6 +2,24 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (export — Lot C : versioning d'upgrade)
+
+Épic « rendre PMZ totalement exportable ». **Lot C** : une réinstallation écrasait la version
+précédente sans que personne ne sache si c'était une mise à jour, un downgrade, ou une simple
+réinstallation.
+
+- `install.js` : lit la VERSION installée (`$DEST/promptimizer/VERSION`) **avant** la purge/copie
+  (sinon écrasée), la compare à la VERSION entrante (`lib/version.js`), imprime « première
+  installation », « mise à jour vN → vM », « réinstallation (vN) » ou « downgrade vN → vM ».
+  Fail-open : version illisible/absente → traité comme première installation, jamais de crash.
+- `package.js` : l'archive générée s'appelle `Promptimizer-vN-YYYYMMDD.zip` (au lieu de
+  `Promptimizer-YYYYMMDD.zip`).
+- `doctor.js` : affiche la version installée (« Version installée : N » ou « inconnue »).
+- `test/run-tests.js` : nouvelle section « versioning d'upgrade » (bac à sable, VERSION mutée
+  entre appels) — couvre première install, mise à jour, réinstallation identique, downgrade.
+- Vérifié : `node test/run-tests.js` → **378 OK, 0 échec** ; `package.js` en bac à sable produit
+  bien `Promptimizer-v1-20260712.zip`.
+
 ## 2026-07-12 (export — Lot B : installeur Node cross-platform)
 
 Épic « rendre PMZ totalement exportable ». **Lot B** : la logique d'install/diagnostic/désinstall/

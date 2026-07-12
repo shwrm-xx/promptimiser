@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 const cdir = require('../lib/claude-dir');
+const { readVersion } = require('../lib/version');
 const { readLineSync } = require('./lib-io');
 
 const DEST = cdir.claudeDir();
@@ -66,8 +67,11 @@ const nodeV = process.version;
 const gitOk = hasCmd('git') ? 'OK' : 'absent';
 const rgOk = hasCmd('rg') ? 'présent' : 'absent (git grep/grep utilisés)';
 
+const version = readVersion();
+
 log('Promptimizer — diagnostic');
 log('');
+log('Version installée : ' + (version || 'inconnue'));
 log('Claude settings : ' + setOk);
 log('Hooks globaux : ' + hooksOk);
 log('Skill globale : ' + skillOk);

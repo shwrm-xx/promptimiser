@@ -1775,6 +1775,53 @@ section('install.js — bout-en-bout cross-platform (bac à sable, source sans .
   fs.rmSync(stage, { recursive: true, force: true });
 }
 
+// ============================ Q. VERSIONING D'UPGRADE (lot C) ============================
+section("install.js/doctor.js — versioning d'upgrade (bac à sable)");
+{
+  const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'pmz-ver-'));
+  fs.mkdirSync(path.join(stage, 'skills'), { recursive: true });
+  fs.cpSync(PKG, path.join(stage, 'promptimizer'), { recursive: true });
+  const skillSrc = path.join(REPO, 'skills', 'promptimizer');
+  if (fs.existsSync(skillSrc)) fs.cpSync(skillSrc, path.join(stage, 'skills', 'promptimizer'), { recursive: true });
+
+  const INSTALL = path.join(stage, 'promptimizer', 'install', 'install.js');
+  const DOCTOR = path.join(stage, 'promptimizer', 'install', 'doctor.js');
+  const fakeClaude = path.join(stage, 'claude-home');
+  const env = { CLAUDE_CONFIG_DIR: fakeClaude, PMZ_STATE_DIR: path.join(stage, 'state') };
+
+  // vN : première installation.
+  fs.writeFileSync(path.join(stage, 'promptimizer', 'VERSION'), '3\n');
+  const r1 = runNode(INSTALL, ['--no-pause'], env);
+  ok(r1.code === 0, 'install.js : première install vN → exit 0');
+  ok(/première installation \(v3\)/.test(r1.out),
+    'install.js : première install annonce "première installation (v3)"');
+
+  const d1 = runNode(DOCTOR, ['--no-pause'], env);
+  ok(/Version installée : 3/.test(d1.out), 'doctor.js : affiche la version installée (3)');
+
+  // vM > vN : mise à jour.
+  fs.writeFileSync(path.join(stage, 'promptimizer', 'VERSION'), '5\n');
+  const r2 = runNode(INSTALL, ['--no-pause'], env);
+  ok(r2.code === 0, 'install.js : mise à jour vN→vM → exit 0');
+  ok(/mise à jour v3 → v5/.test(r2.out), 'install.js : annonce "mise à jour v3 → v5"');
+
+  const d2 = runNode(DOCTOR, ['--no-pause'], env);
+  ok(/Version installée : 5/.test(d2.out), 'doctor.js : version installée mise à jour (5)');
+
+  // Réinstallation de la même version.
+  const r3 = runNode(INSTALL, ['--no-pause'], env);
+  ok(r3.code === 0, 'install.js : réinstall même version → exit 0');
+  ok(/réinstallation \(v5\)/.test(r3.out), 'install.js : annonce "réinstallation (v5)"');
+
+  // Downgrade.
+  fs.writeFileSync(path.join(stage, 'promptimizer', 'VERSION'), '2\n');
+  const r4 = runNode(INSTALL, ['--no-pause'], env);
+  ok(r4.code === 0, 'install.js : downgrade → exit 0');
+  ok(/downgrade v5 → v2/.test(r4.out), 'install.js : annonce "downgrade v5 → v2"');
+
+  fs.rmSync(stage, { recursive: true, force: true });
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

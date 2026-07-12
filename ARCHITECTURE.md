@@ -219,6 +219,15 @@ court-circuités hors TTY ou avec `--no-pause`, défauts alignés sur l'ancien b
 `install.js` appelle `doctor.js` en fin de course et lance `git config core.hooksPath .githooks`
 uniquement sur le **dépôt source** (présence de `.git` + `.githooks`).
 
+**Versioning d'upgrade** : `install.js` lit `$DEST/promptimizer/VERSION` **avant** la purge/copie
+(étape 3, sinon la version installée est écrasée avant d'être comparée) et la confronte à la
+VERSION entrante (`lib/version.js`) — annonce « première installation », « mise à jour vN → vM »,
+« réinstallation (vN) » ou « downgrade vN → vM ». Fail-open : version illisible/absente → traité
+comme première installation, jamais de crash. `package.js` nomme l'archive
+`Promptimizer-vN-YYYYMMDD.zip` ; `doctor.js` affiche la version installée (relit
+`VERSION` depuis son propre dossier via `lib/version.js`, donc toujours celle du package
+effectivement installé, jamais celle du dépôt source).
+
 **Dossier de config Claude — source de vérité unique** (`lib/claude-dir.js`) : Claude Code
 honore `CLAUDE_CONFIG_DIR` pour relocaliser `~/.claude` ; PMZ le respecte **partout** (les cores
 d'install via `claude-dir.js`, runtime JS aussi). Un seul point de calcul évite qu'install et

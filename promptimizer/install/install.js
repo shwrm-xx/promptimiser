@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 const cdir = require('../lib/claude-dir');
+const { readVersion } = require('../lib/version');
 const { readLineSync } = require('./lib-io');
 
 const PMZ_SRC = path.resolve(__dirname, '..');    // .../promptimizer (source)
@@ -69,6 +70,29 @@ try {
 // 3. Purge des sous-dossiers obsolètes d'une version précédente (cpSync fusionne sans
 //    supprimer). On NE touche PAS à state/ (sidecar de prise de relais).
 const DEST_PMZ = path.join(DEST, 'promptimizer');
+
+// 3bis. Version installée lue AVANT écrasement (sinon perdue) vs version entrante.
+//       Fail-open : version illisible/absente → traité comme première installation.
+function readInstalledVersion() {
+  try {
+    const raw = fs.readFileSync(path.join(DEST_PMZ, 'VERSION'), 'utf8').trim();
+    return raw || null;
+  } catch (_) { return null; }
+}
+const installedVersion = readInstalledVersion();
+const incomingVersion = readVersion();
+const vi = parseInt(installedVersion, 10);
+const ve = parseInt(incomingVersion, 10);
+if (installedVersion === null || !Number.isFinite(vi)) {
+  log('Version : première installation (v' + (incomingVersion || '?') + ').');
+} else if (Number.isFinite(ve) && ve > vi) {
+  log('Version : mise à jour v' + vi + ' → v' + ve + '.');
+} else if (Number.isFinite(ve) && ve < vi) {
+  log('Version : downgrade v' + vi + ' → v' + ve + '.');
+} else {
+  log('Version : réinstallation (v' + (Number.isFinite(ve) ? ve : vi) + ').');
+}
+
 if (fs.existsSync(DEST_PMZ)) {
   for (const sub of ['hooks', 'lib', 'scripts', 'install', 'templates', 'commands']) {
     try { fs.rmSync(path.join(DEST_PMZ, sub), { recursive: true, force: true }); } catch (_) { /* ignore */ }

@@ -10,6 +10,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { readVersion } = require('../lib/version');
 const { readLineSync } = require('./lib-io');
 
 const PMZ_SRC = path.resolve(__dirname, '..');   // .../promptimizer (source)
@@ -22,7 +23,8 @@ const OUT_DIR = outDirArg || path.join(os.homedir(), 'Desktop');
 function pad(n) { return String(n).padStart(2, '0'); }
 const d = new Date();
 const DATE = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
-const ARCHIVE_NAME = `Promptimizer-${DATE}`;
+const VERSION = readVersion() || '0';
+const ARCHIVE_NAME = `Promptimizer-v${VERSION}-${DATE}`;
 const WORK = fs.mkdtempSync(path.join(os.tmpdir(), 'pmz-pkg-'));
 const STAGE = path.join(WORK, ARCHIVE_NAME);
 const DEST_ZIP = path.join(OUT_DIR, ARCHIVE_NAME + '.zip');
