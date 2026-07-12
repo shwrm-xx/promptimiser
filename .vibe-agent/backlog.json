@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 34,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-12T09:37:15.112Z",
+  "updated_at": "2026-07-12T09:43:38.815Z",
   "lots": [
     {
       "id": 1,
@@ -346,13 +346,13 @@
       "id": 27,
       "title": "Lot T3 — pmz:skip parsé dans le handoff",
       "scope": "fait quand : les lignes pmz:skip: <chemin> du handoff sont parsées au SessionStart et sèment avoid_reread du read-ledger (advisory anti-relecture actif dès le tour 1 de la session suivante) ; parse raté = ignoré silencieusement (fail-open) ; tests verts",
-      "status": "todo",
+      "status": "done",
       "model_hint": "sonnet",
-      "closed_commit": null,
-      "closed_at": null,
+      "closed_commit": "b5b3a7e",
+      "closed_at": "2026-07-12T09:43:38.814Z",
       "closed_session_id": null,
       "started_at": null,
-      "lot_number": null,
+      "lot_number": 23,
       "note": null
     },
     {
