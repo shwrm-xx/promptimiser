@@ -1884,7 +1884,10 @@ section('Trim injection SessionStart (titre compressé + slim si règles dans CL
   const t = messages.sessionTitleMessage('promptimiser — Lot 25 : Lot T1 — Nudge anti-compaction chiffré');
   ok(Buffer.byteLength(t, 'utf8') <= 400, 'T2 : sessionTitleMessage <= 400 o (titre réaliste)');
   ok(t.includes('PRÉCÉDENTE'), 'T2 : cible la session PRÉCÉDENTE');
-  ok(/EN CLAIR/.test(t), 'T2 : proposition en clair (pas seulement le dialogue)');
+  ok(/en clair/i.test(t), 'T2 : proposition en clair (pas seulement le dialogue)');
+  ok(/question à choix IMMÉDIATE/.test(t), 'T2 : exige le dialogue de validation immédiat');
+  ok(/AVANT la demande/.test(t) && /1er tour/.test(t), 'T2 : au tout début du 1er tour, avant la demande');
+  ok(/jamais en fin de tour/.test(t), 'T2 : interdit le renommage repoussé en fin de tour');
   ok(/jamais la courante/.test(t), 'T2 : jamais la session courante');
   ok(/réussi|échec/.test(t) && /jamais muet/.test(t), 'T2 : accusé de résultat explicite');
 

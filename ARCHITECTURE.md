@@ -164,8 +164,10 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   déduction ne s'applique **jamais** quand le plan contient un lot mais qu'il est écarté comme
   périmé (cas ci-dessus) : un titre existe alors dans le plan, il est volontairement tu — le
   remplacer par une supposition externe reviendrait à mentir de la même façon que ce que le fix
-  visait à éliminer. Puis demande à l'assistant de **proposer** ce nom en clair
-  (valeur ajoutée : l'utilisateur l'accepte ou en donne un autre) puis de tenter le renommage réel
+  visait à éliminer. Puis demande à l'assistant de **proposer** ce nom en clair **et de poser une
+  question à choix IMMÉDIATE** (valider / autre nom / non) **en tout début de 1er tour, avant de
+  traiter la demande** — retour utilisateur 2026-07-12 (v1.1.1) : un renommage proposé en fin de
+  tour ou sans dialogue n'est jamais traité — puis de tenter le renommage réel
   et d'accuser explicitement le résultat — un hook ne peut pas appeler un outil MCP lui-même, ce
   n'est donc qu'une instruction, pas une garantie. Le dialogue d'autorisation du tool de renommage
   (`mcp__ccd_session_mgmt__set_session_title`, fourni par Claude Code Desktop, hors de ce dépôt)
@@ -312,6 +314,13 @@ manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string r
   dans `settings.json` — sinon il concluait « rouge » sur une install saine (retour utilisateur
   2026-07-12). Aucun doctor CLI n'est embarqué dans le plugin (un `/pmz:doctor` serait un lot à
   part).
+- **Dérive silencieuse source ↔ installé** (post-mortem v1.1.1, 2026-07-13) : Claude Code
+  **copie** le plugin dans `~/.claude/plugins/cache/<marketplace>/pmz/<version>/` — il n'exécute
+  PAS `dist/marketplace` en place. Committer dans la source (voire rebuilder `dist/`) ne change
+  **rien** au comportement des sessions tant que (1) `VERSION` n'est pas bumpée, (2) le build
+  n'est pas relancé, (3) `claude plugin update pmz@pmz-local` n'est pas passé (+ redémarrage).
+  Symptôme vécu : nomenclature v1.1.0 committée mais cache figé en 1.0.0 → titres à l'ancien
+  format sur tous les projets. Tout lot touchant `hooks/`/`lib/` doit finir par ces 3 étapes.
 - **Régression assumée** (cf. D1) : pas de takeover réversible d'un hook Stop tiers en plugin ;
   commandes namespacées `/pmz:*`.
 - **Identifiant plugin = `pmz`, pas `promptimizer`** (lot E1) : le namespace des commandes est

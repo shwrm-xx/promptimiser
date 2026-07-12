@@ -212,14 +212,17 @@ function backlogResumeMessage(cur, next, prog) {
   return msg;
 }
 
-// Protocole de renommage compressé (~400 o max). NE PAS casser : proposition en clair,
+// Protocole de renommage compressé (~400 o max). NE PAS casser : proposition en clair +
+// question à choix IMMÉDIATE (tout début du 1er tour, avant la demande — retour utilisateur
+// 2026-07-12 : un renommage proposé en fin de tour ou sans dialogue = jamais traité),
 // renommage de la session PRÉCÉDENTE (jamais la courante), accusé de résultat explicite.
 function sessionTitleMessage(title) {
   return [
     `Titre suggéré (session PRÉCÉDENTE) : « ${title} ».`,
-    'Propose ce renommage EN CLAIR (pas seulement le dialogue) — validation ou autre nom.',
-    'Même tour : renomme la session PRÉCÉDENTE (jamais la courante), ce titre ou celui donné.',
-    'Autorisation = simple validation. Confirme le résultat (réussi / échec + raison), jamais muet.',
+    'AVANT la demande, tout début du 1er tour : titre en clair + question à choix IMMÉDIATE',
+    '(valider / autre nom / non) — jamais en fin de tour.',
+    'Sur accord : renomme la session PRÉCÉDENTE (jamais la courante).',
+    'Confirme le résultat (réussi / échec + raison), jamais muet.',
   ].join('\n');
 }
 

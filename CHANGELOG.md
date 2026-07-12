@@ -2,6 +2,28 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-13 (v1.1.1 — fiabilité du renommage : validation immédiate + redéploiement)
+
+Retour direct : renommage « pas fiable au global » — démarre une fois sur deux, tantôt en début
+tantôt en fin de tour, pas de dialogue de validation, nomenclature et numérotation non
+respectées. **Cause racine n°1 : dérive de déploiement** — le plugin installé était figé en
+**1.0.0** (cache `~/.claude/plugins/cache/`, commit `5085625`), donc SANS le rappel doublé du
+1er prompt (lot #40) ni la nomenclature v1.1.0 (`#N` = ID du plan). Committer la source ne
+change rien aux sessions tant que le cache n'est pas mis à jour. Cause n°2 : le protocole ne
+mandatait pas de dialogue de validation immédiat.
+
+- `promptimizer/lib/messages.js: sessionTitleMessage` : le protocole exige désormais, **tout
+  début du 1er tour et AVANT la demande utilisateur**, le titre en clair + une **question à
+  choix IMMÉDIATE** (valider / autre nom / non) — jamais en fin de tour ; renommage de la
+  session PRÉCÉDENTE sur accord, accusé de résultat explicite (inchangés). ≤ 400 o conservé.
+- `test/run-tests.js` : 4 assertions du nouveau protocole (dialogue immédiat, avant la demande,
+  jamais en fin de tour) — **517 OK, 0 échec**.
+- `ARCHITECTURE.md` : protocole de renommage mis à jour + encart « Dérive silencieuse
+  source ↔ installé » (canal plugin) : tout lot touchant `hooks/`/`lib/` doit finir par
+  bump `VERSION` → rebuild `build-plugin.js` → `claude plugin update pmz@pmz-local` + restart.
+- `promptimizer/VERSION` + `.claude-plugin/plugin.json` : 1.1.0 → **1.1.1** ; plugin rebuilé
+  (`dist/marketplace`) et **déployé** (cache 1.0.0 → 1.1.1, redémarrage requis pour appliquer).
+
 ## 2026-07-12 (v1.1.0 — nomenclature de titre de session : nom de plan + #lot + résumé)
 
 Retour direct : depuis le passage en plugin, le renommage de session était « inférieur à
