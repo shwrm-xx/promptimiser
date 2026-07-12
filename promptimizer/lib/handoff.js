@@ -23,6 +23,22 @@ function handoffFile(root) {
   return path.join(vibeDir(root), 'handoff.md');
 }
 
+// Extrait les chemins des lignes `pmz:skip: <chemin>` d'un handoff manuel — sème
+// l'advisory anti-relecture dès le tour 1 (sans attendre une 1re relecture réelle).
+// Ligne malformée ou vide : ignorée silencieusement (fail-open).
+function parseSkipPaths(text) {
+  if (!text) return [];
+  const out = [];
+  for (const line of text.split('\n')) {
+    const m = /pmz:skip:\s*(.+)/.exec(line);
+    if (m) {
+      const p = m[1].trim();
+      if (p) out.push(p);
+    }
+  }
+  return out;
+}
+
 // Lit le handoff pour injection. null si absent, illisible ou sans marqueur PMZ.
 function readHandoff(root) {
   try {
@@ -121,4 +137,4 @@ function writeAutoHandoff(root) {
   }
 }
 
-module.exports = { handoffFile, readHandoff, markConsumed, writeAutoHandoff, AUTO_MARKER, MANUAL_MARKER };
+module.exports = { handoffFile, readHandoff, parseSkipPaths, markConsumed, writeAutoHandoff, AUTO_MARKER, MANUAL_MARKER };

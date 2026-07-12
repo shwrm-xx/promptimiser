@@ -1701,6 +1701,52 @@ section('Trim injection SessionStart (titre compressé + slim si règles dans CL
   ok(/réduire les relectures/.test(ctxPlain), 'T2 : CLAUDE.md non porteur -> rappel plein (MSG_ACTIF)');
 }
 
+section('pmz:skip parsé dans le handoff -> avoid_reread_notes semé dès le tour 1 (lot T3)');
+{
+  const ledgerT3 = require(path.join(PKG, 'lib', 'ledger'));
+  const handoffT3 = require(path.join(PKG, 'lib', 'handoff'));
+
+  // parseSkipPaths : extraction, ignore les lignes malformées/vides
+  ok(handoffT3.parseSkipPaths(null).length === 0, 'T3 : texte absent -> tableau vide');
+  const parsed = handoffT3.parseSkipPaths(
+    '## Handoff\npmz:skip: lib/a.js\nligne normale\npmz:skip:   lib/b.js  \npmz:skip:\n'
+  );
+  ok(parsed.length === 2 && parsed[0] === 'lib/a.js' && parsed[1] === 'lib/b.js',
+    'T3 : parseSkipPaths extrait les chemins, ignore ligne vide/malformée');
+
+  const repo = path.join(SANDBOX, 'repo-t3-skip');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'CLAUDE.md'), 'règles');
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  project.ensureLedger(repo);
+  const hf = path.join(repo, '.vibe-agent', 'handoff.md');
+
+  // Handoff manuel avec des lignes pmz:skip
+  fs.writeFileSync(hf, handoffT3.MANUAL_MARKER + '\n## Handoff\npmz:skip: backlog.json\npmz:skip: CHANGELOG.md\n');
+  runHook('session-start.js', { source: 'startup', cwd: repo, session_id: 't3-skip' });
+  const rl = ledgerT3.loadReadLedger(repo);
+  ok(rl.avoid_reread_notes.includes('backlog.json') && rl.avoid_reread_notes.includes('CHANGELOG.md'),
+    'T3 : avoid_reread_notes semé dès SessionStart depuis les lignes pmz:skip du handoff');
+
+  // Handoff manuel sans pmz:skip : ne casse rien, n'ajoute rien
+  const repo2 = path.join(SANDBOX, 'repo-t3-noskip');
+  fs.mkdirSync(repo2, { recursive: true });
+  execFileSync('git', ['init', '-q', repo2]);
+  fs.writeFileSync(path.join(repo2, 'CLAUDE.md'), 'règles');
+  fs.writeFileSync(path.join(repo2, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo2, 'add', '.']);
+  execFileSync('git', ['-C', repo2, 'commit', '-q', '-m', 'init']);
+  project.ensureLedger(repo2);
+  const hf2 = path.join(repo2, '.vibe-agent', 'handoff.md');
+  fs.writeFileSync(hf2, handoffT3.MANUAL_MARKER + '\n## Handoff\nnotes sans marqueur skip\n');
+  const r2 = runHook('session-start.js', { source: 'startup', cwd: repo2, session_id: 't3-noskip' });
+  ok(r2.code === 0, 'T3 : handoff manuel sans pmz:skip -> fail-open, hook toujours vert');
+  ok(ledgerT3.loadReadLedger(repo2).avoid_reread_notes.length === 0, 'T3 : rien semé sans ligne pmz:skip');
+}
+
 // ============================ VERSION PMZ + COMMANDE ABOUT (LOT 17) ============================
 section('Version PMZ historisée + commande about');
 {

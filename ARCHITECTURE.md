@@ -200,6 +200,12 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
   fichier sans marqueur PMZ (notes utilisateur) n'est ni écrasé ni injecté. La détection de
   « lot ouvert » de `stop.js` utilise `gitStatusMeaningful` (porcelain **sans** `.vibe-agent/`) :
   le churn ledgers/handoff ne compte pas comme lot ouvert et ne bloque pas sa clôture.
+- **`pmz:skip` du handoff → `avoid_reread_notes`** (`lib/handoff.js#parseSkipPaths`,
+  `lib/ledger.js#seedAvoidReread`, lot T3) : un handoff manuel peut lister des chemins à ne pas
+  relire via des lignes `pmz:skip: <chemin>` ; `withHandoff` (`session-start.js`) les sème dans
+  `avoid_reread_notes` (read-ledger) au moment de l'injection — l'advisory anti-relecture est
+  actif dès le tour 1, sans attendre une 1re relecture réelle pour l'alimenter. Champ réutilisé,
+  pas dupliqué. Parse raté/vide = ignoré silencieusement (fail-open).
 
 - **Version de PMZ** (`promptimizer/VERSION`, `lib/version.js`) : entier simple (pas de semver —
   un seul mainteneur, aucune distinction major/minor/patch utile) versionné avec le package,

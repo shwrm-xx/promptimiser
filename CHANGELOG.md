@@ -2,6 +2,20 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (dégraissage tokens — Lot T3 : pmz:skip parsé dans le handoff)
+
+Épic « dégraissage tokens ». **Lot T3** : un handoff manuel peut désormais lister des chemins à
+ne pas relire via des lignes `pmz:skip: <chemin>` — l'advisory anti-relecture est actif **dès le
+tour 1** de la session suivante, sans attendre une 1re relecture réelle pour l'alimenter.
+
+- `promptimizer/lib/handoff.js` : nouvelle fonction `parseSkipPaths(text)` — extrait les chemins
+  des lignes `pmz:skip: <chemin>`, ignore silencieusement les lignes vides/malformées.
+- `promptimizer/lib/ledger.js` : nouvelle fonction `seedAvoidReread(root, paths)` — réutilise le
+  champ `avoid_reread_notes` existant (pas de nouveau champ), dédupliqué, plafonné à `MAX_READS`.
+- `promptimizer/hooks/session-start.js` (`withHandoff`) : après injection d'un handoff avec texte,
+  sème `avoid_reread_notes` depuis ses lignes `pmz:skip:` — fail-open (try/catch dédié).
+- `test/run-tests.js` : section « pmz:skip parsé dans le handoff (lot T3) » (+5). Suite **412 OK**.
+
 ## 2026-07-12 (dégraissage tokens — Lot T2 : trim injection SessionStart)
 
 Épic « dégraissage tokens ». **Lot T2** : l'injection SessionStart était verbeuse et redondante

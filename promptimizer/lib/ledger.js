@@ -113,4 +113,18 @@ function recordModify(root, relPath, sessionId) {
   writeAtomic(contextLedgerFile(root), cl);
 }
 
-module.exports = { loadReadLedger, loadContextLedger, recordRead, recordModify, recordOccupancy, estTokens };
+// Sème avoid_reread_notes à partir de chemins fournis (ex : `pmz:skip:` du handoff) —
+// actif dès le tour 1, sans attendre une 1re relecture réelle. Fail-open.
+function seedAvoidReread(root, paths) {
+  if (!isInitialized(root) || !Array.isArray(paths) || !paths.length) return;
+  const rl = loadReadLedger(root);
+  for (const p of paths) {
+    if (p && !rl.avoid_reread_notes.includes(p)) rl.avoid_reread_notes.push(p);
+  }
+  if (rl.avoid_reread_notes.length > MAX_READS) {
+    rl.avoid_reread_notes = rl.avoid_reread_notes.slice(-MAX_READS);
+  }
+  writeAtomic(readLedgerFile(root), rl);
+}
+
+module.exports = { loadReadLedger, loadContextLedger, recordRead, recordModify, recordOccupancy, estTokens, seedAvoidReread };
