@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "next_id": 37,
+  "next_id": 40,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-12T12:53:51.977Z",
+  "updated_at": "2026-07-12T13:35:53.114Z",
   "lots": [
     {
       "id": 1,
@@ -603,18 +603,69 @@
       "id": 36,
       "title": "Lot E3 — doctor conscient du canal plugin (fin du faux rouge)",
       "scope": "fait quand : doctor rend vert sur plugin sain (env/enabledPlugins/installed_plugins.json), détection double-install sans claude CLI, test plugin-seul, poste nettoyé",
-      "status": "in_progress",
+      "status": "done",
       "model_hint": "sonnet",
       "epic": null,
+      "verify": null,
+      "closed_commit": "e93330e",
+      "closed_at": "2026-07-12T12:55:51.483Z",
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "started_at": "2026-07-12T12:50:33.192Z",
+      "lot_number": 39,
+      "note": null,
+      "session_touches": 1
+    },
+    {
+      "id": 37,
+      "title": "Script de publication vers branche plugin-release",
+      "scope": "fait quand : script génère marketplace.json + plugin assemblé sur une branche dédiée sans toucher main, testé en bac à sable CLAUDE_CONFIG_DIR",
+      "status": "in_progress",
+      "model_hint": "sonnet",
+      "epic": "Diffusion pmz — marketplace GitHub publique",
       "verify": null,
       "closed_commit": null,
       "closed_at": null,
       "closed_session_id": null,
       "closed_occupancy": null,
-      "started_at": "2026-07-12T12:50:33.192Z",
+      "started_at": "2026-07-12T13:35:53.113Z",
       "lot_number": null,
       "note": null,
-      "session_touches": 1
+      "session_touches": 0
+    },
+    {
+      "id": 38,
+      "title": "Doc canal GitHub public",
+      "scope": "fait quand : README + ARCHITECTURE + CHANGELOG documentent le prérequis dépôt public et la commande marketplace add owner/repo@plugin-release",
+      "status": "todo",
+      "model_hint": "fable",
+      "epic": "Diffusion pmz — marketplace GitHub publique",
+      "verify": null,
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "started_at": null,
+      "lot_number": null,
+      "note": null,
+      "session_touches": 0
+    },
+    {
+      "id": 39,
+      "title": "Vérification bout-en-bout",
+      "scope": "fait quand : marketplace add + install réellement testés depuis la branche publiée en bac à sable, 0 régression sur test/run-tests.js",
+      "status": "todo",
+      "model_hint": "sonnet",
+      "epic": "Diffusion pmz — marketplace GitHub publique",
+      "verify": null,
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "started_at": null,
+      "lot_number": null,
+      "note": null,
+      "session_touches": 0
     }
   ]
 }

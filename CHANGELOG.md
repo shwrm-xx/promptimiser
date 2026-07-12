@@ -2,6 +2,31 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (Lot #37 — script de publication vers `plugin-release`, epic diffusion GitHub publique)
+
+Premier lot de l'epic « Diffusion pmz — marketplace GitHub publique » : rendre le plugin
+installable par n'importe qui via `claude plugin marketplace add <owner>/<repo>@<branche>`,
+sans dépendre d'un partage manuel de dossier (canal déjà couvert par le lot D4).
+
+- `promptimizer/install/publish-plugin.js` (nouveau) : construit l'artefact plugin (réutilise
+  `build-plugin.js`), puis le publie sur une branche dédiée **`plugin-release`** via un **commit
+  orphelin** — aucun historique hérité de `main`, régénéré intégralement à chaque publication.
+  `main` reste le miroir plat source, intact ; la publication se fait dans un `git worktree`
+  détaché pour ne jamais perturber le checkout courant. Renomme la marketplace générée
+  (`pmz-local` → `pmz-marketplace`, nom non réservé) pour distinguer l'usage public du sandbox
+  local de `build-plugin.js`. Purge la branche locale existante avant régénération (idempotent).
+  Garde-fou : refuse de publier sur un working tree non propre. Ne pousse vers le remote que si
+  `--push` est explicitement passé (jamais de push automatique) ; sans ce flag, affiche la
+  commande à lancer manuellement.
+- Vérifié en bac à sable (clone temporaire, jamais le vrai remote) : contenu de branche correct
+  (`install/` exclu, `skills/` inclus, chemins réécrits en `${CLAUDE_PLUGIN_ROOT}`), un seul
+  commit à chaque régénération, aucun worktree résiduel, `main` inchangé après coup. Prérequis
+  côté utilisateur (hors du périmètre de ce lot, changement de visibilité GitHub) : basculer le
+  dépôt en **public** — sinon la marketplace `github` reste inaccessible aux tiers.
+- Tests : 508 OK, aucune régression.
+- Reste à faire (lots #38/#39 du même epic) : documenter le canal dans README/ARCHITECTURE, et
+  vérifier bout-en-bout `marketplace add` + `install` depuis la branche publiée.
+
 ## 2026-07-12 (Lot E3 — doctor conscient du canal plugin, plus de faux « rouge »)
 
 Retour direct : après la migration vers le plugin (epic D-E), le `pmz-doctor` affichait
