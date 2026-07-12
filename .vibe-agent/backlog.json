@@ -309,7 +309,7 @@
       "scope": "fait quand : test/run-tests.js couvre package->unzip hors dépôt->install vers faux HOME->pmz-doctor vert sans dépôt source ni git ; grep de garde 0 réf au chemin source dans l'arbre installé ; ARCHITECTURE.md documente le contrat d'autonomie",
       "status": "done",
       "model_hint": "sonnet",
-      "closed_commit": "4c63646",
+      "closed_commit": "423dd04",
       "closed_at": "2026-07-12T08:50:07.157Z",
       "closed_session_id": null,
       "started_at": null,
