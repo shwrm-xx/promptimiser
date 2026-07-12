@@ -7,6 +7,7 @@
 const { gitRoot } = require('../lib/project');
 const { parseCwd } = require('../lib/cli');
 const backlog = require('../lib/backlog');
+const lot = require('../lib/lot');
 
 const LABELS = { todo: 'à faire', in_progress: 'en cours', done: 'fait', dropped: 'abandonné' };
 
@@ -16,20 +17,22 @@ function flag(name) {
 }
 function out(s) { process.stdout.write(s + '\n'); }
 
-function show(root, json) {
+function show(root, json, epicFilter) {
   const b = backlog.loadBacklog(root);
-  if (json) return out(JSON.stringify(b, null, 2));
-  if (!b.lots.length) {
-    out('Aucun plan de lots.');
-    out('Créer : node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "fait quand : …"');
+  const lots = epicFilter ? b.lots.filter((l) => l.epic === epicFilter) : b.lots;
+  if (json) return out(JSON.stringify(epicFilter ? { ...b, lots } : b, null, 2));
+  if (!lots.length) {
+    out(epicFilter ? `Aucun lot pour l'epic « ${epicFilter} ».` : 'Aucun plan de lots.');
+    if (!epicFilter) out('Créer : node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "fait quand : …"');
     return;
   }
-  const p = backlog.progress(b);
+  const p = epicFilter ? { done: lots.filter((l) => l.status === 'done').length, total: lots.length } : backlog.progress(b);
   out('## Plan de lots');
   out(`${p.done}/${p.total} faits.`);
   out('');
-  for (const l of b.lots) {
+  for (const l of lots) {
     let line = `- [${LABELS[l.status]}] #${l.id} « ${l.title} »`;
+    if (l.epic) line += ` [epic : ${l.epic}]`;
     if (l.model_hint) line += ` [modèle : ${l.model_hint}]`;
     if (l.status === 'done' && l.closed_commit) line += ` — commit ${l.closed_commit}`;
     else if (l.scope) line += ` — ${l.scope}`;
@@ -45,22 +48,30 @@ function main() {
   const json = process.argv.includes('--json');
   const id = flag('id');
 
-  if (cmd === 'show') return show(root, json);
+  if (cmd === 'show') return show(root, json, flag('epic'));
+
+  if (cmd === 'epic') {
+    const name = flag('set');
+    if (!name) return out(`Epic actuel : ${lot.readEpic(root)}`);
+    const okw = lot.writeEpic(root, name);
+    return out(okw ? `Epic « ${name.trim().slice(0, lot.MAX_EPIC)} » enregistré (.vibe-agent/epic).`
+      : 'Refusé : nom vide ou échec d\'écriture.');
+  }
 
   if (cmd === 'add') {
     const model = flag('model');
     if (!model) {
       return out('Refusé : --model manquant. Une préconisation de modèle par lot est obligatoire (ex. --model sonnet ou --model opus).');
     }
-    const lot = backlog.addLot(root, flag('title'), flag('scope'), model);
-    if (!lot) {
+    const newLot = backlog.addLot(root, flag('title'), flag('scope'), model, flag('epic'));
+    if (!newLot) {
       const b = backlog.loadBacklog(root);
       if (b.lots.filter((l) => l.status === 'todo' || l.status === 'in_progress').length >= backlog.MAX_LOTS_OPEN) {
         return out(`Refusé : ${backlog.MAX_LOTS_OPEN} lots ouverts au plafond — un backlog n'est pas un Jira. Clore ou abandonner d'abord.`);
       }
       return out('Refusé : --title manquant ou vide.');
     }
-    return out(`Lot #${lot.id} « ${lot.title} » ajouté (à faire) [modèle : ${lot.model_hint}].`);
+    return out(`Lot #${newLot.id} « ${newLot.title} » ajouté (à faire) [modèle : ${newLot.model_hint}]${newLot.epic ? ` [epic : ${newLot.epic}]` : ''}.`);
   }
 
   if (cmd === 'start') {
@@ -101,7 +112,7 @@ function main() {
     return;
   }
 
-  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | next | reconcile.`);
+  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | next | reconcile | epic.`);
 }
 
 if (require.main === module) {

@@ -11,6 +11,8 @@ function counterFile(root) {
   return path.join(vibeDir(root), 'lot-counter.json');
 }
 
+const MAX_EPIC = 60;
+
 function epicFile(root) {
   return path.join(vibeDir(root), 'epic');
 }
@@ -26,6 +28,23 @@ function readEpic(root) {
     /* fichier absent ou illisible -> fallback */
   }
   return path.basename(root);
+}
+
+// Écrit le label d'epic global (.vibe-agent/epic), utilisé par /pmz-scope au découpage
+// d'une demande. Label = simple chaîne (cf. ARCHITECTURE.md « Epic = label, pas conteneur »).
+function writeEpic(root, name) {
+  const trimmed = String(name == null ? '' : name).trim().slice(0, MAX_EPIC);
+  if (!trimmed) return false;
+  try {
+    fs.mkdirSync(vibeDir(root), { recursive: true });
+    const file = epicFile(root);
+    const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmp, trimmed + '\n');
+    fs.renameSync(tmp, file);
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 // Cherche le plus grand "(lot N)" dans CHANGELOG.md pour amorcer le compteur sans
@@ -70,8 +89,10 @@ function withSuffix(base, l) {
 // référentiel que l'utilisateur voit dans `backlog.js show`), jamais le compteur
 // lot-counter.json qui avance indépendamment (y compris sur des commits de
 // bookkeeping de clôture) et dérive donc du numéro backlog au fil du projet.
+// Le label epic du lot (champ optionnel `epic` du backlog) prime sur l'epic global du
+// projet quand présent — permet à un backlog multi-epics de nommer chaque lot correctement.
 function titleForBacklogLot(epic, l) {
-  return `${epic} — Lot ${l.id} : ${truncateTitle(l.title)}`;
+  return `${l.epic || epic} — Lot ${l.id} : ${truncateTitle(l.title)}`;
 }
 
 // Intitulé déduit du dernier titre `## ...` de CHANGELOG.md (parenthèse finale de la
@@ -152,4 +173,4 @@ function suggestedTitle(root) {
   return deduced ? withSuffix(base, { title: deduced }) : base;
 }
 
-module.exports = { readEpic, getLotCounter, incrementLot, suggestedTitle };
+module.exports = { readEpic, writeEpic, getLotCounter, incrementLot, suggestedTitle, MAX_EPIC };

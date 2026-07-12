@@ -33,11 +33,14 @@ Quand un projet n'est pas initialisé (présence de `.vibe-agent/` absente) :
 
 ## 2bis. Lotir une grosse demande
 Demande large (plusieurs sujets, ≥ 6 puces, refactor global…) : proposer un découpage en
-**2 à 5 lots** (1 lot = 1 commit livrable, critère « fait quand : … »), le faire valider en
-une question, puis le persister via `/pmz-scope` ou
+**2 à 5 lots**, le faire valider en une question, puis le persister via `/pmz-scope` ou
 `node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "…"` (+ `start --id N`).
 Traiter **uniquement le premier lot**. Le suivi est automatique ensuite : clôture au commit
 (hook Stop), avancement dans le handoff, réinjection au démarrage et après compaction.
+
+**Règle de découpe** : 1 lot = 1 session sous ~300k tokens, 1 commit, un critère
+« fait quand : … » vérifiable. Un lot qui dépasse l'un de ces trois → le redécouper plutôt
+que de le grossir.
 
 ## 3. Clôturer un lot
 `node ~/.claude/promptimizer/scripts/close-batch.js` puis :

@@ -318,10 +318,14 @@ restauration) et **signale** un sidecar corrompu au lieu de l'avaler. Écriture 
   reste les todos volatiles (`todo-snapshot.json`). Pas de hiérarchie epic→feature→lot : une
   « feature » = un epic court (2-5 lots).
 - **Epic = label, pas conteneur** : pas de table `epics[]` ni de cycle de vie d'epic — un label
-  (fichier `.vibe-agent/epic` + futur champ `epic` du lot, cf. lot #28) suffit pour le titre de
-  session et le filtrage. Le multi-epics arbitré est un problème que l'historique réel du
-  backlog (exécution strictement séquentielle) n'a jamais rencontré ; une table d'epics avec
-  statuts et arbitrages serait le début du Jira que `backlog.js` refuse par principe.
+  (fichier `.vibe-agent/epic`, écrit par `/pmz-scope` via `backlog.js epic --set`, + champ
+  optionnel `epic` du lot backlog, cap 60c, lot #28) suffit pour le titre de session et le
+  filtrage (`backlog.js show --epic`). Le champ du lot prime sur le label global dans
+  `titleForBacklogLot`/`suggestedTitle` et dans `about.js` (lot en cours, sinon prochain, sinon
+  label global) — permet un backlog multi-epics sans hiérarchie. Le multi-epics arbitré est un
+  problème que l'historique réel du backlog (exécution strictement séquentielle) n'a jamais
+  rencontré ; une table d'epics avec statuts et arbitrages serait le début du Jira que
+  `backlog.js` refuse par principe.
 - **Distribution cible = plugin Claude Code** (epic D, lots #30-#33) : les hooks portés par le
   `hooks/hooks.json` du plugin suppriment le merge de `settings.json` pour les nouveaux
   installés (le mécanisme le plus risqué de PMZ), versioning/update natifs via `plugin.json`,

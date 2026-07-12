@@ -867,6 +867,52 @@ section('backlog — model_hint (préconisation de modèle par lot)');
   ok(rShowLegacy.code === 0 && !/\[modèle :/.test(rShowLegacy.out), 'legacy : show sans tag modèle, exit 0');
 }
 
+section('backlog — champ epic optionnel du lot (lot #28)');
+{
+  const repo = path.join(SANDBOX, 'repo-lot-epic');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+
+  // P1. epic --set : écrit .vibe-agent/epic, plafonné, réutilisable par readEpic
+  const rSet = runNode(BKLG, ['epic', '--cwd', repo, '--set', 'x'.repeat(100)]);
+  ok(/enregistré/.test(rSet.out), 'epic --set : confirmation');
+  ok(lot.readEpic(repo).length === lot.MAX_EPIC, 'epic --set : label tronqué au cap (lu via readEpic)');
+
+  // P2. epic sans --set : lit l'epic courant
+  const rGet = runNode(BKLG, ['epic', '--cwd', repo]);
+  ok(rGet.out.includes(lot.readEpic(repo)), 'epic sans --set : affiche l\'epic courant');
+
+  // P3. add --epic : champ persisté + réaffiché
+  const rAdd = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot avec epic', '--model', 'sonnet', '--epic', 'Feature X']);
+  ok(/\[epic : Feature X\]/.test(rAdd.out), 'add --epic : réaffiché dans la sortie');
+  let b = backlogLib.loadBacklog(repo);
+  ok(b.lots[0].epic === 'Feature X', 'add --epic : persisté dans backlog.json');
+
+  // P4. add sans --epic : champ absent, pas de crash
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot sans epic', '--model', 'sonnet']);
+  b = backlogLib.loadBacklog(repo);
+  ok(b.lots[1].epic === null, 'add sans --epic : champ epic = null');
+
+  // P5. show --epic : filtre sur le label du lot
+  const rShowFilter = runNode(BKLG, ['show', '--cwd', repo, '--epic', 'Feature X']);
+  ok(/Lot avec epic/.test(rShowFilter.out) && !/Lot sans epic/.test(rShowFilter.out),
+    'show --epic : ne liste que les lots du label demandé');
+
+  // P6. troncature au cap + titleForBacklogLot : le champ epic du lot prime sur l'epic global
+  const long = backlogLib.addLot(repo, 'Lot long epic', null, 'sonnet', 'y'.repeat(200));
+  ok(!!long && long.epic.length <= backlogLib.MAX_EPIC, 'addLot : epic tronqué au cap');
+  backlogLib.startLot(repo, long.id);
+  ok(lot.suggestedTitle(repo) === `${long.epic} — Lot ${long.id} : Lot long epic`,
+    'suggestedTitle : epic du lot prime sur l\'epic global du projet');
+
+  // P7. about.js : affiche l'epic du lot en cours plutôt que le label global
+  const rAbout = runNode(path.join(PKG, 'scripts', 'about.js'), ['--cwd', repo]);
+  ok(new RegExp(`Epic : ${long.epic}`).test(rAbout.out), 'about : epic du lot en cours prioritaire');
+}
+
 // ============================ O. CAPTURE TODOWRITE ============================
 section('TodoWrite — snapshot passif (.vibe-agent/todo-snapshot.json)');
 {

@@ -2,6 +2,28 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (Lot P1 — Epic-label + règle de découpe)
+
+**Lot #28**. Epic reste un simple label (pas un conteneur) : `/pmz-scope` peut désormais l'écrire
+lui-même, et un lot backlog peut porter son propre label epic (utile en multi-epics).
+
+- `promptimizer/lib/lot.js` : nouvelle fonction `writeEpic(root, name)` — écrit
+  `.vibe-agent/epic` (cap 60c), écriture atomique comme le reste du ledger.
+  `titleForBacklogLot` : le champ `epic` du lot prime sur l'epic global du projet quand présent.
+- `promptimizer/lib/backlog.js` : nouveau champ optionnel `epic` sur le lot backlog (cap 60c,
+  `MAX_EPIC`), normalisé au chargement, tronqué à l'ajout.
+- `promptimizer/scripts/backlog.js` : nouvelle commande `epic --set "…"` (écrit le label global)
+  et `epic` sans argument (le lit) ; `add --epic "…"` persiste le champ du lot ; `show --epic
+  "…"` filtre l'affichage sur ce label.
+- `promptimizer/scripts/about.js` : affiche l'epic du lot en cours (sinon du prochain, sinon le
+  label global) plutôt que systématiquement le label global.
+- `promptimizer/commands/pmz-scope.md` : nouvelle étape — proposer et enregistrer un epic
+  optionnel au découpage, le passer à chaque `add` ; règle de découpe explicite (1 lot = 1
+  session sous ~300k, 1 commit, fait-quand vérifiable).
+- `skills/promptimizer/SKILL.md` : la règle de découpe est reprise en §2bis.
+- `test/run-tests.js` : section « backlog — champ epic optionnel du lot (lot #28) » (+10).
+  Suite **422 OK**.
+
 ## 2026-07-12 (dégraissage tokens — Lot T3 : pmz:skip parsé dans le handoff)
 
 Épic « dégraissage tokens ». **Lot T3** : un handoff manuel peut désormais lister des chemins à

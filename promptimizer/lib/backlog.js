@@ -13,6 +13,7 @@ const MAX_LOTS_OPEN = 20; // lots todo+in_progress ; au-delà c'est un Jira, ref
 const MAX_TITLE = 80;
 const MAX_SCOPE = 400;
 const MAX_MODEL_HINT = 40; // préconisation de modèle par lot (ex. « sonnet », « opus »)
+const MAX_EPIC = 60; // label d'epic optionnel du lot, cf. .vibe-agent/epic (lib/lot.js)
 const MAX_NOTE = 200;
 const MAX_TODOS = 30;
 const MAX_TODO_CHARS = 120;
@@ -49,6 +50,7 @@ function loadBacklog(root) {
       scope: l.scope ? trunc(l.scope, MAX_SCOPE) : null,
       status: STATUSES.includes(l.status) ? l.status : 'todo',
       model_hint: l.model_hint ? trunc(l.model_hint, MAX_MODEL_HINT) : null,
+      epic: l.epic ? trunc(l.epic, MAX_EPIC) : null,
       closed_commit: l.closed_commit || null,
       closed_at: l.closed_at || null,
       closed_session_id: l.closed_session_id || null,
@@ -94,7 +96,7 @@ function openCount(b) {
 }
 
 // null si titre vide ou plan déjà au cap (refus doux, c'est au CLI de l'expliquer).
-function addLot(root, title, scope, modelHint) {
+function addLot(root, title, scope, modelHint, epic) {
   const t = trunc(title, MAX_TITLE);
   if (!t) return null;
   const b = loadBacklog(root);
@@ -105,6 +107,7 @@ function addLot(root, title, scope, modelHint) {
     scope: scope ? trunc(scope, MAX_SCOPE) : null,
     status: 'todo',
     model_hint: modelHint ? trunc(modelHint, MAX_MODEL_HINT) : null,
+    epic: epic ? trunc(epic, MAX_EPIC) : null,
     closed_commit: null,
     closed_at: null,
     closed_session_id: null,
@@ -288,5 +291,5 @@ module.exports = {
   backlogFile, loadBacklog, saveBacklog, addLot, startLot, doneLot, dropLot, noteLot,
   currentLot, nextLot, lastDoneLot, progress, summaryLines, reconcile,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot,
-  MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_NOTE, MAX_TODOS,
+  MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_NOTE, MAX_TODOS,
 };

@@ -18,11 +18,12 @@ function main() {
     return;
   }
 
-  const epic = readEpic(root);
   const b = loadBacklog(root);
   const p = progress(b);
   const cur = currentLot(b);
   const nxt = nextLot(b);
+  // Le champ epic du lot (en cours, sinon prochain) prime sur le label global du projet.
+  const epic = (cur && cur.epic) || (nxt && nxt.epic) || readEpic(root);
 
   lines.push(`Epic : ${epic}`);
   if (!b.lots.length) {
