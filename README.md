@@ -54,11 +54,26 @@ claude plugin install promptimizer@pmz-local
 ```
 
 Vérification : `claude plugin details promptimizer` (doit afficher **6 hooks** et les
-**7 commandes** ; commandes namespacées `/promptimizer:*`). Distribution interne (ex. MH) :
-partager le dossier `dist/marketplace/` (ou un dépôt git interne) et `marketplace add` en local —
-zéro réseau externe requis. Les deux canaux (manuel / plugin) sont détaillés dans
-[ARCHITECTURE.md](ARCHITECTURE.md) ; le verdict de faisabilité dans
-[docs/decisions/D1-plugin-go-nogo.md](docs/decisions/D1-plugin-go-nogo.md).
+**7 commandes** ; commandes namespacées `/promptimizer:*`). **Distribution à un tiers**
+(entreprise, équipe, communauté) : partager le dossier `dist/marketplace/` (ou un dépôt git
+privé) et `marketplace add` en local — zéro réseau externe requis. Pour que chaque poste n'ait
+pas à relancer `marketplace add` à la main, référencer la marketplace dans `settings.json`
+(user ou projet) via `extraKnownMarketplaces` :
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "pmz-interne": {
+      "source": { "source": "git", "repo": "https://exemple-git-interne/pmz-marketplace.git" }
+    }
+  }
+}
+```
+
+(`source` peut aussi être `"github"` ou un chemin local — cf. doc officielle marketplace Claude
+Code.) **Public GitHub** : objectif lointain, même mécanique (source `github`), pas encore fait.
+Les deux canaux (manuel / plugin) sont détaillés dans [ARCHITECTURE.md](ARCHITECTURE.md) ; le
+verdict de faisabilité dans [docs/decisions/D1-plugin-go-nogo.md](docs/decisions/D1-plugin-go-nogo.md).
 
 **Migration depuis une install manuelle existante** : `node promptimizer/install/migrate-to-plugin.js`
 retire les hooks PMZ legacy de `settings.json` (réutilise `merge-settings.js --remove`, restaure

@@ -328,6 +328,21 @@ manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string r
   restent fonctionnels mais ne reçoivent plus de nouvelles features — le plugin est le canal
   recommandé pour toute nouvelle install (cf. README).
 
+### Diffusion tiers (lot D4)
+
+- **Marketplace privée = dépôt git ou dossier local**, sans particularisation à une organisation
+  donnée : `dist/marketplace/` (artefact de build, cf. lot D2) est partageable tel quel — partage
+  de dossier, dépôt git privé, ou tout autre canal interne à l'organisation qui adopte PMZ.
+- **`extraKnownMarketplaces`** (`settings.json`, user ou projet) documenté au README pour éviter
+  un `marketplace add` manuel par poste : chaque organisation référence son propre dépôt (source
+  `git`, `github`, ou chemin local) sans changement de code côté PMZ.
+- **Public GitHub reste un objectif lointain** (pas fait) : même mécanique (`extraKnownMarketplaces`
+  avec source `github`), simplement pas encore publié.
+- **Windows non testé réel dans ce lot** : pas de machine Windows disponible dans l'environnement
+  d'exécution de ce tour ; les wrappers (`bin/pmz-hook`) et la résolution de chemins
+  (`claude-dir.js`) restent donc vérifiés seulement par lecture de code + tests unitaires
+  (bac à sable macOS), pas par exécution réelle sous Windows.
+
 ## Décisions & pourquoi
 
 - **Distribution : verdict plugin Claude Code = GO staged** (spike lot #30, 2026-07-12) : le
@@ -394,8 +409,8 @@ manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string r
 - **Distribution cible = plugin Claude Code** (epic D, lots #30-#33) : les hooks portés par le
   `hooks/hooks.json` du plugin suppriment le merge de `settings.json` pour les nouveaux
   installés (le mécanisme le plus risqué de PMZ), versioning/update natifs via `plugin.json`,
-  marketplace = dépôt git (privé MH via `extraKnownMarketplaces` ; **public GitHub = objectif
-  lointain**, même mécanique). L'installeur Node (#22) reste le canal legacy et devient l'outil
+  marketplace = dépôt git (privé, à un tiers — entreprise/équipe/communauté — via
+  `extraKnownMarketplaces` ; **public GitHub = objectif lointain**, même mécanique). L'installeur Node (#22) reste le canal legacy et devient l'outil
   de migration (`merge-settings.js --remove` + purge, doctor détecte la double install). Le bloc
   projet `pmz:rules` dans CLAUDE.md/AGENTS.md est conservé tel quel (pas de pivot
   `.claude/rules/` : même couche de cache, deux véhicules = divergence garantie avec Codex).

@@ -2,6 +2,22 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (Lot D4 — Diffusion tiers + doc distribution)
+
+**Lot #33 (dernier de l'epic D)**. Diffusion générique à un tiers (entreprise, équipe,
+communauté) documentée — plus de particularisation à une organisation donnée.
+
+- `README.md` : section distribution reformulée en générique + exemple `settings.json`
+  (`extraKnownMarketplaces`) pour référencer une marketplace privée sans `marketplace add`
+  manuel par poste.
+- `ARCHITECTURE.md` : nouvelle section « Diffusion tiers (lot D4) » ; mention MH généralisée
+  dans la section décisions ; GitHub public confirmé comme objectif lointain.
+- `.vibe-agent/backlog.json` : lot #33 renommé « Diffusion tiers + doc distribution ».
+- **Non vérifié** : test Windows réel — aucune machine Windows disponible dans cet
+  environnement d'exécution ; limite documentée dans ARCHITECTURE.md, revue par lecture de code
+  uniquement (`install.ps1`, `claude-dir.js`, `bin/pmz-hook`).
+- Epic D (packaging plugin Claude Code) clos : 33/33 lots faits.
+
 ## 2026-07-12 (Lot D3 — Migration legacy + semver)
 
 **Lot #32**. `VERSION` passe en **semver** (`x.y.z`), aligné sur `.claude-plugin/plugin.json` —

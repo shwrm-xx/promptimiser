@@ -518,8 +518,8 @@
     },
     {
       "id": 33,
-      "title": "Lot D4 — Diffusion MH + doc distribution",
-      "scope": "fait quand : marketplace git interne MH + extraKnownMarketplaces documentés ; test Windows réel (wrappers, chemins claude-dir) ; README + ARCHITECTURE : canal plugin documenté, public GitHub inscrit en objectif lointain",
+      "title": "Lot D4 — Diffusion tiers + doc distribution",
+      "scope": "fait quand : marketplace git interne (tiers, générique) + extraKnownMarketplaces documentés ; test Windows réel (wrappers, chemins claude-dir) ; README + ARCHITECTURE : canal plugin documenté, public GitHub inscrit en objectif lointain",
       "status": "todo",
       "model_hint": "sonnet",
       "epic": null,
