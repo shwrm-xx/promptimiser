@@ -130,8 +130,8 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   existe. `backlog.js: doneLot` fait de même par défaut (chemin de clôture **manuelle**, ex.
   `/close-batch`) : sans ça, le compteur restait figé sur ce chemin et le même « Lot N »
   revenait indéfiniment d'une session à l'autre (fix 2026-07-11). `session-start.js` en déduit
-  un titre de session suggéré (« Epic — Lot N », epic =
-  `.vibe-agent/epic` ou nom du dossier), **suffixé** du titre du lot backlog le plus pertinent
+  un titre de session suggéré (**« [XXX] focus du lot »**, `XXX` = trigramme du projet, cf. lot
+  #35 ci-dessous) construit sur le titre du lot backlog le plus pertinent
   (`lib/lot.js: suggestedTitle`, 40c) — priorité : lot **en cours** (travail qui continue) >
   dernier lot **clos** (ce qui vient d'être fait, cas le plus fréquent juste après une clôture —
   sans ce fallback le titre reste nu et ne dit rien de l'avancée réelle) > prochain lot à faire
@@ -352,6 +352,47 @@ manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string r
   (`claude-dir.js`) restent donc vérifiés seulement par lecture de code + tests unitaires
   (bac à sable macOS), pas par exécution réelle sous Windows.
 
+### Namespace plugin `pmz` (lot E1)
+
+Voir section « Canal plugin Claude Code » ci-dessus (§ Identifiant plugin = `pmz`).
+
+### Titres de session : trigramme + focus du lot + numérotation partie (lot #35)
+
+Refonte du format de titre suggéré (`lib/lot.js: suggestedTitle`), suite à un retour direct sur
+la répétition du nom de projet, la double numérotation et le mélange de langue observés sur
+plusieurs sessions réelles (capture fournie par l'utilisateur, 2026-07-12).
+
+- **Trigramme de projet (`lib/trigram.js`, `.vibe-agent/trigram`)** remplace le nom complet du
+  projet en préfixe (`[XXX]` au lieu de `promptimiser — …` / `japlan-app — …`) — répété sur
+  chaque ligne de la liste de sessions, il n'apportait aucune information une fois le projet
+  identifié par son panneau. Dérivé par défaut (3 premières lettres alpha du nom de dossier,
+  ex. `japlan-app` → `JAP`) ; un projet **déjà initialisé** garde cette dérivation sans
+  interruption (pas de prompt forcé rétroactif — décision utilisateur, 2026-07-12) ; à la
+  création d'un **nouveau** projet, `/pmz-init` propose 3 trigrammes (`backlog.js trigram
+  --suggest`) + saisie libre. Modifiable à la main : `backlog.js trigram --set XXX`.
+- **Le focus du lot backlog prime, plus de double numérotation** : l'ancien format
+  (`${epic} — Lot ${id} : ${titre}`) affichait DEUX numéros de sens différent — l'ID backlog
+  (`Lot 32`) et la numérotation métier embarquée dans le titre du lot lui-même par convention de
+  rédaction (`Lot D3 — …`). Le nouveau format (`titleForLot`) ne garde que `[XXX] ${titre du
+  lot}` — le titre du lot (déjà rédigé par `/pmz-scope`, avec sa propre numérotation métier
+  quand pertinent) est la seule source de vérité affichée ; l'ID backlog reste un identifiant
+  interne (CLI `backlog.js show`/`start`/`done`), jamais dans le titre de session. Le champ
+  `epic` (label de groupement/filtrage, `backlog.js show --epic`) n'apparaît plus non plus dans
+  le titre — orthogonal au focus du lot, il resterait redondant avec la numérotation métier déjà
+  embarquée dans le titre par convention.
+- **Suffixe `(partie N)`** (`backlog.js: touchLot`, champ `lot.session_touches`) quand un même
+  lot reste `in_progress` sur **plus d'une session** : incrémenté une fois par vrai démarrage de
+  session (`suggestedTitle`, jamais au resume/compact) tant que le lot n'est pas clos, remis à
+  zéro par `startLot` (un nouveau départ repart de « partie 1 », silencieuse). Le total `N` final
+  n'est connu qu'à la clôture (pas de `/N` affichable à l'avance, décision utilisateur) — un lot
+  clos n'affiche plus jamais de suffixe (le travail est fini, peu importe combien de sessions ça
+  a pris). Approximatif par construction, même logique assumée que `lot-counter.json` : avance
+  même si la session qui vient de se terminer n'a en fait pas touché ce lot précis.
+- **Langue** : tout le texte généré par `suggestedTitle`/`titleForLot` est en français (aligné
+  sur la convention du dépôt) — un titre manuellement tapé par l'utilisateur dans un autre
+  langage reste hors de portée (pas de traduction automatique, PMZ ne génère que sa propre
+  suggestion).
+
 ## Décisions & pourquoi
 
 - **Distribution : verdict plugin Claude Code = GO staged** (spike lot #30, 2026-07-12) : le
@@ -408,10 +449,12 @@ manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string r
   « feature » = un epic court (2-5 lots).
 - **Epic = label, pas conteneur** : pas de table `epics[]` ni de cycle de vie d'epic — un label
   (fichier `.vibe-agent/epic`, écrit par `/pmz-scope` via `backlog.js epic --set`, + champ
-  optionnel `epic` du lot backlog, cap 60c, lot #28) suffit pour le titre de session et le
-  filtrage (`backlog.js show --epic`). Le champ du lot prime sur le label global dans
-  `titleForBacklogLot`/`suggestedTitle` et dans `about.js` (lot en cours, sinon prochain, sinon
-  label global) — permet un backlog multi-epics sans hiérarchie. Le multi-epics arbitré est un
+  optionnel `epic` du lot backlog, cap 60c, lot #28) suffit pour le filtrage (`backlog.js show
+  --epic`) et l'affichage `about.js` (lot en cours, sinon prochain, sinon label global). Le champ
+  du lot prime sur le label global dans `about.js` — permet un backlog multi-epics sans
+  hiérarchie. Depuis le lot #35, l'epic n'apparaît plus dans le titre de **session**
+  (`suggestedTitle`/`titleForLot`, remplacé par le trigramme + le focus du lot, cf. section
+  dédiée) — il reste utile pour le filtrage/l'affichage `about.js` seuls. Le multi-epics arbitré est un
   problème que l'historique réel du backlog (exécution strictement séquentielle) n'a jamais
   rencontré ; une table d'epics avec statuts et arbitrages serait le début du Jira que
   `backlog.js` refuse par principe.

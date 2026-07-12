@@ -60,6 +60,10 @@ function loadBacklog(root) {
       started_at: l.started_at || null,
       lot_number: Number.isFinite(l.lot_number) ? l.lot_number : null,
       note: l.note ? trunc(l.note, MAX_NOTE) : null,
+      // Nombre de sessions distinctes ayant travaillé ce lot pendant qu'il restait en cours
+      // (incrémenté par touchLot, cf. lib/lot.js:suggestedTitle) — alimente le suffixe
+      // « (partie N) » du titre de session quand un lot dépasse une session.
+      session_touches: Number.isFinite(l.session_touches) ? l.session_touches : 0,
     }));
   const maxId = lots.reduce((m, l) => Math.max(m, l.id), 0);
   return {
@@ -119,6 +123,7 @@ function addLot(root, title, scope, modelHint, epic, verify) {
     started_at: null,
     lot_number: null,
     note: null,
+    session_touches: 0,
   };
   b.lots.push(lot);
   b.next_id += 1;
@@ -147,7 +152,21 @@ function startLot(root, id) {
   }
   lot.status = 'in_progress';
   lot.started_at = now();
+  lot.session_touches = 0; // (re)départ = repart de « partie 1 » (pas de suffixe)
   return saveBacklog(root, b) ? lot : null;
+}
+
+// Incrémente le compteur de sessions ayant travaillé ce lot pendant qu'il restait en cours
+// (appelé une fois par démarrage réel de session, cf. lib/lot.js:suggestedTitle). Approximatif
+// par construction (avance même si la session n'a en fait pas touché ce lot) — même logique
+// assumée que lot-counter.json (cf. commentaire de doneLot). Retourne le compteur à jour, ou
+// null si le lot est introuvable/pas en cours.
+function touchLot(root, id) {
+  const b = loadBacklog(root);
+  const lot = findLot(b, id);
+  if (!lot || lot.status !== 'in_progress') return null;
+  lot.session_touches = (lot.session_touches || 0) + 1;
+  return saveBacklog(root, b) ? lot.session_touches : null;
 }
 
 // Idempotent : un lot déjà done est rendu tel quel, sans réécriture.
@@ -310,7 +329,7 @@ function reconcile(root) {
 
 module.exports = {
   backlogFile, loadBacklog, saveBacklog, addLot, setVerify, startLot, doneLot, dropLot, noteLot,
-  currentLot, nextLot, lastDoneLot, progress, summaryLines, reconcile,
+  touchLot, currentLot, nextLot, lastDoneLot, progress, summaryLines, reconcile,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot,
   MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_NOTE, MAX_TODOS,
 };

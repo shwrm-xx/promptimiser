@@ -8,6 +8,7 @@ const { gitRoot } = require('../lib/project');
 const { parseCwd } = require('../lib/cli');
 const backlog = require('../lib/backlog');
 const lot = require('../lib/lot');
+const trigram = require('../lib/trigram');
 
 const LABELS = { todo: 'à faire', in_progress: 'en cours', done: 'fait', dropped: 'abandonné' };
 
@@ -61,6 +62,17 @@ function main() {
     const okw = lot.writeEpic(root, name);
     return out(okw ? `Epic « ${name.trim().slice(0, lot.MAX_EPIC)} » enregistré (.vibe-agent/epic).`
       : 'Refusé : nom vide ou échec d\'écriture.');
+  }
+
+  if (cmd === 'trigram') {
+    if (process.argv.includes('--suggest')) {
+      return out(trigram.suggestTrigrams(root).map((t) => `[${t}]`).join(' / '));
+    }
+    const set = flag('set');
+    if (!set) return out(`Trigramme actuel : [${trigram.readTrigram(root)}]`);
+    const applied = trigram.writeTrigram(root, set);
+    return out(applied ? `Trigramme « [${applied}] » enregistré (.vibe-agent/trigram).`
+      : 'Refusé : trigramme invalide.');
   }
 
   if (cmd === 'add') {
@@ -128,7 +140,7 @@ function main() {
     return;
   }
 
-  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | next | reconcile | epic | verify.`);
+  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | next | reconcile | epic | verify | trigram.`);
 }
 
 if (require.main === module) {

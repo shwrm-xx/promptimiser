@@ -2,6 +2,32 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (Lot E2 — Titres de session : trigramme + focus du lot + langue)
+
+**Lot #35**. Refonte du format de titre de session suggéré, suite à un retour direct sur trois
+problèmes observés en usage réel : répétition du nom complet du projet, double numérotation de
+lot (« Lot 32 : Lot D3 — … »), mélange de langue. Ancien format `${epic} — Lot ${id} :
+${titre}` → nouveau format `[XXX] ${titre du lot}` (+ `(partie N)` si le lot dépasse une
+session).
+
+- `promptimizer/lib/trigram.js` (nouveau) : trigramme de projet (`.vibe-agent/trigram`), dérivé
+  par défaut (3 premières lettres alpha du nom de dossier), modifiable via `backlog.js trigram
+  --set XXX` ; `suggestTrigrams` propose 3 alternatives pour `/pmz-init` sur un nouveau projet.
+- `promptimizer/lib/lot.js` : `titleForLot` remplace `titleForBacklogLot` — le focus du lot
+  backlog prime (plus d'ID concurrent, plus d'epic dans le titre), préfixé du trigramme.
+- `promptimizer/lib/backlog.js` : nouveau champ `session_touches` + `touchLot` — compte les
+  sessions successives qui laissent un même lot `in_progress`, remis à zéro par `startLot`.
+  Suffixe `(partie N)` si N>1 ; jamais sur un lot déjà clos (le travail est fini).
+- `promptimizer/scripts/backlog.js` : commande `trigram --suggest` / `--set` / (lecture).
+- `promptimizer/commands/pmz-init.md` : propose le trigramme (3 choix + saisie libre) seulement
+  quand le socle vient d'être **créé** (nouveau projet) — un projet déjà initialisé garde sa
+  dérivation automatique, sans interruption.
+- Vérifié en bac à sable réel (hooks exécutés en sous-processus, pas seulement les tests
+  unitaires) : trigramme dérivé, focus du lot sans double numérotation, et `(partie 2)`/
+  `(partie 3)` sur des démarrages de session successifs pendant qu'un lot reste ouvert.
+- Tests : 504 OK (+18 nouvelles assertions trigramme/partie, existantes adaptées au nouveau
+  format).
+
 ## 2026-07-12 (Lot E1 — Namespace plugin pmz)
 
 **Lot #34**. Le plugin Claude Code s'identifie désormais `pmz` (au lieu de `promptimizer`) :

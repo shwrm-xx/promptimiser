@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 36,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-12T11:36:09.986Z",
+  "updated_at": "2026-07-12T11:40:10.133Z",
   "lots": [
     {
       "id": 1,
@@ -437,25 +437,25 @@
       "id": 34,
       "title": "Lot E1 — Namespace plugin pmz",
       "scope": "fait quand : plugin.json name=pmz, commandes /pmz:*, install claude plugin install pmz@..., doc à jour (identité Promptimizer conservée en branding)",
-      "status": "in_progress",
+      "status": "done",
       "model_hint": "sonnet",
-      "closed_commit": null,
-      "closed_at": null,
+      "closed_commit": "251a951",
+      "closed_at": "2026-07-12T11:40:06.225Z",
       "closed_session_id": null,
       "started_at": "2026-07-12T11:36:09.986Z",
-      "lot_number": null,
+      "lot_number": 36,
       "note": null
     },
     {
       "id": 35,
       "title": "Lot E2 — Titres de session : trigramme + clarté lot + langue",
       "scope": "fait quand : trigramme [XXX] par projet (dérivé par défaut, proposé au /pmz-init d'un nouveau projet), titre = [XXX] + focus du lot backlog (plus de double numérotation), suffixe (partie N) si lot pas fini en une session, titre toujours dans la langue de l'utilisateur",
-      "status": "todo",
+      "status": "in_progress",
       "model_hint": "opus",
       "closed_commit": null,
       "closed_at": null,
       "closed_session_id": null,
-      "started_at": null,
+      "started_at": "2026-07-12T11:40:10.133Z",
       "lot_number": null,
       "note": null
     }

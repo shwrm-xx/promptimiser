@@ -17,6 +17,13 @@ qui a déjà son `CLAUDE.md`/`AGENTS.md`.
 4. Affiche les fichiers créés (`created`), augmentés (`augmented`) et ignorés (`skipped`).
 5. Finalise `CLAUDE.md` et `AGENTS.md` avec **lecture minimale** (déduire la stack des seuls
    manifestes), sans les rallonger inutilement.
-6. Propose ensuite un premier lot court.
+6. **Uniquement si le socle vient d'être CRÉÉ** (nouveau projet — pas `augmented`, un projet
+   déjà initialisé garde son trigramme dérivé automatiquement, sans interruption) : proposer le
+   trigramme du projet en **une** question à choix (défaut + 2 alternatives, saisie libre
+   possible) —
+   `node ~/.claude/promptimizer/scripts/backlog.js trigram --suggest` liste 3 propositions.
+   Une fois validé : `node ~/.claude/promptimizer/scripts/backlog.js trigram --set XXX`
+   (écrit `.vibe-agent/trigram`, préfixe désormais les titres de session : `[XXX] …`).
+7. Propose ensuite un premier lot court.
 
 Ne crée ni ne modifie rien sans confirmation explicite de l'utilisateur.

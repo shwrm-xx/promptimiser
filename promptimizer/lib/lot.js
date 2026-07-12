@@ -1,11 +1,12 @@
 'use strict';
-// Numérotation de lot par projet, pour le nommage de session « Epic — Lot N ».
-// Stocké dans .vibe-agent/lot-counter.json (créé par ensureLedger côté appelant).
-// Fail-silent partout : au pire on retombe sur lot 1 / nom de dossier.
+// Numérotation de lot par projet, pour le nommage de session « [XXX] Lot N » (trigramme,
+// lot #35). Stocké dans .vibe-agent/lot-counter.json (créé par ensureLedger côté appelant).
+// Fail-silent partout : au pire on retombe sur lot 1 / trigramme dérivé du nom de dossier.
 const fs = require('fs');
 const path = require('path');
 const { vibeDir, git } = require('./project');
 const { writeAtomic, readJson } = require('./fsjson');
+const trigramLib = require('./trigram');
 
 function counterFile(root) {
   return path.join(vibeDir(root), 'lot-counter.json');
@@ -82,17 +83,17 @@ function truncateTitle(title) {
 }
 
 function withSuffix(base, l) {
-  return `${base} : ${truncateTitle(l.title)}`;
+  return `${base} — ${truncateTitle(l.title)}`;
 }
 
-// Numéro affiché dans le titre pour un lot backlog donné : l'ID du backlog (le
-// référentiel que l'utilisateur voit dans `backlog.js show`), jamais le compteur
-// lot-counter.json qui avance indépendamment (y compris sur des commits de
-// bookkeeping de clôture) et dérive donc du numéro backlog au fil du projet.
-// Le label epic du lot (champ optionnel `epic` du backlog) prime sur l'epic global du
-// projet quand présent — permet à un backlog multi-epics de nommer chaque lot correctement.
-function titleForBacklogLot(epic, l) {
-  return `${l.epic || epic} — Lot ${l.id} : ${truncateTitle(l.title)}`;
+// Titre de session pour un lot backlog donné : le trigramme du projet préfixe, le FOCUS du
+// lot (son titre, déjà rédigé par /pmz-scope avec sa propre numérotation métier le cas
+// échéant, ex. « Lot E1 — Namespace plugin pmz ») prime — jamais de numéro d'ID backlog
+// concurrent en plus (double numérotation, cf. lot #35). Suffixe « (partie N) » quand N>1
+// sessions ont travaillé ce lot sans le clore (touches falsy/≤1 : rien, cas normal).
+function titleForLot(trigram, l, touches) {
+  const base = `[${trigram}] ${truncateTitle(l.title)}`;
+  return touches > 1 ? `${base} (partie ${touches})` : base;
 }
 
 // Intitulé déduit du dernier titre `## ...` de CHANGELOG.md (parenthèse finale de la
@@ -125,8 +126,8 @@ function deduceTitle(root) {
 }
 
 function suggestedTitle(root) {
-  const epic = readEpic(root);
-  const base = `${epic} — Lot ${getLotCounter(root) + 1}`;
+  const trigram = trigramLib.readTrigram(root);
+  const base = `[${trigram}] Lot ${getLotCounter(root) + 1}`;
   try {
     // require paresseux : backlog.js require lot.js en tête, un require en tête ici
     // créerait un cycle de modules.
@@ -134,13 +135,16 @@ function suggestedTitle(root) {
     const { previousSessionId } = require('./state');
     const b = backlog.loadBacklog(root);
     if (b.lots.length) {
-      // Lot en cours (travail qui continue) : toujours le suffixe le plus sûr. Le numéro
-      // affiché est l'ID backlog du lot (référentiel vu par l'utilisateur dans
-      // `backlog.js show`), pas le compteur lot-counter.json — ce dernier avance
-      // indépendamment (y compris sur des commits de bookkeeping de clôture) et dérive
-      // donc du numéro backlog au fil du projet.
+      // Lot en cours (travail qui continue) : le focus du lot backlog prime, jamais de
+      // numéro d'ID concurrent. touchLot compte les sessions successives qui laissent ce
+      // lot ouvert (« (partie N) » si >1, cf. titleForLot) — incrémenté ICI (une fois par
+      // vrai démarrage de session, cf. hooks/session-start.js) car c'est le seul point de
+      // passage qui décrit la session précédente à la session suivante.
       const cur = backlog.currentLot(b);
-      if (cur) return titleForBacklogLot(epic, cur);
+      if (cur) {
+        const touches = backlog.touchLot(root, cur.id) || 1;
+        return titleForLot(trigram, cur, touches);
+      }
       // Dernier lot clos = ce qui vient d'être fait, cas le plus fréquent juste après une
       // clôture (sinon le titre retombe nu). Mais un lot clos par une session ANTÉRIEURE à
       // la précédente ne décrit pas cette session-là (ex. une session « état des lieux »
@@ -152,11 +156,13 @@ function suggestedTitle(root) {
       if (last) {
         const prevSid = previousSessionId(root);
         const knownStale = last.closed_session_id && prevSid && last.closed_session_id !== prevSid;
-        if (!knownStale) return titleForBacklogLot(epic, last);
+        // Pas de « (partie N) » sur un lot déjà clos : le travail est fini, peu importe
+        // combien de sessions ça a pris pour y arriver.
+        if (!knownStale) return titleForLot(trigram, last, 0);
       }
       // Prochain lot à faire : dernier recours, encore à venir.
       const next = backlog.nextLot(b);
-      if (next) return titleForBacklogLot(epic, next);
+      if (next) return titleForLot(trigram, next, 0);
       // Plan non vide mais rien d'exploitable pour CETTE session (lot clos périmé, rien
       // à faire ensuite) : un titre EXISTE dans le plan mais ne décrit pas la session
       // précédente — le taire plutôt que le remplacer par une autre supposition (même
