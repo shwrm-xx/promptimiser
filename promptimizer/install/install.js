@@ -13,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 const cdir = require('../lib/claude-dir');
-const { readVersion } = require('../lib/version');
+const { readVersion, compareSemver } = require('../lib/version');
 const { readLineSync } = require('./lib-io');
 
 const PMZ_SRC = path.resolve(__dirname, '..');    // .../promptimizer (source)
@@ -81,16 +81,17 @@ function readInstalledVersion() {
 }
 const installedVersion = readInstalledVersion();
 const incomingVersion = readVersion();
-const vi = parseInt(installedVersion, 10);
-const ve = parseInt(incomingVersion, 10);
-if (installedVersion === null || !Number.isFinite(vi)) {
+// null = non comparable (absente, ou format legacy pré-semver comme "3") -> traité comme
+// première installation, jamais de crash sur un ancien format entier.
+const cmp = compareSemver(installedVersion, incomingVersion);
+if (installedVersion === null || cmp === null) {
   log('Version : première installation (v' + (incomingVersion || '?') + ').');
-} else if (Number.isFinite(ve) && ve > vi) {
-  log('Version : mise à jour v' + vi + ' → v' + ve + '.');
-} else if (Number.isFinite(ve) && ve < vi) {
-  log('Version : downgrade v' + vi + ' → v' + ve + '.');
+} else if (cmp < 0) {
+  log('Version : mise à jour v' + installedVersion + ' → v' + incomingVersion + '.');
+} else if (cmp > 0) {
+  log('Version : downgrade v' + installedVersion + ' → v' + incomingVersion + '.');
 } else {
-  log('Version : réinstallation (v' + (Number.isFinite(ve) ? ve : vi) + ').');
+  log('Version : réinstallation (v' + incomingVersion + ').');
 }
 
 if (fs.existsSync(DEST_PMZ)) {

@@ -12,7 +12,10 @@ const { readLineSync } = require('./lib-io');
 const DEST = cdir.claudeDir();
 const SETTINGS = cdir.settingsPath();
 const PMZ = cdir.pmzDir();
-const MS = path.join(PMZ, 'install', 'merge-settings.js');
+// Sibling direct de ce fichier (pas via pmzDir()) : doctor.js n'est jamais expédié dans le
+// plugin (EXCLUDE de build-plugin.js), donc merge-settings.js vit toujours à côté de lui dans
+// le canal manuel — même si CLAUDE_PLUGIN_ROOT est posée par ailleurs (double install, D3).
+const MS = path.join(__dirname, 'merge-settings.js');
 const NO_PAUSE = process.argv.slice(2).includes('--no-pause');
 
 function log(s) { process.stdout.write(s + '\n'); }
@@ -30,13 +33,32 @@ const setOk = fs.existsSync(SETTINGS) ? 'OK' : '—';
 // Hooks PMZ + double Stop (via merge-settings --check)
 let hooksOk = '—';
 let double = false;
+let legacyHooksPresent = false;
 if (fs.existsSync(MS)) {
   try {
     const chk = execFileSync(process.execPath, [MS, SETTINGS, '--check'], { encoding: 'utf8' });
-    if (/"pmz_hooks_present":\s*true/.test(chk)) hooksOk = 'OK';
+    legacyHooksPresent = /"pmz_hooks_present":\s*true/.test(chk);
+    if (legacyHooksPresent) hooksOk = 'OK';
     if (/"double_stop":\s*true/.test(chk)) double = true;
   } catch (_) { /* ignore */ }
 }
+
+// Double install (lot D3) : deux scénarios détectés indépendamment, chacun signale que
+// l'installeur manuel n'a jamais été retiré après un passage au plugin (les deux canaux
+// tirent alors les mêmes hooks en même temps) :
+//   A. ce doctor tourne SOUS le plugin (CLAUDE_PLUGIN_ROOT posé par le harness) et des hooks
+//      PMZ légataires traînent encore dans settings.json ;
+//   B. ce doctor tourne en canal manuel et `claude plugin list` rapporte promptimizer déjà
+//      installé (best-effort : absence de la commande = non détecté, jamais un throw).
+const IS_PLUGIN = !!(process.env.CLAUDE_PLUGIN_ROOT && process.env.CLAUDE_PLUGIN_ROOT.trim());
+function pluginAlsoInstalled() {
+  try {
+    const r = spawnSync('claude', ['plugin', 'list'], { encoding: 'utf8' });
+    if (r.error || r.status !== 0) return false;
+    return /promptimizer/i.test(String(r.stdout || ''));
+  } catch (_) { return false; }
+}
+const doubleInstall = IS_PLUGIN ? legacyHooksPresent : (legacyHooksPresent && pluginAlsoInstalled());
 
 // Skill
 const skillOk = fs.existsSync(path.join(DEST, 'skills', 'promptimizer', 'SKILL.md')) ? 'OK' : '—';
@@ -80,10 +102,14 @@ log('Projet courant : ' + proj);
 log('');
 log('node : ' + nodeV + ' | git : ' + gitOk + ' | rg : ' + rgOk);
 if (double) log('Avertissement : deux hooks Stop actifs (PMZ + context-guard.py).');
+if (doubleInstall) {
+  log('Avertissement : double installation détectée (plugin + canal manuel legacy) — ' +
+    'les hooks PMZ tirent deux fois. Migration : node install/migrate-to-plugin.js.');
+}
 
 let status = 'vert';
 if (setOk !== 'OK' || hooksOk !== 'OK') status = 'rouge';
-else if (skillOk !== 'OK' || scriptsOk !== 'OK' || double) status = 'orange';
+else if (skillOk !== 'OK' || scriptsOk !== 'OK' || double || doubleInstall) status = 'orange';
 log('');
 log('Statut : ' + status);
 

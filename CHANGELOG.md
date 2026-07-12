@@ -2,6 +2,35 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (Lot D3 — Migration legacy + semver)
+
+**Lot #32**. `VERSION` passe en **semver** (`x.y.z`), aligné sur `.claude-plugin/plugin.json` —
+les deux canaux (manuel/plugin) partagent désormais le même numéro. Outil de migration du canal
+manuel vers le plugin, et détection de double installation par `doctor.js`.
+
+- `promptimizer/lib/version.js` : `compareSemver`/`parseSemver` en plus de `readVersion`/
+  `bumpVersion` (bump = patch par défaut, `major`/`minor` en paramètre). Format legacy (entier,
+  ex. `"3"`) non comparable → `null`, traité comme première installation, jamais un crash.
+- `promptimizer/install/install.js` : comparaison de version via `compareSemver` (remplace le
+  `parseInt` d'entier) ; messages inchangés (« première installation », « mise à jour vX → vY »…).
+- `promptimizer/install/build-plugin.js` : synchronisation du manifeste simplifiée
+  (`manifest.version = readVersion()` direct, plus de conversion entier → `x.0.0`).
+- `promptimizer/install/migrate-to-plugin.js` (nouveau) : retire les hooks PMZ legacy de
+  `settings.json` (réutilise `merge-settings.js --remove`, qui restaure aussi un éventuel sidecar
+  de prise de relais `context-guard.py`), puis affiche les commandes d'install du plugin.
+  `--purge` supprime aussi les fichiers PMZ legacy (conservés par défaut).
+- `promptimizer/install/doctor.js` : **détection de double installation** (plugin + canal manuel
+  jamais retiré) par deux voies indépendantes — doctor tournant sous `CLAUDE_PLUGIN_ROOT` avec
+  des hooks legacy encore câblés dans `settings.json` ; ou doctor en canal manuel avec
+  `claude plugin list` (best-effort) rapportant `promptimizer` déjà installé. Statut `orange` +
+  rappel de `migrate-to-plugin.js`. Bug latent corrigé au passage : `merge-settings.js` était
+  localisé via `pmzDir()` (qui bascule sur `CLAUDE_PLUGIN_ROOT`), donc introuvable dans le
+  scénario justement visé — localisé désormais via `__dirname` (sibling direct, toujours dans le
+  canal manuel puisque `doctor.js` est exclu du plugin).
+- `test/run-tests.js` : nouvelles sections semver/migration/double-install. 485 OK.
+- Doc : `README.md` (canal manuel marqué **legacy, gelé** ; migration documentée),
+  `ARCHITECTURE.md` (section « Migration manuel → plugin + versioning semver »).
+
 ## 2026-07-12 (Lot D2 — Packaging plugin Claude Code)
 
 **Lot #31**. Promptimizer est désormais packageable en **plugin Claude Code natif**, en plus du

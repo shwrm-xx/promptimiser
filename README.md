@@ -60,6 +60,17 @@ zéro réseau externe requis. Les deux canaux (manuel / plugin) sont détaillés
 [ARCHITECTURE.md](ARCHITECTURE.md) ; le verdict de faisabilité dans
 [docs/decisions/D1-plugin-go-nogo.md](docs/decisions/D1-plugin-go-nogo.md).
 
+**Migration depuis une install manuelle existante** : `node promptimizer/install/migrate-to-plugin.js`
+retire les hooks PMZ legacy de `settings.json` (réutilise `merge-settings.js --remove`, restaure
+un éventuel sidecar de prise de relais) pour éviter le double-firing, puis affiche les commandes
+d'install du plugin (`--purge` supprime aussi les fichiers PMZ legacy, conservés par défaut).
+`doctor.js` détecte et signale une double installation (plugin + canal manuel non retiré).
+
+**Canal manuel : legacy, gelé.** Les lanceurs `install.command`/`.sh`/`.ps1` (et
+`uninstall.*`/`pmz-doctor.*`) restent fonctionnels et maintenus a minima, mais le plugin est le
+canal recommandé pour toute nouvelle installation — plus d'updates/versioning natifs, plus de
+fusion de `settings.json`.
+
 ## Vérification
 
 ```

@@ -87,12 +87,12 @@ fs.cpSync(SKILL_SRC, path.join(PLUGIN, 'skills', 'promptimizer'), { recursive: t
 const nCmd = rewriteMdInDir(path.join(PLUGIN, 'commands'));
 const nSkill = rewriteMdInDir(path.join(PLUGIN, 'skills'));
 
-// ── 5. Synchronise la version du manifeste sur VERSION (entier PMZ → semver majeur) ──
+// ── 5. Synchronise la version du manifeste sur VERSION (semver direct depuis lot D3) ──
 const manifestPath = path.join(PLUGIN, '.claude-plugin', 'plugin.json');
 if (!fs.existsSync(manifestPath)) fail('plugin.json manquant : ' + manifestPath);
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-const v = parseInt(readVersion(), 10);
-if (Number.isFinite(v)) manifest.version = `${v}.0.0`;
+const v = readVersion();
+if (v) manifest.version = v;
 fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
 
 // ── 6. Vérifie que hooks.json est bien à l'emplacement conventionnel ──

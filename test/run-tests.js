@@ -1879,7 +1879,7 @@ section('Version PMZ historisée + commande about');
   const version = require(path.join(PKG, 'lib', 'version'));
   const ABOUT = path.join(PKG, 'scripts', 'about.js');
 
-  ok(/^\d+$/.test(String(version.readVersion())), 'version.js : VERSION du dépôt lisible, entier');
+  ok(/^\d+\.\d+\.\d+$/.test(String(version.readVersion())), 'version.js : VERSION du dépôt lisible, semver');
 
   const repoAbout = path.join(SANDBOX, 'repo-about');
   fs.mkdirSync(repoAbout, { recursive: true });
@@ -2079,34 +2079,43 @@ section("install.js/doctor.js — versioning d'upgrade (bac à sable)");
   const env = { CLAUDE_CONFIG_DIR: fakeClaude, PMZ_STATE_DIR: path.join(stage, 'state') };
 
   // vN : première installation.
-  fs.writeFileSync(path.join(stage, 'promptimizer', 'VERSION'), '3\n');
+  fs.writeFileSync(path.join(stage, 'promptimizer', 'VERSION'), '3.0.0\n');
   const r1 = runNode(INSTALL, ['--no-pause'], env);
   ok(r1.code === 0, 'install.js : première install vN → exit 0');
-  ok(/première installation \(v3\)/.test(r1.out),
-    'install.js : première install annonce "première installation (v3)"');
+  ok(/première installation \(v3\.0\.0\)/.test(r1.out),
+    'install.js : première install annonce "première installation (v3.0.0)"');
 
   const d1 = runNode(DOCTOR, ['--no-pause'], env);
-  ok(/Version installée : 3/.test(d1.out), 'doctor.js : affiche la version installée (3)');
+  ok(/Version installée : 3\.0\.0/.test(d1.out), 'doctor.js : affiche la version installée (3.0.0)');
 
   // vM > vN : mise à jour.
-  fs.writeFileSync(path.join(stage, 'promptimizer', 'VERSION'), '5\n');
+  fs.writeFileSync(path.join(stage, 'promptimizer', 'VERSION'), '5.0.0\n');
   const r2 = runNode(INSTALL, ['--no-pause'], env);
   ok(r2.code === 0, 'install.js : mise à jour vN→vM → exit 0');
-  ok(/mise à jour v3 → v5/.test(r2.out), 'install.js : annonce "mise à jour v3 → v5"');
+  ok(/mise à jour v3\.0\.0 → v5\.0\.0/.test(r2.out), 'install.js : annonce "mise à jour v3.0.0 → v5.0.0"');
 
   const d2 = runNode(DOCTOR, ['--no-pause'], env);
-  ok(/Version installée : 5/.test(d2.out), 'doctor.js : version installée mise à jour (5)');
+  ok(/Version installée : 5\.0\.0/.test(d2.out), 'doctor.js : version installée mise à jour (5.0.0)');
 
   // Réinstallation de la même version.
   const r3 = runNode(INSTALL, ['--no-pause'], env);
   ok(r3.code === 0, 'install.js : réinstall même version → exit 0');
-  ok(/réinstallation \(v5\)/.test(r3.out), 'install.js : annonce "réinstallation (v5)"');
+  ok(/réinstallation \(v5\.0\.0\)/.test(r3.out), 'install.js : annonce "réinstallation (v5.0.0)"');
 
   // Downgrade.
-  fs.writeFileSync(path.join(stage, 'promptimizer', 'VERSION'), '2\n');
+  fs.writeFileSync(path.join(stage, 'promptimizer', 'VERSION'), '2.0.0\n');
   const r4 = runNode(INSTALL, ['--no-pause'], env);
   ok(r4.code === 0, 'install.js : downgrade → exit 0');
-  ok(/downgrade v5 → v2/.test(r4.out), 'install.js : annonce "downgrade v5 → v2"');
+  ok(/downgrade v5\.0\.0 → v2\.0\.0/.test(r4.out), 'install.js : annonce "downgrade v5.0.0 → v2.0.0"');
+
+  // Format legacy pré-semver (entier) toujours présent côté installé : non comparable ->
+  // traité comme première installation, jamais un crash (fail-open, lot D3).
+  fs.writeFileSync(path.join(stage, 'promptimizer', 'VERSION'), '6.0.0\n');
+  fs.writeFileSync(path.join(fakeClaude, 'promptimizer', 'VERSION'), '5\n');
+  const r5 = runNode(INSTALL, ['--no-pause'], env);
+  ok(r5.code === 0, 'install.js : version installée legacy (entier) non comparable → exit 0');
+  ok(/première installation \(v6\.0\.0\)/.test(r5.out),
+    'install.js : version legacy non-semver → traité comme première installation, pas de crash');
 
   fs.rmSync(stage, { recursive: true, force: true });
 }
@@ -2185,12 +2194,12 @@ section('build-plugin.js — assemble le plugin Claude Code (layout conventionne
   // Installeur manuel EXCLU du plugin (obsolète en mode plugin).
   ok(!fs.existsSync(path.join(plugin, 'install')), 'build-plugin : install/ exclu du plugin');
 
-  // Manifeste : JSON valide, version alignée sur VERSION (entier → semver majeur).
+  // Manifeste : JSON valide, version alignée sur VERSION (semver direct, lot D3).
   let manifest = null;
   try { manifest = JSON.parse(fs.readFileSync(path.join(plugin, '.claude-plugin', 'plugin.json'), 'utf8')); } catch (_) { /* laissé null */ }
   ok(manifest && manifest.name === 'promptimizer', 'build-plugin : plugin.json valide, name=promptimizer');
   const vfile = (fs.readFileSync(path.join(PKG, 'VERSION'), 'utf8') || '').trim();
-  ok(manifest && manifest.version === `${parseInt(vfile, 10)}.0.0`, 'build-plugin : version manifeste alignée sur VERSION');
+  ok(manifest && manifest.version === vfile, 'build-plugin : version manifeste alignée sur VERSION');
 
   // Réécriture des chemins : plus de ~/.claude/promptimizer, un ${CLAUDE_PLUGIN_ROOT} à la place.
   const cmd = fs.readFileSync(path.join(plugin, 'commands', 'close-batch.md'), 'utf8');
@@ -2206,6 +2215,121 @@ section('build-plugin.js — assemble le plugin Claude Code (layout conventionne
     'build-plugin : marketplace.json source = "./promptimizer" (string relative)');
 
   fs.rmSync(out, { recursive: true, force: true });
+}
+
+// ============================ U. VERSION SEMVER (lot D3) ============================
+section('lib/version.js — compareSemver / bumpVersion (semver, lot D3)');
+{
+  const version = require(path.join(PKG, 'lib', 'version'));
+
+  ok(version.compareSemver('1.2.3', '1.2.3') === 0, 'compareSemver : égalité');
+  ok(version.compareSemver('1.2.3', '1.3.0') === -1, 'compareSemver : mineure supérieure');
+  ok(version.compareSemver('2.0.0', '1.9.9') === 1, 'compareSemver : majeure supérieure');
+  ok(version.compareSemver('1.2.10', '1.2.9') === 1, 'compareSemver : composant à 2 chiffres, pas de tri lexical');
+  ok(version.compareSemver('3', '3.0.0') === null, 'compareSemver : format legacy (entier) -> null, pas un crash');
+  ok(version.compareSemver('1.2.3', 'x.y.z') === null, 'compareSemver : garbage -> null');
+
+  // bumpVersion isolé : n'écrit jamais le VERSION du dépôt réel dans ce test. version.js
+  // résout VERSION_FILE en path.join(__dirname, '..', 'VERSION') -> même disposition lib/+VERSION.
+  const tmpVersionDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pmz-verbump-'));
+  fs.mkdirSync(path.join(tmpVersionDir, 'lib'), { recursive: true });
+  fs.writeFileSync(path.join(tmpVersionDir, 'lib', 'version.js'),
+    fs.readFileSync(path.join(PKG, 'lib', 'version.js'), 'utf8'));
+  fs.writeFileSync(path.join(tmpVersionDir, 'VERSION'), '1.2.3\n');
+  const vIso = require(path.join(tmpVersionDir, 'lib', 'version.js'));
+  ok(vIso.bumpVersion() === '1.2.4', 'bumpVersion() : patch par défaut');
+  ok(vIso.bumpVersion('minor') === '1.3.0', 'bumpVersion(minor) : mineure incrémentée, patch remis à 0');
+  ok(vIso.bumpVersion('major') === '2.0.0', 'bumpVersion(major) : majeure incrémentée, mineure/patch remis à 0');
+  fs.rmSync(tmpVersionDir, { recursive: true, force: true });
+}
+
+// ============================ V. MIGRATION MANUEL -> PLUGIN (lot D3) ============================
+section('migrate-to-plugin.js — retire les hooks legacy, restaure le sidecar (bac à sable)');
+{
+  const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'pmz-migrate-'));
+  fs.mkdirSync(path.join(stage, 'skills'), { recursive: true });
+  fs.cpSync(PKG, path.join(stage, 'promptimizer'), { recursive: true });
+  const skillSrc = path.join(REPO, 'skills', 'promptimizer');
+  if (fs.existsSync(skillSrc)) fs.cpSync(skillSrc, path.join(stage, 'skills', 'promptimizer'), { recursive: true });
+
+  const INSTALL = path.join(stage, 'promptimizer', 'install', 'install.js');
+  const MIGRATE = path.join(stage, 'promptimizer', 'install', 'migrate-to-plugin.js');
+  const fakeClaude = path.join(stage, 'claude-home');
+  const env = { CLAUDE_CONFIG_DIR: fakeClaude, PMZ_STATE_DIR: path.join(stage, 'state') };
+
+  // Rien d'installé : no-op propre.
+  const rNoop = runNode(MIGRATE, ['--no-pause'], env);
+  ok(rNoop.code === 0, 'migrate-to-plugin.js : sans install préalable -> exit 0 (no-op)');
+  ok(/rien à migrer/i.test(rNoop.out), 'migrate-to-plugin.js : annonce explicitement rien à migrer');
+
+  // Install manuelle réelle (bac à sable), puis migration.
+  const rInst = runNode(INSTALL, ['--no-pause'], env);
+  ok(rInst.code === 0, 'migrate-to-plugin.js (setup) : install manuelle -> exit 0');
+  const settingsPath = path.join(fakeClaude, 'settings.json');
+  const before = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+  const cmdsBefore = [].concat(...Object.values(before.hooks || {})).flatMap((e) => (e && e.hooks) || []);
+  ok(cmdsBefore.some((h) => (h.command || '').includes('promptimizer/hooks/')),
+    'migrate-to-plugin.js (setup) : hooks PMZ legacy bien présents avant migration');
+
+  const rMig = runNode(MIGRATE, ['--no-pause'], env);
+  ok(rMig.code === 0, 'migrate-to-plugin.js : exit 0');
+  ok(/legacy retirés/.test(rMig.out), 'migrate-to-plugin.js : annonce le retrait des hooks legacy');
+  ok(/build-plugin\.js/.test(rMig.out), 'migrate-to-plugin.js : rappelle les commandes d\'install du plugin');
+
+  const after = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+  const cmdsAfter = [].concat(...Object.values(after.hooks || {})).flatMap((e) => (e && e.hooks) || []);
+  ok(!cmdsAfter.some((h) => (h.command || '').includes('promptimizer/hooks/')),
+    'migrate-to-plugin.js : plus aucun hook PMZ legacy dans settings.json');
+
+  // Fichiers conservés par défaut, purgés seulement avec --purge.
+  ok(fs.existsSync(path.join(fakeClaude, 'promptimizer')),
+    'migrate-to-plugin.js : fichiers PMZ legacy conservés par défaut');
+
+  // Ré-installer pour tester --purge indépendamment.
+  runNode(INSTALL, ['--no-pause'], env);
+  const rMigPurge = runNode(MIGRATE, ['--no-pause', '--purge'], env);
+  ok(rMigPurge.code === 0, 'migrate-to-plugin.js --purge : exit 0');
+  ok(!fs.existsSync(path.join(fakeClaude, 'promptimizer')),
+    'migrate-to-plugin.js --purge : fichiers PMZ legacy supprimés');
+  ok(!fs.existsSync(path.join(fakeClaude, 'skills', 'promptimizer')),
+    'migrate-to-plugin.js --purge : skill supprimée');
+
+  fs.rmSync(stage, { recursive: true, force: true });
+}
+
+// ============================ W. DOCTOR — DOUBLE INSTALL (lot D3) ============================
+section('doctor.js — détection double installation (plugin + canal manuel legacy)');
+{
+  const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'pmz-doubleinst-'));
+  fs.mkdirSync(path.join(stage, 'skills'), { recursive: true });
+  fs.cpSync(PKG, path.join(stage, 'promptimizer'), { recursive: true });
+  const skillSrc = path.join(REPO, 'skills', 'promptimizer');
+  if (fs.existsSync(skillSrc)) fs.cpSync(skillSrc, path.join(stage, 'skills', 'promptimizer'), { recursive: true });
+
+  const INSTALL = path.join(stage, 'promptimizer', 'install', 'install.js');
+  const fakeClaude = path.join(stage, 'claude-home');
+  const env = { CLAUDE_CONFIG_DIR: fakeClaude, PMZ_STATE_DIR: path.join(stage, 'state') };
+  runNode(INSTALL, ['--no-pause'], env);
+  const DOCTOR = path.join(fakeClaude, 'promptimizer', 'install', 'doctor.js');
+
+  // Canal manuel seul (pas de CLAUDE_PLUGIN_ROOT, `claude` absent/muet du sandbox test) :
+  // pas de double détectée.
+  const dManual = runNode(DOCTOR, ['--no-pause'], env);
+  ok(!/double installation/.test(dManual.out),
+    'doctor.js : canal manuel seul -> pas d\'avertissement de double installation');
+
+  // Simule le scénario A : ce doctor tourne sous CLAUDE_PLUGIN_ROOT alors que les hooks
+  // legacy sont toujours câblés dans settings.json (install manuelle jamais retirée).
+  const dPluginPlusLegacy = runNode(DOCTOR, ['--no-pause'],
+    Object.assign({}, env, { CLAUDE_PLUGIN_ROOT: path.join(stage, 'fake-plugin-root') }));
+  ok(/double installation/.test(dPluginPlusLegacy.out),
+    'doctor.js : CLAUDE_PLUGIN_ROOT posé + hooks legacy présents -> double installation signalée');
+  ok(/Statut : orange/.test(dPluginPlusLegacy.out),
+    'doctor.js : double installation -> statut orange (pas de crash, non bloquant)');
+  ok(/migrate-to-plugin\.js/.test(dPluginPlusLegacy.out),
+    'doctor.js : rappelle l\'outil de migration');
+
+  fs.rmSync(stage, { recursive: true, force: true });
 }
 
 // ============================ RÉSUMÉ ============================

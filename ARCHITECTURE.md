@@ -306,6 +306,28 @@ manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string r
 - **Régression assumée** (cf. D1) : pas de takeover réversible d'un hook Stop tiers en plugin ;
   commandes namespacées `/promptimizer:*`.
 
+### Migration manuel → plugin + versioning semver (lot D3)
+
+- **`VERSION` en semver** (`x.y.z`), aligné sur `.claude-plugin/plugin.json` : `lib/version.js`
+  expose `compareSemver`/`parseSemver` en plus de `readVersion`/`bumpVersion` (bump = patch par
+  défaut, `major`/`minor` en paramètre). `install.js` compare via `compareSemver` (au lieu d'un
+  `parseInt` d'entier) ; un format illisible (legacy pré-D3, ex. `"3"`) renvoie `null` → traité
+  comme première installation, jamais un crash. `build-plugin.js` n'a plus besoin de convertir
+  l'entier en `x.0.0` : `manifest.version = readVersion()` directement.
+- **`install/migrate-to-plugin.js`** : outil de sortie du canal manuel, réutilise
+  `merge-settings.js --remove` (retrait des hooks legacy + restauration du sidecar
+  `context-guard.py` si applicable) puis affiche les commandes d'install du plugin. `--purge`
+  supprime aussi les fichiers PMZ legacy (défaut : conservés, symétrique à `uninstall.js`).
+- **`doctor.js` détecte la double installation** (plugin + canal manuel jamais retiré, qui
+  ferait tirer les hooks deux fois) par deux voies indépendantes : (A) ce doctor tourne sous
+  `CLAUDE_PLUGIN_ROOT` et des hooks PMZ legacy traînent encore dans `settings.json` ; (B) ce
+  doctor tourne en canal manuel et `claude plugin list` (best-effort, absence de la commande =
+  non détecté) rapporte `promptimizer` déjà installé. Statut `orange` + rappel de
+  `migrate-to-plugin.js` dans les deux cas.
+- **Canal manuel gelé** : `install.command`/`.sh`/`.ps1` (et `uninstall.*`/`pmz-doctor.*`)
+  restent fonctionnels mais ne reçoivent plus de nouvelles features — le plugin est le canal
+  recommandé pour toute nouvelle install (cf. README).
+
 ## Décisions & pourquoi
 
 - **Distribution : verdict plugin Claude Code = GO staged** (spike lot #30, 2026-07-12) : le
