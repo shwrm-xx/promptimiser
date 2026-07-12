@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 34,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-12T10:34:24.368Z",
+  "updated_at": "2026-07-12T10:49:22.374Z",
   "lots": [
     {
       "id": 1,
@@ -504,16 +504,16 @@
       "id": 32,
       "title": "Lot D3 — Migration legacy + semver",
       "scope": "fait quand : VERSION vers semver aligné plugin.json ; script de migration réutilise merge-settings --remove + sidecar takeover ; doctor détecte plugin+legacy (double install) ; .command gelés et dépréciés au README ; tests verts",
-      "status": "todo",
+      "status": "done",
       "model_hint": "sonnet",
       "epic": null,
       "verify": null,
-      "closed_commit": null,
-      "closed_at": null,
+      "closed_commit": "1c36174",
+      "closed_at": "2026-07-12T10:49:22.373Z",
       "closed_session_id": null,
       "closed_occupancy": null,
       "started_at": null,
-      "lot_number": null,
+      "lot_number": 32,
       "note": null
     },
     {
