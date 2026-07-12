@@ -10,6 +10,15 @@ const MSG_ACTIF = [
   'libre ; sur OK, déroule /close-batch (vérif ciblée + changelog + commit + handoff court).',
 ].join('\n');
 
+// Variante SessionStart pour projet déjà augmenté : les règles PMZ vivent déjà dans le
+// bloc « pmz:rules » du CLAUDE.md (chargé à chaque session) — inutile de les répéter.
+// On ne garde que le protocole de clôture, qui n'est PAS dans pmz-rules.md.
+const MSG_ACTIF_SLIM = [
+  'Promptimizer actif. Règles : bloc « pmz:rules » du CLAUDE.md (ne pas les répéter).',
+  'Lot terminé : propose la clôture via une question à choix (OK / Non), jamais en texte',
+  'libre ; sur OK, déroule /close-batch (vérif ciblée + changelog + commit + handoff court).',
+].join('\n');
+
 const MSG_NON_INIT = [
   'Projet non initialisé détecté.',
   'Promptimizer peut créer un socle prudent (CLAUDE.md, AGENTS.md, CHANGELOG.md, .vibe-agent/).',
@@ -203,18 +212,19 @@ function backlogResumeMessage(cur, next, prog) {
   return msg;
 }
 
+// Protocole de renommage compressé (~400 o max). NE PAS casser : proposition en clair,
+// renommage de la session PRÉCÉDENTE (jamais la courante), accusé de résultat explicite.
 function sessionTitleMessage(title) {
   return [
-    `Titre suggéré pour la session PRÉCÉDENTE : « ${title} ».`,
-    `Présente-le d'abord comme une PROPOSITION de nommage, en clair dans ta réponse (pas seulement dans le dialogue) : « Je propose de renommer la session précédente en « ${title} » — valide le dialogue pour l'accepter, ou donne-moi un autre nom. »`,
-    "Puis, dans le même tour, déclenche le renommage de la session PRÉCÉDENTE (jamais la courante — l'outil de renommage la refuse ; cible directement la précédente, ne t'interroge pas dessus). Si l'utilisateur indique un autre nom, renomme avec CE nom.",
-    "L'autorisation à chaque appel est imposée par l'outil Anthropic (non contournable côté config) : assume-la comme la simple validation du nom proposé, pas comme un obstacle.",
-    "Confirme ensuite explicitement le résultat (réussi / raison de l'échec : outil absent, session introuvable, erreur…) — jamais silencieux sur ce point.",
+    `Titre suggéré (session PRÉCÉDENTE) : « ${title} ».`,
+    'Propose ce renommage EN CLAIR (pas seulement le dialogue) — validation ou autre nom.',
+    'Même tour : renomme la session PRÉCÉDENTE (jamais la courante), ce titre ou celui donné.',
+    'Autorisation = simple validation. Confirme le résultat (réussi / échec + raison), jamais muet.',
   ].join('\n');
 }
 
 module.exports = {
-  MSG_ACTIF, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
+  MSG_ACTIF, MSG_ACTIF_SLIM, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
   compactResumeMessage, backlogResumeMessage, largeWithPlanMessage,
   costlyTurnMessage, bustIntraMessage, pauseTtlMessage,

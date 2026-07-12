@@ -1658,6 +1658,49 @@ section('Nudges haute occupation (UserPromptSubmit >=500k, SessionStart resume >
   ok(/Promptimizer actif/.test(ctxOf(rStart) || ''), 'B5 : non-régression — startup inchangé (MSG_ACTIF en additionalContext)');
 }
 
+// ============================ LOT T2 — TRIM INJECTION SESSIONSTART ============================
+section('Trim injection SessionStart (titre compressé + slim si règles dans CLAUDE.md, lot T2)');
+{
+  const ctxOf = (r) => {
+    if (!r.out.trim()) return null;
+    try { return JSON.parse(r.out).hookSpecificOutput.additionalContext || null; } catch (_) { return null; }
+  };
+
+  // -- sessionTitleMessage compressé : <= 400 o pour un titre réaliste, protocole intact --
+  const t = messages.sessionTitleMessage('promptimiser — Lot 25 : Lot T1 — Nudge anti-compaction chiffré');
+  ok(Buffer.byteLength(t, 'utf8') <= 400, 'T2 : sessionTitleMessage <= 400 o (titre réaliste)');
+  ok(t.includes('PRÉCÉDENTE'), 'T2 : cible la session PRÉCÉDENTE');
+  ok(/EN CLAIR/.test(t), 'T2 : proposition en clair (pas seulement le dialogue)');
+  ok(/jamais la courante/.test(t), 'T2 : jamais la session courante');
+  ok(/réussi|échec/.test(t) && /jamais muet/.test(t), 'T2 : accusé de résultat explicite');
+
+  // -- MSG_ACTIF_SLIM : ne répète plus les règles d'économie, garde le protocole de clôture --
+  ok(!/réduire les relectures/.test(messages.MSG_ACTIF_SLIM), 'T2 : slim ne répète pas les règles d\'économie');
+  ok(/pmz:rules/.test(messages.MSG_ACTIF_SLIM), 'T2 : slim pointe vers le bloc pmz:rules du CLAUDE.md');
+  ok(/close-batch/.test(messages.MSG_ACTIF_SLIM), 'T2 : slim garde le protocole de clôture (absent de pmz-rules.md)');
+
+  // -- Gating : CLAUDE.md porteur du bloc pmz:rules -> slim ; sinon -> plein --
+  const mkRepo = (name, claudeBody) => {
+    const r = path.join(SANDBOX, name);
+    fs.mkdirSync(r, { recursive: true });
+    execFileSync('git', ['init', '-q', r]);
+    fs.writeFileSync(path.join(r, 'CLAUDE.md'), claudeBody);
+    fs.writeFileSync(path.join(r, 'a.txt'), '1');
+    execFileSync('git', ['-C', r, 'add', '.']);
+    execFileSync('git', ['-C', r, 'commit', '-q', '-m', 'init']);
+    project.ensureLedger(r);
+    return r;
+  };
+
+  const repoRules = mkRepo('repo-t2-rules', '# projet\n<!-- pmz:rules:start -->\nrègles\n<!-- pmz:rules:end -->\n');
+  const ctxRules = ctxOf(runHook('session-start.js', { source: 'startup', cwd: repoRules, session_id: 't2-rules' })) || '';
+  ok(/pmz:rules/.test(ctxRules) && !/réduire les relectures/.test(ctxRules), 'T2 : CLAUDE.md porteur -> rappel slim injecté');
+
+  const repoPlain = mkRepo('repo-t2-plain', '# projet sans règles PMZ\n');
+  const ctxPlain = ctxOf(runHook('session-start.js', { source: 'startup', cwd: repoPlain, session_id: 't2-plain' })) || '';
+  ok(/réduire les relectures/.test(ctxPlain), 'T2 : CLAUDE.md non porteur -> rappel plein (MSG_ACTIF)');
+}
+
 // ============================ VERSION PMZ + COMMANDE ABOUT (LOT 17) ============================
 section('Version PMZ historisée + commande about');
 {

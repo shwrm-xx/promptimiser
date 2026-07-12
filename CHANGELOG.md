@@ -2,6 +2,27 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (dégraissage tokens — Lot T2 : trim injection SessionStart)
+
+Épic « dégraissage tokens ». **Lot T2** : l'injection SessionStart était verbeuse et redondante
+avec le CLAUDE.md déjà chargé. On la dégraisse **sans casser** les protocoles qu'elle porte.
+
+- `promptimizer/lib/messages.js` : `sessionTitleMessage` réécrit court — **1027 o → 393 o**
+  (titre réaliste). Les 5 invariants du protocole de renommage sont conservés : proposition
+  **EN CLAIR** dans la réponse (pas seulement le dialogue), cible la session **PRÉCÉDENTE**
+  (jamais la courante), nom donné par l'utilisateur respecté, autorisation = simple validation,
+  accusé de résultat explicite (jamais muet). Le titre n'y apparaît **plus qu'une fois**.
+- Nouveau `MSG_ACTIF_SLIM` (269 o) : sur projet dont le CLAUDE.md porte déjà le bloc `pmz:rules`,
+  le rappel SessionStart **ne répète plus** les règles d'économie (déjà dans le contexte) ; il
+  pointe vers le bloc et ne garde que le **protocole de clôture** (OK/Non + `/close-batch`),
+  absent de `pmz-rules.md`.
+- `promptimizer/lib/project.js` : helper `carriesRules(root)` (fail-open) — détecte le marqueur
+  `pmz:rules:start` dans le CLAUDE.md.
+- `promptimizer/hooks/session-start.js` : choix slim/plein selon `carriesRules` au `startup`/`clear`.
+- `test/run-tests.js` : section « Trim injection SessionStart (lot T2) » (+10 assertions) —
+  taille du titre ≤ 400 o, invariants du protocole, gating slim/plein sur les deux branches.
+  Suite complète : **407 OK · 0 échec**.
+
 ## 2026-07-12 (dégraissage tokens — Lot T1 : nudge anti-compaction chiffré)
 
 Épic « dégraissage tokens ». **Lot T1** : les rappels d'occupation invitaient à clôturer sans

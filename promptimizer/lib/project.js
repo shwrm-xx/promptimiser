@@ -63,6 +63,19 @@ function exists(root, name) {
   }
 }
 
+// Le CLAUDE.md porte-t-il déjà le bloc de règles PMZ (posé par bootstrap) ? Si oui,
+// SessionStart peut injecter la variante slim (les règles sont déjà dans le contexte).
+// Fail-open : false au moindre doute (on garde alors le rappel plein).
+function carriesRules(root) {
+  try {
+    if (!root) return false;
+    const raw = fs.readFileSync(path.join(root, 'CLAUDE.md'), 'utf8');
+    return raw.includes('<!-- pmz:rules:start -->');
+  } catch (_) {
+    return false;
+  }
+}
+
 function detectStack(root) {
   const manifests = [
     ['package.json', 'node'],
@@ -118,6 +131,6 @@ function changelogTouched(root) {
 }
 
 module.exports = {
-  git, gitRoot, vibeDir, isInitialized, ensureLedger, isFullyInitialized, exists, detectStack,
+  git, gitRoot, vibeDir, isInitialized, ensureLedger, isFullyInitialized, exists, carriesRules, detectStack,
   gitStatusPorcelain, gitStatusMeaningful, lastCommitEpoch, hasAnyCommit, changelogTouched,
 };

@@ -16,7 +16,7 @@ if (disabled()) process.exit(0);
 
 const { parseHookInput } = require('../lib/stdin');
 const { injectContext, systemMessage, passThrough } = require('../lib/output');
-const { gitRoot, isFullyInitialized, hasAnyCommit } = require('../lib/project');
+const { gitRoot, isFullyInitialized, hasAnyCommit, carriesRules } = require('../lib/project');
 const { runBootstrap, commitScaffold } = require('../lib/bootstrap');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { suggestedTitle } = require('../lib/lot');
@@ -24,7 +24,7 @@ const { readHandoff, markConsumed } = require('../lib/handoff');
 const { loadBacklog, currentLot, nextLot, progress, readTodoSnapshot } = require('../lib/backlog');
 const occupancy = require('../lib/occupancy');
 const {
-  MSG_ACTIF, MSG_NON_INIT, MSG_HANDOFF, sessionTitleMessage, autoInitMessage,
+  MSG_ACTIF, MSG_ACTIF_SLIM, MSG_NON_INIT, MSG_HANDOFF, sessionTitleMessage, autoInitMessage,
   compactResumeMessage, backlogResumeMessage, occupancyMessage,
 } = require('../lib/messages');
 
@@ -107,7 +107,9 @@ function main() {
     if (src !== 'startup' && src !== 'clear') return passThrough();
     const st = loadSessionState(root, input.session_id || null);
     if (st.session_start_reminded) return passThrough();
-    let msg = MSG_ACTIF;
+    // Projet dont le CLAUDE.md porte déjà le bloc pmz:rules : rappel slim (pas de
+    // redite des règles déjà chargées). Sinon, rappel plein.
+    let msg = carriesRules(root) ? MSG_ACTIF_SLIM : MSG_ACTIF;
     try {
       // suggestedTitle (via previousSessionId) doit lire session-state.json AVANT le
       // saveSessionState ci-dessous, qui l'écrase avec le session_id de CETTE session.
