@@ -2,6 +2,25 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (Lot D1 — Spike plugin Claude Code : verdict go/no-go)
+
+**Lot #30** (spike, session jetable, zéro code de portage mergé). Évaluation de faisabilité du
+packaging de Promptimizer en plugin Claude Code natif, validée en bac à sable sur machine réelle
+(CLI desktop v2.1.205, vrai `~/.claude` non touché).
+
+- `docs/decisions/D1-plugin-go-nogo.md` : verdict **GO — staged** + preuves. Validé sur machine
+  réelle : `plugin.json`/`hooks.json`/marketplace locale passent `validate` ; install effective ;
+  **hook SessionStart réellement déclenché** en session sandbox ; `require('../lib/…')` résout.
+- Corrections vérifiées vs doc : `CLAUDE_PLUGIN_ROOT` **et** `CLAUDE_PLUGIN_DATA` exposés en
+  `process.env` au runtime (le second = état persistant survivant aux updates) ; source de
+  marketplace locale = **string relative**, pas un objet ; plugin local exécuté in-place depuis
+  la source ; `commands/*.md` assimilés à des skills et namespacés `/promptimizer:*`.
+- Régression unique assumée : la prise de relais réversible d'un hook Stop tiers
+  (`context-guard.py`) est impossible en plugin (pas de modif du `settings.json` global). Niche.
+- Faisabilité MH : distribution interne via marketplace locale / git interne (zéro-réseau) ;
+  éviter les sources `github`/`npm` publiques derrière proxy.
+- `ARCHITECTURE.md` : pointeur vers le verdict depuis la section « Décisions & pourquoi ».
+
 ## 2026-07-12 (Lot P2 — Preuve de clôture verify + closed_occupancy)
 
 **Lot #29**. Un lot backlog peut désormais porter une commande de preuve de clôture, et la

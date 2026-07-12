@@ -276,6 +276,10 @@ restauration) et **signale** un sidecar corrompu au lieu de l'avaler. Écriture 
 
 ## Décisions & pourquoi
 
+- **Distribution : verdict plugin Claude Code = GO staged** (spike lot #30, 2026-07-12) : le
+  packaging en plugin natif est faisable et validé sur machine réelle ; il supprime l'installeur
+  bespoke + la fusion de `settings.json` au prix d'une régression niche (takeover d'un hook Stop
+  tiers). Détail, preuves et chiffrage : [docs/decisions/D1-plugin-go-nogo.md](docs/decisions/D1-plugin-go-nogo.md).
 - **Occupation-tokens plutôt que compteur de tours** (vs spec) : signal réel, déjà éprouvé par
   `context-guard.py` ; PMZ le reprend à son compte (système standalone unifié).
 - **Stop non bloquant** : un Stop bloquant risque la boucle (cap 8) et gonfle le contexte ;
