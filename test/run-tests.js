@@ -2408,6 +2408,33 @@ section('doctor.js — détection double installation (plugin + canal manuel leg
   fs.rmSync(stage, { recursive: true, force: true });
 }
 
+section('doctor.js — canal plugin seul (installed_plugins.json) -> vert, plus de faux rouge');
+{
+  const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'pmz-plugin-only-'));
+  const fakeClaude = path.join(stage, 'claude-home');
+  fs.mkdirSync(path.join(fakeClaude, 'plugins'), { recursive: true });
+  // settings.json valide SANS aucun hook PMZ (canal manuel jamais installé) : c'est l'état
+  // laissé par migrate-to-plugin.js. Historiquement, faute de hooks manuels, le doctor criait
+  // « rouge » ici — le fix 2026-07-12 doit rendre « vert ».
+  fs.writeFileSync(path.join(fakeClaude, 'settings.json'),
+    JSON.stringify({ enabledPlugins: { 'pmz@pmz-local': true } }, null, 2));
+  // Le plugin est installé : installed_plugins.json pointe vers le CODE réel (PKG porte
+  // hooks/ + scripts/), pour que le dry-run du hook et la détection de projet s'exercent.
+  fs.writeFileSync(path.join(fakeClaude, 'plugins', 'installed_plugins.json'),
+    JSON.stringify({ version: 2, plugins: { 'pmz@pmz-local': [{ scope: 'user', installPath: PKG, version: '1.0.0' }] } }, null, 2));
+
+  const DOCTOR = path.join(PKG, 'install', 'doctor.js');
+  const env = { CLAUDE_CONFIG_DIR: fakeClaude };
+  const d = runNode(DOCTOR, ['--no-pause'], env);
+  ok(/Canal : plugin/.test(d.out), 'doctor.js : canal plugin détecté via installed_plugins.json');
+  ok(/fournis par le plugin/.test(d.out), 'doctor.js : hooks/skill annoncés comme fournis par le plugin');
+  ok(!/double installation/.test(d.out),
+    'doctor.js : plugin seul (aucun hook legacy) -> pas d\'avertissement de double installation');
+  ok(/Statut : vert/.test(d.out), 'doctor.js : plugin seul et sain -> statut vert (plus de faux rouge)');
+
+  fs.rmSync(stage, { recursive: true, force: true });
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

@@ -1,10 +1,13 @@
 # Promptimizer — contenu de .vibe-agent/.
 # Règle par défaut : tout ce que les hooks réécrivent à chaque tour est ÉPHÉMÈRE et
 # NON versionné (ledgers, handoff, état de session, snapshot todo) — sinon bruit git.
-# Exceptions DURABLES, à versionner : le plan de lots (backlog.json) et les règles
-# projet (rules.yaml). C'est ce qui garantit que le backlog n'est JAMAIS perdu entre
-# deux sessions (sa disparition passée venait de ce qu'il n'était pas suivi par git).
+# Exceptions DURABLES, à versionner : le plan de lots (backlog.json), les règles
+# projet (rules.yaml) et le trigramme de projet (trigram). C'est ce qui garantit que
+# ces choix ne sont JAMAIS perdus entre deux sessions ni deux clones (le backlog avait
+# disparu une fois faute d'être suivi par git ; le trigramme, choix manuel via
+# `backlog.js trigram --set`, retomberait sinon sur sa dérivation automatique).
 *
 !.gitignore
 !backlog.json
 !rules.yaml
+!trigram

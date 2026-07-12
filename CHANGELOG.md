@@ -2,6 +2,43 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (Lot E3 — doctor conscient du canal plugin, plus de faux « rouge »)
+
+Retour direct : après la migration vers le plugin (epic D-E), le `pmz-doctor` affichait
+« rouge » sur une installation pourtant saine, ruinant la confiance dans le fait que le plugin
+était bien installé et actif. Cause : `doctor.js` est l'outil historique du **canal manuel** —
+il exige des hooks PMZ câblés dans `settings.json`. En canal **plugin**, hooks/skill/commandes
+sont fournis PAR le plugin (jamais dans `settings.json`) ; le doctor concluait donc « rouge » à
+tort. Diagnostic complet effectué sur le poste (plugin installé, 6 hooks, 7 commandes, hook
+`session-start` exécuté à blanc → produit bien l'instruction de renommage) : **rien de
+mécanique n'était cassé**.
+
+- `promptimizer/install/doctor.js` : détection du canal plugin par signaux **indépendants de la
+  commande `claude`** (absente du PATH GUI macOS) — `CLAUDE_PLUGIN_ROOT`, `enabledPlugins` de
+  `settings.json`, et `plugins/installed_plugins.json` (chemin d'install). En canal plugin sain,
+  le statut est **vert** sans exiger le câblage manuel ; nouvelle ligne `Canal : plugin | manuel
+  | plugin + manuel (CONFLIT)` et « Hooks / skill / commandes : fournis par le plugin ». Le
+  dry-run du hook et la détection de projet s'exercent sur le code du plugin quand le canal
+  manuel a été nettoyé. Détection de double installation simplifiée (plus de `claude plugin
+  list` best-effort) : `hooks legacy présents ET plugin actif`.
+- Nettoyage du poste (hors dépôt) : suppression de l'install manuelle legacy résiduelle
+  (`~/.claude/promptimizer/` — code seulement, `state/` conservé), backup préalable. Le plugin
+  reste l'unique canal actif.
+- Renommage de session prouvé de bout en bout (outil MCP `set_session_title`) — le mécanisme
+  n'était pas cassé : le hook ne peut qu'**injecter** l'instruction, c'est l'assistant qui
+  l'exécute (identique en canal manuel).
+- Tests : 508 OK (+4 assertions « doctor plugin seul → vert »).
+- Fix trigramme de ce dépôt : dérivé par défaut à `PRO` (3 lettres de « promptimiser »),
+  fixé à `[PMZ]` (`backlog.js trigram --set PMZ`) pour matcher le nom du produit.
+  `.vibe-agent/trigram` était ignoré par `.vibe-agent/.gitignore` (règle `*` sans exception) :
+  un trigramme choisi à la main se serait perdu au prochain clone/session fraîche, comme le
+  backlog avant son ajout aux exceptions. Ajouté aux exceptions durables.
+- Non fait (signalé) : sous le plugin, aucun doctor CLI n'est livré (exclu du build) — la santé
+  se lit via `claude plugin details pmz` ou le doctor du dépôt. Un `/pmz:doctor` serait un lot
+  distinct. `suggestedTitle` retombe sur le dernier lot clos après un commit `chore` hors
+  backlog (titre « Lot E2 » proposé pour une session de nettoyage) — imperfection secondaire, à
+  traiter séparément.
+
 ## 2026-07-12 (Lot E2 — Titres de session : trigramme + focus du lot + langue)
 
 **Lot #35**. Refonte du format de titre de session suggéré, suite à un retour direct sur trois

@@ -90,17 +90,26 @@ fusion de `settings.json`.
 
 ## Vérification
 
+Le doctor reconnaît le **canal** utilisé. En **plugin** (hooks fournis par le plugin, pas par
+`settings.json`) :
+
 ```
 Promptimizer — diagnostic
 
+Version installée : 1.0.0
 Claude settings : OK
-Hooks globaux : OK
-Skill globale : OK
+Canal : plugin
+Hooks / skill / commandes : fournis par le plugin
 Scripts exécutables : OK
 Projet courant : initialisé / non initialisé
 
 Statut : vert
 ```
+
+En **canal manuel**, les lignes détaillent `Hooks globaux` / `Skill globale`. Un statut
+`plugin + manuel (CONFLIT)` signale une double installation à résoudre (`migrate-to-plugin.js`).
+Sous le plugin, la santé se lit aussi via `claude plugin details pmz` (le doctor CLI n'est pas
+embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/install/doctor.js`).
 
 ## Comportement dans Claude Code
 

@@ -302,7 +302,12 @@ manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string r
   plugin distribué (chemin machine-spécifique). Invoqué via `sh` car le bit +x n'est pas préservé
   en `.zip`. Fail-open : `node` introuvable → exit 0 silencieux.
 - **Diagnostic** = `claude plugin details pmz` (natif). `doctor.js` reste l'outil du
-  canal manuel (exclu du plugin).
+  canal manuel (exclu du plugin) mais est **conscient du canal plugin** (lot E3) : lancé depuis
+  le dépôt sur un poste en plugin, il détecte le plugin (env `CLAUDE_PLUGIN_ROOT`,
+  `enabledPlugins`, `installed_plugins.json`) et rend **vert** sans exiger le câblage manuel
+  dans `settings.json` — sinon il concluait « rouge » sur une install saine (retour utilisateur
+  2026-07-12). Aucun doctor CLI n'est embarqué dans le plugin (un `/pmz:doctor` serait un lot à
+  part).
 - **Régression assumée** (cf. D1) : pas de takeover réversible d'un hook Stop tiers en plugin ;
   commandes namespacées `/pmz:*`.
 - **Identifiant plugin = `pmz`, pas `promptimizer`** (lot E1) : le namespace des commandes est
@@ -328,11 +333,11 @@ manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string r
   `context-guard.py` si applicable) puis affiche les commandes d'install du plugin. `--purge`
   supprime aussi les fichiers PMZ legacy (défaut : conservés, symétrique à `uninstall.js`).
 - **`doctor.js` détecte la double installation** (plugin + canal manuel jamais retiré, qui
-  ferait tirer les hooks deux fois) par deux voies indépendantes : (A) ce doctor tourne sous
-  `CLAUDE_PLUGIN_ROOT` et des hooks PMZ legacy traînent encore dans `settings.json` ; (B) ce
-  doctor tourne en canal manuel et `claude plugin list` (best-effort, absence de la commande =
-  non détecté) rapporte `promptimizer` déjà installé. Statut `orange` + rappel de
-  `migrate-to-plugin.js` dans les deux cas.
+  ferait tirer les hooks deux fois) = **hooks PMZ legacy présents dans `settings.json` ET plugin
+  actif par ailleurs**. « Plugin actif » se lit sans dépendre de la commande `claude` (absente du
+  PATH GUI macOS) : env `CLAUDE_PLUGIN_ROOT`, `enabledPlugins`, ou `plugins/installed_plugins.json`
+  (lot E3 — remplace l'ancien `claude plugin list` best-effort). Statut `orange` + rappel de
+  `migrate-to-plugin.js`.
 - **Canal manuel gelé** : `install.command`/`.sh`/`.ps1` (et `uninstall.*`/`pmz-doctor.*`)
   restent fonctionnels mais ne reçoivent plus de nouvelles features — le plugin est le canal
   recommandé pour toute nouvelle install (cf. README).
