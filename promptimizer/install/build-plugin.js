@@ -38,6 +38,16 @@ const MARKETPLACE_NAME = 'pmz-local';
 // Composants EXCLUS du plugin : l'installeur manuel (obsolète en plugin) et le bruit OS.
 const EXCLUDE = new Set(['install', '.DS_Store']);
 
+// Garde-fou anti-suppression accidentelle (post-mortem v1.1.3 : le cleanup 7533d72 avait
+// supprimé pmz-scope/pmz-init/pmz-about de la source, croyant à tort les commandes namespacées
+// `/pmz:*` séparées — invisible tant que le cache plugin restait figé). Liste EXPLICITE des
+// commandes que le plugin DOIT porter : à éditer consciemment quand on ajoute/retire une
+// commande. Une disparition non voulue la fait diverger → build refusé, jamais propagé au cache.
+const REQUIRED_COMMANDS = [
+  'budget.md', 'check-context.md', 'close-batch.md', 'fresh-session.md',
+  'pmz-about.md', 'pmz-init.md', 'pmz-scope.md',
+];
+
 function log(s) { process.stdout.write(s + '\n'); }
 function fail(s) { process.stderr.write('ERREUR build-plugin : ' + s + '\n'); process.exit(1); }
 
@@ -83,8 +93,17 @@ fs.cpSync(PMZ_SRC, PLUGIN, {
 if (!fs.existsSync(path.join(SKILL_SRC, 'SKILL.md'))) fail('skill introuvable : ' + SKILL_SRC);
 fs.cpSync(SKILL_SRC, path.join(PLUGIN, 'skills', 'promptimizer'), { recursive: true });
 
+// ── 3b. Garde-fou : toutes les commandes attendues doivent être présentes ──
+const cmdDir = path.join(PLUGIN, 'commands');
+const missing = REQUIRED_COMMANDS.filter((c) => !fs.existsSync(path.join(cmdDir, c)));
+if (missing.length) {
+  fail('commande(s) attendue(s) absente(s) du plugin : ' + missing.join(', ') +
+    '\n  Si c\'est une suppression VOULUE, retire-la de REQUIRED_COMMANDS dans build-plugin.js.' +
+    '\n  Sinon restaure le fichier source dans promptimizer/commands/ (git checkout).');
+}
+
 // ── 4. Réécriture des chemins dans commands + skills (contenu substitué inline) ──
-const nCmd = rewriteMdInDir(path.join(PLUGIN, 'commands'));
+const nCmd = rewriteMdInDir(cmdDir);
 const nSkill = rewriteMdInDir(path.join(PLUGIN, 'skills'));
 
 // ── 5. Synchronise la version du manifeste sur VERSION (semver direct depuis lot D3) ──

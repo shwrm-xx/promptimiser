@@ -2280,6 +2280,11 @@ section('build-plugin.js — assemble le plugin Claude Code (layout conventionne
   ok(fs.existsSync(path.join(plugin, 'hooks', 'hooks.json')), 'build-plugin : hooks/hooks.json à la racine');
   ok(fs.existsSync(path.join(plugin, 'skills', 'promptimizer', 'SKILL.md')), 'build-plugin : skills/promptimizer/SKILL.md à la racine (hors miroir source)');
   ok(fs.existsSync(path.join(plugin, 'commands', 'close-batch.md')), 'build-plugin : commands/ présentes');
+  // Garde-fou (v1.1.3) : les commandes /pmz:* attendues sont TOUTES portées par le plugin.
+  for (const c of ['budget.md', 'check-context.md', 'close-batch.md', 'fresh-session.md',
+    'pmz-about.md', 'pmz-init.md', 'pmz-scope.md']) {
+    ok(fs.existsSync(path.join(plugin, 'commands', c)), 'build-plugin : commande requise présente — ' + c);
+  }
   ok(fs.existsSync(path.join(plugin, 'bin', 'pmz-hook')), 'build-plugin : bin/pmz-hook présent');
   ok(fs.existsSync(path.join(plugin, 'lib', 'claude-dir.js')), 'build-plugin : lib/ présent (require voisin)');
   // Installeur manuel EXCLU du plugin (obsolète en mode plugin).
@@ -2308,6 +2313,26 @@ section('build-plugin.js — assemble le plugin Claude Code (layout conventionne
     'build-plugin : marketplace.json plugins[0].name = "pmz" (lot E1)');
 
   fs.rmSync(out, { recursive: true, force: true });
+}
+
+// ===== build-plugin.js — garde-fou : une commande requise absente fait ÉCHOUER le build (v1.1.3) =====
+section('build-plugin.js — commande requise supprimée -> build refusé (anti-régression 7533d72)');
+{
+  // Copie autonome du package (source), amputée d'une commande requise : on ne touche jamais
+  // au vrai PKG. build-plugin résout sa source via __dirname, donc on le lance depuis la copie.
+  const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'pmz-build-guard-'));
+  const srcCopy = path.join(stage, 'promptimizer');
+  fs.cpSync(PKG, srcCopy, { recursive: true });
+  fs.mkdirSync(path.join(stage, 'skills'), { recursive: true });
+  fs.cpSync(path.join(PKG, '..', 'skills', 'promptimizer'), path.join(stage, 'skills', 'promptimizer'), { recursive: true });
+  fs.rmSync(path.join(srcCopy, 'commands', 'pmz-scope.md'), { force: true });
+
+  const r = runNode(path.join(srcCopy, 'install', 'build-plugin.js'), [path.join(stage, 'dist')], {});
+  ok(r.code !== 0, 'build-plugin : exit non-0 quand une commande requise manque');
+  ok(/pmz-scope\.md/.test(r.err || ''), 'build-plugin : nomme la commande manquante dans l\'erreur');
+  ok(/REQUIRED_COMMANDS/.test(r.err || ''), 'build-plugin : indique la marche à suivre (REQUIRED_COMMANDS / restaurer)');
+
+  fs.rmSync(stage, { recursive: true, force: true });
 }
 
 // ============================ U. VERSION SEMVER (lot D3) ============================

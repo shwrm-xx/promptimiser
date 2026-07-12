@@ -300,6 +300,11 @@ replacée sous `skills/promptimizer/`, chemins `~/.claude/promptimizer` réécri
 manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string relative**
 (`"./promptimizer"`). Zéro duplication committée — le plugin est un artefact de build.
 
+- **Garde-fou `REQUIRED_COMMANDS`** (`build-plugin.js`, v1.1.4) : liste EXPLICITE des commandes
+  que le plugin doit porter ; le build **échoue** (exit 1, message nommant la commande + marche
+  à suivre) si l'une manque du dossier assemblé. À éditer consciemment quand on ajoute/retire une
+  commande — une suppression accidentelle de la source la fait diverger et bloque le build avant
+  tout redéploiement (anti-régression du cleanup `7533d72`, cf. CHANGELOG v1.1.3).
 - **Câblage des hooks** : `hooks/hooks.json` statique (6 hooks, mêmes matchers/timeouts que
   `merge-settings.js`) remplace l'écriture dans `settings.json`. Commande =
   `sh "${CLAUDE_PLUGIN_ROOT}/bin/pmz-hook" "${CLAUDE_PLUGIN_ROOT}/hooks/x.js"`.

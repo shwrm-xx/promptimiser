@@ -2,6 +2,23 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-13 (v1.1.4 — garde-fou build : commande requise absente = build refusé)
+
+Suite du post-mortem v1.1.3 (à la demande de l'utilisateur) : empêcher qu'une suppression
+accidentelle de commande reparte en prod. Le cleanup `7533d72` avait supprimé 3 commandes sans
+que rien ne le signale — le build assemblait un plugin amputé et le cache le propageait.
+
+- `promptimizer/install/build-plugin.js` : liste EXPLICITE `REQUIRED_COMMANDS` (7 commandes) ;
+  nouvelle étape 3b qui **fait échouer le build** (exit 1) si l'une manque du plugin assemblé,
+  en nommant la commande et la marche à suivre (retirer de `REQUIRED_COMMANDS` si voulu, sinon
+  `git checkout` du fichier source). À éditer consciemment à chaque ajout/retrait de commande.
+- `test/run-tests.js` : 7 assertions « commande requise présente » sur le build normal + bloc
+  bac à sable (copie source amputée de `pmz-scope.md` → build refusé, message vérifié) —
+  **532 OK, 0 échec**.
+- `ARCHITECTURE.md` : bullet garde-fou `REQUIRED_COMMANDS` (canal plugin).
+- `promptimizer/VERSION` + `plugin.json` : 1.1.3 → **1.1.4** ; rebuild + cache réaligné
+  (doctor vert, source == installé).
+
 ## 2026-07-13 (v1.1.3 — restauration des commandes /pmz:pmz-scope, pmz-init, pmz-about)
 
 Retour utilisateur : « y'a plus pmz-scope ? ». Cause : le commit de cleanup `7533d72`
