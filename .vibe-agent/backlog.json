@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 25,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-12T08:12:44.816Z",
+  "updated_at": "2026-07-12T08:18:32.406Z",
   "lots": [
     {
       "id": 1,
@@ -268,13 +268,13 @@
       "id": 21,
       "title": "Helper claude-dir + CLAUDE_CONFIG_DIR",
       "scope": "fait quand : lib/claude-dir.js résout le dossier config (CLAUDE_CONFIG_DIR sinon ~/.claude) et est câblé dans tous les .js (merge-settings, occupancy) + .command (install/pmz-doctor/uninstall) ; tests : variable posée -> tout pointe ailleurs, absente -> ~/.claude ; node test/run-tests.js vert",
-      "status": "in_progress",
+      "status": "done",
       "model_hint": "opus",
-      "closed_commit": null,
-      "closed_at": null,
+      "closed_commit": "0332f18",
+      "closed_at": "2026-07-12T08:18:32.405Z",
       "closed_session_id": null,
       "started_at": "2026-07-12T08:12:44.816Z",
-      "lot_number": null,
+      "lot_number": 11,
       "note": null
     },
     {

@@ -2,6 +2,38 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (export — Lot B : installeur Node cross-platform)
+
+Épic « rendre PMZ totalement exportable ». **Lot B** : la logique d'install/diagnostic/désinstall/
+packaging vivait dans des scripts `.command` bash (~90 lignes chacun) — macOS uniquement. Un
+portage bash+PowerShell aurait dupliqué cette logique (→ dérive). Décision : **installeur Node
+unique**, les scripts shell deviennent de simples lanceurs.
+
+- Nouveaux cores Node stdlib (source de vérité unique de la logique) :
+  `install/install.js`, `install/doctor.js`, `install/uninstall.js`, `install/package.js`.
+  Tous passent par `lib/claude-dir.js` (pas de recalcul du chemin config).
+- `install/lib-io.js` (nouveau) : lecture stdin synchrone partagée ; cores **non-interactif-safe**
+  (prompts/pause court-circuités hors TTY ou avec `--no-pause`, défauts alignés sur l'ancien bash).
+- Lanceurs **fins** par OS (vérif `node` + délégation, zéro logique métier) :
+  `install`/`pmz-doctor`/`uninstall`/`package` × `.command` (macOS) + `.sh` (Linux) + `.ps1`
+  (Windows). Les anciens `.command` porteurs de logique sont réécrits en lanceurs.
+- Portabilité OS : `xattr`/quarantine gardés à `process.platform === 'darwin'` ; packaging archive
+  via `zip` (macOS/Linux) ou `Compress-Archive` PowerShell (Windows) ; `git config core.hooksPath`
+  seulement sur le dépôt source (présence `.git` + `.githooks`).
+- `install.js` : purge des sous-dossiers obsolètes en préservant `state/`, fusion `settings.json`
+  via la copie installée de `merge-settings.js`, prise de relais `context-guard.py` (prompt
+  interactif ou `--takeover`/`--no-takeover`), puis diagnostic `doctor.js`.
+- `test/run-tests.js` : section « install.js bout-en-bout » (source stagée **sans `.git`** →
+  aucun effet sur le vrai dépôt) : copie hooks/skill/commands sous `CLAUDE_CONFIG_DIR`, 6 hooks
+  fusionnés, HOOK_BASE relocalisé, purge de l'obsolète + `state/` préservé, idempotence.
+- `README.md` / `ARCHITECTURE.md` / `CLAUDE.md` : install cross-platform (3 OS), cores Node +
+  lanceurs fins documentés.
+- Vérifié en bac à sable : `node test/run-tests.js` → **368 OK, 0 échec** ; install.js, package.js
+  (zip généré + structure), uninstall.js (retrait des 6 hooks, `state/` conservé) prouvés.
+- Limite reportée (Lot D) : chaînes d'aide **affichées** (`messages.js`/`backlog.js`/
+  `close-batch.js`) citent encore `~/.claude/...` en dur — cosmétique. Le delta Codex
+  (`codex/install-codex.command`) reste bash macOS — hors périmètre du Lot B (package Claude Code).
+
 ## 2026-07-12 (export — Lot A : portabilité CLAUDE_CONFIG_DIR)
 
 Épic « rendre PMZ totalement exportable » (plan 4 lots : A portabilité, B installeur Node

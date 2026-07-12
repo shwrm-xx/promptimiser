@@ -1723,6 +1723,58 @@ section('claude-dir — résolution CLAUDE_CONFIG_DIR (portabilité, lot A)');
   }
 }
 
+// ============================ P. INSTALLEUR NODE (lot B) ============================
+section('install.js — bout-en-bout cross-platform (bac à sable, source sans .git)');
+{
+  // On stage une copie de la source SANS .git : install.js n'ira donc pas toucher le
+  // core.hooksPath du vrai dépôt, et on exerce copie + purge + merge + doctor de bout en bout.
+  const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'pmz-inst-'));
+  fs.mkdirSync(path.join(stage, 'skills'), { recursive: true });
+  fs.cpSync(PKG, path.join(stage, 'promptimizer'), { recursive: true });
+  const skillSrc = path.join(REPO, 'skills', 'promptimizer');
+  if (fs.existsSync(skillSrc)) fs.cpSync(skillSrc, path.join(stage, 'skills', 'promptimizer'), { recursive: true });
+
+  const INSTALL = path.join(stage, 'promptimizer', 'install', 'install.js');
+  const fakeClaude = path.join(stage, 'claude-home');
+  const rInst = runNode(INSTALL, ['--no-pause'], { CLAUDE_CONFIG_DIR: fakeClaude, PMZ_STATE_DIR: path.join(stage, 'state') });
+  ok(rInst.code === 0, 'install.js : exit 0 (bac à sable)');
+  ok(fs.existsSync(path.join(fakeClaude, 'promptimizer', 'hooks', 'session-start.js')),
+    'install.js : hooks copiés sous CLAUDE_CONFIG_DIR');
+  ok(fs.existsSync(path.join(fakeClaude, 'skills', 'promptimizer', 'SKILL.md')),
+    'install.js : skill copiée');
+  ok(fs.existsSync(path.join(fakeClaude, 'commands', 'budget.md')),
+    'install.js : slash commands copiées');
+  const instSettings = path.join(fakeClaude, 'settings.json');
+  ok(fs.existsSync(instSettings), 'install.js : settings.json créé');
+  if (fs.existsSync(instSettings)) {
+    const s = JSON.parse(fs.readFileSync(instSettings, 'utf8'));
+    const cmds = [].concat(...Object.values(s.hooks || {}))
+      .flatMap((e) => (e && e.hooks) || []).map((h) => h.command || '');
+    ok(cmds.filter((c) => c.includes('promptimizer/hooks/')).length === 6,
+      'install.js : 6 hooks PMZ fusionnés');
+    ok(cmds.some((c) => c.includes(path.join(fakeClaude, 'promptimizer', 'hooks'))),
+      'install.js : HOOK_BASE pointe sous CLAUDE_CONFIG_DIR');
+  }
+
+  // Purge : un sous-dossier obsolète est retiré à la réinstallation, mais state/ est préservé.
+  fs.mkdirSync(path.join(fakeClaude, 'promptimizer', 'state'), { recursive: true });
+  fs.writeFileSync(path.join(fakeClaude, 'promptimizer', 'state', 'keep.json'), '{}');
+  fs.writeFileSync(path.join(fakeClaude, 'promptimizer', 'hooks', 'obsolete-xyz.js'), '// vieux');
+  const rInst2 = runNode(INSTALL, ['--no-pause'], { CLAUDE_CONFIG_DIR: fakeClaude, PMZ_STATE_DIR: path.join(stage, 'state') });
+  ok(rInst2.code === 0, 'install.js : réinstall exit 0 (idempotent)');
+  ok(!fs.existsSync(path.join(fakeClaude, 'promptimizer', 'hooks', 'obsolete-xyz.js')),
+    'install.js : purge le fichier obsolète du sous-dossier hooks');
+  ok(fs.existsSync(path.join(fakeClaude, 'promptimizer', 'state', 'keep.json')),
+    'install.js : state/ préservé à la réinstallation');
+  if (fs.existsSync(instSettings)) {
+    const s = JSON.parse(fs.readFileSync(instSettings, 'utf8'));
+    const n = [].concat(...Object.values(s.hooks || {})).flatMap((e) => (e && e.hooks) || [])
+      .filter((h) => (h.command || '').includes('promptimizer/hooks/')).length;
+    ok(n === 6, 'install.js : réinstall → toujours 6 hooks (pas de doublon)');
+  }
+  fs.rmSync(stage, { recursive: true, force: true });
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

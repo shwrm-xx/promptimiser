@@ -207,12 +207,24 @@ GUI macOS). Le `~` reste développé par le shell. Stdin = JSON ; sortie = JSON 
 
 ## Mapping source → cible & installation
 
+**Installeur Node cross-platform — source de vérité unique** (`install/*.js`) : la logique
+d'install/diagnostic/désinstall/packaging vit dans quatre cores Node stdlib
+(`install.js`, `doctor.js`, `uninstall.js`, `package.js`). Les lanceurs `install.command` (macOS),
+`install.sh` (Linux), `install.ps1` (Windows) — idem pour les trois autres — sont **fins** :
+ils vérifient `node` puis délèguent au core. Un seul emplacement de logique évite la dérive
+bash/PowerShell. La **quarantine** (`xattr`) est gardée à `process.platform === 'darwin'` ; le
+**packaging** archive via `zip` (macOS/Linux) ou `Compress-Archive` (Windows). Les cores partagent
+`install/lib-io.js` (lecture stdin synchrone) et sont **non-interactif-safe** (prompts/pause
+court-circuités hors TTY ou avec `--no-pause`, défauts alignés sur l'ancien bash). Le core
+`install.js` appelle `doctor.js` en fin de course et lance `git config core.hooksPath .githooks`
+uniquement sur le **dépôt source** (présence de `.git` + `.githooks`).
+
 **Dossier de config Claude — source de vérité unique** (`lib/claude-dir.js`) : Claude Code
-honore `CLAUDE_CONFIG_DIR` pour relocaliser `~/.claude` ; PMZ le respecte **partout** (installeur
-`.command` via `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`, runtime JS via `claude-dir.js`). Un seul
-point de calcul évite qu'install et hooks divergent (install au bon endroit mais hooks aveugles
-sur un `~/.claude` inexistant). Repli sur `~/.claude` si la variable est absente **ou vide**
-(shell `:-` et JS `trim()` alignés). `PMZ_STATE_DIR` reste un override prioritaire pour les tests.
+honore `CLAUDE_CONFIG_DIR` pour relocaliser `~/.claude` ; PMZ le respecte **partout** (les cores
+d'install via `claude-dir.js`, runtime JS aussi). Un seul point de calcul évite qu'install et
+hooks divergent (install au bon endroit mais hooks aveugles sur un `~/.claude` inexistant). Repli
+sur `~/.claude` si la variable est absente **ou vide** (JS `trim()`). `PMZ_STATE_DIR` reste un
+override prioritaire pour les tests.
 
 `merge-settings.js` : parse strict (échec → **abort**), backup horodaté vérifié (suffixe `-N`
 anti-collision, perms 0600), fusion **append-only par event** taguée (idempotente). La purge

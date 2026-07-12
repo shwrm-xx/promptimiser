@@ -24,15 +24,21 @@ Il fournit aussi un **delta Codex** (`AGENTS.md`) pour porter le même socle de 
 
 ## Installation
 
-1. Double-clique sur `promptimizer/install/install.command`.
-   _(1re fois : si macOS bloque, clic droit → Ouvrir, ou retire la quarantaine —
+1. Lance l'installeur selon ton OS (prérequis : **Node.js**) :
+   - **macOS** — double-clic `promptimizer/install/install.command`
+   - **Linux** — `bash promptimizer/install/install.sh`
+   - **Windows** — `promptimizer/install/install.ps1` (PowerShell)
+
+   _(macOS 1re fois : si Gatekeeper bloque, clic droit → Ouvrir, ou retire la quarantaine —
    `xattr -dr com.apple.quarantine promptimizer`. Ce premier lancement active aussi un hook
    git local — `.githooks/post-merge` — qui lève automatiquement la quarantaine sur les
-   `.command` du dépôt après chaque `git pull` : le popup Gatekeeper ne revient plus.)_
-   L'installeur copie le package dans `~/.claude/`, **sauvegarde** ton `settings.json`, fusionne
-   les hooks **sans rien écraser**, et te **propose** de laisser PMZ reprendre le rôle d'un
-   éventuel hook `Stop` existant (réversible).
-2. Vérifie avec `promptimizer/install/pmz-doctor.command`.
+   `.command` du dépôt après chaque `git pull` : le popup ne revient plus.)_
+   Toute la logique vit dans `install.js` (stdlib Node, cross-platform) ; les lanceurs
+   `.command`/`.sh`/`.ps1` ne font que trouver `node` et l'appeler. L'installeur copie le
+   package dans `~/.claude/` (ou `$CLAUDE_CONFIG_DIR`), **sauvegarde** ton `settings.json`,
+   fusionne les hooks **sans rien écraser**, et te **propose** de laisser PMZ reprendre le rôle
+   d'un éventuel hook `Stop` existant (réversible).
+2. Vérifie avec `pmz-doctor.command` / `pmz-doctor.sh` / `pmz-doctor.ps1`.
 
 Aucun `sudo` n'est demandé.
 
@@ -86,8 +92,8 @@ Statut : vert
 (occupation courante du contexte + gaspillage de relecture), avec repli annoncé sur le comptage
 de relectures quand l'occupation token n'est pas encore connue.
 
-_Après une mise à jour du package, relance `install.command` puis redémarre Claude Code :
-les matchers de hooks ne s'appliquent qu'à la réinstallation._
+_Après une mise à jour du package, relance l'installeur (`install.command`/`.sh`/`.ps1`) puis
+redémarre Claude Code : les matchers de hooks ne s'appliquent qu'à la réinstallation._
 
 ## Pause / désactivation
 
@@ -101,8 +107,9 @@ les matchers de hooks ne s'appliquent qu'à la réinstallation._
 
 ## Désinstallation
 
-Double-clique sur `promptimizer/install/uninstall.command` (retire **uniquement** les
-hooks PMZ, propose de restaurer l'ancien hook, ne touche jamais à tes projets).
+Lance `promptimizer/install/uninstall.command` (macOS) / `uninstall.sh` (Linux) /
+`uninstall.ps1` (Windows) — retire **uniquement** les hooks PMZ, propose de restaurer l'ancien
+hook, ne touche jamais à tes projets.
 
 ## Pour les contributeurs
 

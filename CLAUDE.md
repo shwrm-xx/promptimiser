@@ -13,8 +13,9 @@ L'arborescence reflète **en miroir plat** la cible d'installation `~/.claude/` 
 | `skills/promptimizer/`    | `~/.claude/skills/promptimizer/` |
 | `promptimizer/commands/`  | `~/.claude/commands/`                     |
 
-`promptimizer/install/install.command` résout sa propre position et déploie vers
-`~/.claude/`. La spec d'origine est dans `mwn/` ; l'architecture vivante est dans
+`promptimizer/install/install.js` (core Node cross-platform) résout sa propre position et déploie
+vers `~/.claude/` (ou `$CLAUDE_CONFIG_DIR`) ; les lanceurs `install.command`/`.sh`/`.ps1` ne font
+que l'appeler. La spec d'origine est dans `mwn/` ; l'architecture vivante est dans
 [ARCHITECTURE.md](ARCHITECTURE.md) (source de vérité pour le contrat des hooks).
 
 ## Règles de travail
@@ -24,8 +25,11 @@ L'arborescence reflète **en miroir plat** la cible d'installation `~/.claude/` 
 - **Fail-open absolu** : un hook ne doit JAMAIS casser une session. Erreur/timeout/JSON invalide
   → `exit 0` silencieux. Jamais d'`exit 2`. En cas de doute → `allow`.
 - **Zéro secret** : aucune clé dans le dépôt.
-- **macOS / `sh`** : les `.command` sont en `#!/bin/bash` ; les chemins sont toujours entre
-  guillemets (espaces). Ne pas dépendre de `rg` (utiliser `git grep`/`grep`).
+- **Cross-platform** : la logique d'install vit dans des **cores Node** (`install/*.js`) ; les
+  lanceurs `.command` (mac) / `.sh` (linux) sont en `#!/bin/bash`, `.ps1` (windows) en PowerShell,
+  et restent **fins** (vérif `node` + délégation, aucune logique métier — pas de dérive). Chemins
+  entre guillemets (espaces). `xattr`/quarantine gardés à `darwin`. Ne pas dépendre de `rg`
+  (utiliser `git grep`/`grep`).
 - **Préserver l'existant utilisateur** : la fusion de `~/.claude/settings.json` est
   append-only, taguée, idempotente et réversible (backup). Ne jamais écraser `permissions`,
   `statusLine`, `enabledPlugins`, ni un hook tiers.
