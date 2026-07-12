@@ -228,6 +228,18 @@ comme première installation, jamais de crash. `package.js` nomme l'archive
 `VERSION` depuis son propre dossier via `lib/version.js`, donc toujours celle du package
 effectivement installé, jamais celle du dépôt source).
 
+**Contrat d'autonomie du package installé** : une fois copié sous `$DEST/promptimizer`
+(`~/.claude/promptimizer` ou `$CLAUDE_CONFIG_DIR/promptimizer`), le package ne doit **jamais**
+avoir besoin du dépôt source pour fonctionner — ni pour tourner (hooks, doctor, désinstall), ni
+pour se réinstaller depuis une archive `.zip` téléchargée sur une autre machine sans Git. Tous
+les chemins internes se résolvent via `__dirname`/`path.resolve` relatifs au fichier exécuté,
+jamais via un chemin absolu figé vers le dépôt qui a servi à packager. Vérifié par
+`test/run-tests.js` (section « autonomie du package ») : `package.js` produit une archive,
+décompressée **hors dépôt** (`os.tmpdir()`), installée vers un `$HOME`/`CLAUDE_CONFIG_DIR`
+fictif, puis `doctor.js` doit rendre un statut vert **sans dépôt source ni `.git` présents** ; un
+grep de garde vérifie qu'aucun fichier sous `$DEST/promptimizer` ne contient le chemin absolu du
+dépôt source.
+
 **Dossier de config Claude — source de vérité unique** (`lib/claude-dir.js`) : Claude Code
 honore `CLAUDE_CONFIG_DIR` pour relocaliser `~/.claude` ; PMZ le respecte **partout** (les cores
 d'install via `claude-dir.js`, runtime JS aussi). Un seul point de calcul évite qu'install et
@@ -288,3 +300,26 @@ restauration) et **signale** un sidecar corrompu au lieu de l'avaler. Écriture 
   committer. Alternative écartée : auto-exécution complète (commit compris) sans attendre de
   validation — rejetée parce qu'elle casse le principe « fait = prouvé » (personne ne vérifie le
   jugement du LLM sur « j'ai fini ») et la règle « ne jamais committer sans demande explicite ».
+- **Maille User Story : non** (audit pilotage 2026-07-12) : une maille n'existe que si elle
+  change une décision opérationnelle — quelle session, quel modèle, quel commit, quel ordre ;
+  la US n'en change aucune quand l'exécutant est Claude. `title` + `scope` « fait quand : … »
+  est la US compressée (le critère d'acceptation sans la cérémonie) ; la granularité sous-lot
+  reste les todos volatiles (`todo-snapshot.json`). Pas de hiérarchie epic→feature→lot : une
+  « feature » = un epic court (2-5 lots).
+- **Epic = label, pas conteneur** : pas de table `epics[]` ni de cycle de vie d'epic — un label
+  (fichier `.vibe-agent/epic` + futur champ `epic` du lot, cf. lot #28) suffit pour le titre de
+  session et le filtrage. Le multi-epics arbitré est un problème que l'historique réel du
+  backlog (exécution strictement séquentielle) n'a jamais rencontré ; une table d'epics avec
+  statuts et arbitrages serait le début du Jira que `backlog.js` refuse par principe.
+- **Distribution cible = plugin Claude Code** (epic D, lots #30-#33) : les hooks portés par le
+  `hooks/hooks.json` du plugin suppriment le merge de `settings.json` pour les nouveaux
+  installés (le mécanisme le plus risqué de PMZ), versioning/update natifs via `plugin.json`,
+  marketplace = dépôt git (privé MH via `extraKnownMarketplaces` ; **public GitHub = objectif
+  lointain**, même mécanique). L'installeur Node (#22) reste le canal legacy et devient l'outil
+  de migration (`merge-settings.js --remove` + purge, doctor détecte la double install). Le bloc
+  projet `pmz:rules` dans CLAUDE.md/AGENTS.md est conservé tel quel (pas de pivot
+  `.claude/rules/` : même couche de cache, deux véhicules = divergence garantie avec Codex).
+- **Adoption avant features** (audit pilotage 2026-07-12) : l'audit d'usage réel ci-dessus
+  (skills invoqués quelques fois sur 76 sessions) fait de l'adoption le risque n°1 — aucune
+  nouvelle commande sans preuve d'usage des 7 existantes ; enrichir l'existant (messages,
+  champs, hooks déjà branchés) plutôt qu'élargir la surface.

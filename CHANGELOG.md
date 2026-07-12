@@ -2,6 +2,45 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (export — Lot D : verrou de découplage + doc autonomie)
+
+Épic « rendre PMZ totalement exportable ». **Lot D** (dernier de l'epic) : rien ne prouvait
+qu'un package installé pouvait tourner sans le dépôt source — un `.zip` envoyé à quelqu'un
+d'autre aurait pu casser silencieusement si un chemin absolu du dépôt s'était glissé dedans.
+
+- `test/run-tests.js` : nouvelle section « autonomie du package » — `package.js` génère une
+  archive, décompressée **hors dépôt** (`os.tmpdir()`, outil `unzip` système), installée vers un
+  `$HOME`/`CLAUDE_CONFIG_DIR` fictif, puis `doctor.js` doit rendre un statut **vert sans dépôt
+  source ni `.git` présents**. Grep de garde : 0 fichier sous `$DEST/promptimizer` ne contient le
+  chemin absolu du dépôt source.
+- `ARCHITECTURE.md` : documente le **contrat d'autonomie** du package installé (résolution de
+  chemins toujours relative à `__dirname`, jamais un chemin absolu figé vers le dépôt source).
+- Vérifié : `node test/run-tests.js` → **386 OK, 0 échec** (8 nouveaux tests).
+
+## 2026-07-12 (audit pilotage produit — roadmap 3 epics T/P/D)
+
+Audit « PMZ outil de pilotage produit » (workflow 8 agents : 3 explorateurs du dépôt, doc
+Claude Code 2026, 3 lentilles de conception, critique adversarial vérifié sur le dépôt).
+Décisions actées : epic → lot, 2 niveaux (epic = label, « feature » = epic court) ; maille
+User Story refusée (`title` + « fait quand » = US compressée) ; distribution cible = plugin
+Claude Code (public GitHub en objectif lointain) ; risque n°1 = adoption (aucune nouvelle
+commande sans preuve d'usage des 7 existantes).
+
+- `backlog.json` : 9 lots ajoutés (#25-#33) en 3 epics, après l'epic export (#24 prioritaire) —
+  **T « dégraissage tokens »** : #25 nudge anti-compaction chiffré [opus · medium], #26 trim
+  injection SessionStart (`sessionTitleMessage` ~1,1 Ko) [opus · medium], #27 `pmz:skip` parsé
+  dans le handoff [sonnet · medium] ; **P « pilotage lean »** : #28 epic-label + règle de
+  découpe « 1 lot = 1 session sous ~300k » [sonnet · medium], #29 preuve de clôture `verify` +
+  `closed_occupancy` [sonnet · medium] ; **D « distribution plugin »** : #30 spike go/no-go
+  [opus · high], #31 packaging plugin [opus · high], #32 migration legacy + semver
+  [sonnet · medium], #33 diffusion MH [sonnet · medium].
+- `ARCHITECTURE.md` § Décisions : 4 décisions consignées (US : non ; epic = label ;
+  distribution cible = plugin, installeur #22 → outil de migration ; adoption avant features).
+- Écartés comme sur-ingénierie (critique adversarial) : table `epics[]`/`/pmz-epic`, `deps[]`,
+  `/pmz-review`, `/pmz-report`, `decisions.md`, budget estimé par lot, routage modèle injecté,
+  handoff d'epic, MCP server, pivot `.claude/rules/`. Reportés sous preuve d'usage : `files[]`
+  périmètre par lot, CLI `edit`/`move`, subagent verifier, statusLine opt-in.
+
 ## 2026-07-12 (export — Lot C : versioning d'upgrade)
 
 Épic « rendre PMZ totalement exportable ». **Lot C** : une réinstallation écrasait la version

@@ -9,7 +9,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 
 const REPO = path.join(__dirname, '..');
 const PKG = path.join(REPO, 'promptimizer');
@@ -1820,6 +1820,61 @@ section("install.js/doctor.js — versioning d'upgrade (bac à sable)");
   ok(/downgrade v5 → v2/.test(r4.out), 'install.js : annonce "downgrade v5 → v2"');
 
   fs.rmSync(stage, { recursive: true, force: true });
+}
+
+// ============================ T. AUTONOMIE DU PACKAGE (lot D) ============================
+section('Autonomie du package — package.js → unzip hors dépôt → install → doctor vert, sans repo/git');
+{
+  const workOut = fs.mkdtempSync(path.join(os.tmpdir(), 'pmz-pkgout-')); // hors dépôt : sortie du zip
+  const rPkg = runNode(path.join(PKG, 'install', 'package.js'), [workOut, '--no-pause']);
+  ok(rPkg.code === 0, 'package.js : exit 0');
+  const zips = fs.readdirSync(workOut).filter((f) => f.endsWith('.zip'));
+  ok(zips.length === 1, 'package.js : une archive .zip produite');
+  const zipPath = zips[0] ? path.join(workOut, zips[0]) : null;
+
+  if (zipPath) {
+    const extractDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pmz-unzip-')); // hors dépôt
+    const rUnzip = spawnSync('unzip', ['-q', zipPath, '-d', extractDir]);
+    ok(!rUnzip.error && rUnzip.status === 0, "unzip de l'archive : OK (outil système, hors dépôt)");
+
+    // Contenu sous un dossier Promptimizer-vX-YYYYMMDD/
+    const stageDirs = fs.readdirSync(extractDir).filter((f) => fs.statSync(path.join(extractDir, f)).isDirectory());
+    const stageRoot = stageDirs.length ? path.join(extractDir, stageDirs[0]) : extractDir;
+    const installedInstall = path.join(stageRoot, 'promptimizer', 'install', 'install.js');
+    ok(fs.existsSync(installedInstall), 'archive décompressée : install.js présent (hors dépôt, sans .git)');
+    ok(!fs.existsSync(path.join(stageRoot, '.git')), 'archive décompressée : aucun .git (autonomie confirmée)');
+
+    const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'pmz-fakehome-'));
+    const fakeClaude = path.join(fakeHome, '.claude');
+    const env = { CLAUDE_CONFIG_DIR: fakeClaude, PMZ_STATE_DIR: path.join(fakeHome, 'state'), HOME: fakeHome };
+    const rInst = runNode(installedInstall, ['--no-pause'], env);
+    ok(rInst.code === 0, 'install.js (package décompressé) : exit 0, sans dépôt source ni git');
+
+    const installedDoctor = path.join(fakeClaude, 'promptimizer', 'install', 'doctor.js');
+    const rDoc = runNode(installedDoctor, ['--no-pause'], env);
+    ok(/Statut : vert/.test(rDoc.out), 'doctor.js (package installé) : statut vert, sans dépôt source ni git');
+
+    // Grep de garde : aucune référence au chemin du dépôt SOURCE dans l'arbre installé.
+    const needle = REPO;
+    const leaked = [];
+    (function walk(dir) {
+      for (const f of fs.readdirSync(dir)) {
+        const p = path.join(dir, f);
+        const st = fs.statSync(p);
+        if (st.isDirectory()) { walk(p); continue; }
+        if (st.size > 2 * 1024 * 1024) continue; // ignore gros binaires improbables
+        let content;
+        try { content = fs.readFileSync(p, 'utf8'); } catch (_) { continue; }
+        if (content.includes(needle)) leaked.push(p);
+      }
+    })(path.join(fakeClaude, 'promptimizer'));
+    ok(leaked.length === 0,
+      'grep de garde : 0 référence au chemin du dépôt source dans $DEST/promptimizer (' + leaked.length + ' trouvée(s))');
+
+    fs.rmSync(extractDir, { recursive: true, force: true });
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+  fs.rmSync(workOut, { recursive: true, force: true });
 }
 
 // ============================ RÉSUMÉ ============================
