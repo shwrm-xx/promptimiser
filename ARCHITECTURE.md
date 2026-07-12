@@ -313,7 +313,10 @@ manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string r
   `enabledPlugins`, `installed_plugins.json`) et rend **vert** sans exiger le câblage manuel
   dans `settings.json` — sinon il concluait « rouge » sur une install saine (retour utilisateur
   2026-07-12). Aucun doctor CLI n'est embarqué dans le plugin (un `/pmz:doctor` serait un lot à
-  part).
+  part). Depuis v1.1.2, il détecte aussi la **dérive de version** ci-dessous : source (son
+  propre arbre) EN AVANCE sur le plugin installé (`VERSION` du cache, repli
+  `installed_plugins.json`) → avertissement + statut orange avec la marche à suivre. Seule
+  cette direction alerte (cache en avance = simple checkout en retard, pas un défaut d'install).
 - **Dérive silencieuse source ↔ installé** (post-mortem v1.1.1, 2026-07-13) : Claude Code
   **copie** le plugin dans `~/.claude/plugins/cache/<marketplace>/pmz/<version>/` — il n'exécute
   PAS `dist/marketplace` en place. Committer dans la source (voire rebuilder `dist/`) ne change

@@ -2448,6 +2448,34 @@ section('doctor.js — canal plugin seul (installed_plugins.json) -> vert, plus 
   ok(!/double installation/.test(d.out),
     'doctor.js : plugin seul (aucun hook legacy) -> pas d\'avertissement de double installation');
   ok(/Statut : vert/.test(d.out), 'doctor.js : plugin seul et sain -> statut vert (plus de faux rouge)');
+  ok(!/dérive de version/.test(d.out), 'doctor.js : versions alignées -> pas d\'alerte de dérive');
+
+  fs.rmSync(stage, { recursive: true, force: true });
+}
+
+// ============== doctor.js — dérive de version source ↔ plugin installé (v1.1.2) ==============
+section('doctor.js — dérive de version : cache plugin en retard sur la source -> orange');
+{
+  const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'pmz-plugin-drift-'));
+  const fakeClaude = path.join(stage, 'claude-home');
+  fs.mkdirSync(path.join(fakeClaude, 'plugins'), { recursive: true });
+  fs.writeFileSync(path.join(fakeClaude, 'settings.json'),
+    JSON.stringify({ enabledPlugins: { 'pmz@pmz-local': true } }, null, 2));
+  // Cache plugin = copie du package avec une VERSION artificiellement en retard : exactement
+  // l'état du post-mortem v1.1.1 (fixes committés côté source, cache figé sur l'ancien code).
+  const staleCache = path.join(stage, 'cache-pmz');
+  fs.cpSync(PKG, staleCache, { recursive: true });
+  fs.writeFileSync(path.join(staleCache, 'VERSION'), '0.0.1\n');
+  fs.writeFileSync(path.join(fakeClaude, 'plugins', 'installed_plugins.json'),
+    JSON.stringify({ version: 2, plugins: { 'pmz@pmz-local': [{ scope: 'user', installPath: staleCache, version: '0.0.1' }] } }, null, 2));
+
+  const DOCTOR = path.join(PKG, 'install', 'doctor.js');
+  const d = runNode(DOCTOR, ['--no-pause'], { CLAUDE_CONFIG_DIR: fakeClaude });
+  ok(/Plugin installé : 0\.0\.1/.test(d.out), 'doctor.js : version du plugin installé affichée (VERSION du cache)');
+  ok(/dérive de version/.test(d.out), 'doctor.js : dérive source ↔ cache signalée');
+  ok(/build-plugin\.js/.test(d.out) && /plugin update pmz/.test(d.out),
+    'doctor.js : marche à suivre indiquée (rebuild + claude plugin update)');
+  ok(/Statut : orange/.test(d.out), 'doctor.js : dérive de version -> statut orange');
 
   fs.rmSync(stage, { recursive: true, force: true });
 }

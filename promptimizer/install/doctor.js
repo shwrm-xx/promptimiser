@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 const cdir = require('../lib/claude-dir');
-const { readVersion } = require('../lib/version');
+const { readVersion, compareSemver } = require('../lib/version');
 const { readLineSync } = require('./lib-io');
 
 const DEST = cdir.claudeDir();
@@ -42,6 +42,27 @@ function pluginInstallPath() {
 }
 const PLUGIN_ROOT = pluginInstallPath();
 const pluginActive = IS_PLUGIN || pluginEnabledInSettings() || !!PLUGIN_ROOT;
+
+// Version du plugin INSTALLÉ (cache ~/.claude/plugins/cache/...). Priorité au fichier VERSION
+// embarqué dans le cache — c'est le code qui tourne réellement — puis repli sur le champ
+// `version` d'installed_plugins.json (métadonnée CLI). Null si indéterminable.
+function pluginInstalledVersion() {
+  if (!PLUGIN_ROOT) return null;
+  try {
+    const raw = fs.readFileSync(path.join(PLUGIN_ROOT, 'VERSION'), 'utf8').trim();
+    if (raw) return raw;
+  } catch (_) { /* VERSION absente du cache -> repli métadonnée */ }
+  try {
+    const data = JSON.parse(fs.readFileSync(path.join(DEST, 'plugins', 'installed_plugins.json'), 'utf8'));
+    for (const key of Object.keys(data.plugins || {})) {
+      const arr = data.plugins[key];
+      if (key.split('@')[0] === 'pmz' && Array.isArray(arr) && arr[0] && arr[0].version) {
+        return String(arr[0].version);
+      }
+    }
+  } catch (_) { /* fichier absent */ }
+  return null;
+}
 
 // Racine du CODE PMZ à exercer (dry-run hook + détection projet). Priorité : canal manuel
 // présent sur disque > plugin (env/installé). Le doctor étant l'outil du canal manuel, on
@@ -120,6 +141,14 @@ const rgOk = hasCmd('rg') ? 'présent' : 'absent (git grep/grep utilisés)';
 
 const version = readVersion();
 
+// Dérive de version source ↔ plugin installé (post-mortem v1.1.1) : les sessions exécutent le
+// CACHE plugin, jamais cette source — si la source (arbre du doctor) est EN AVANCE sur le cache,
+// les fixes committés ne tournent nulle part. Seule cette direction alerte (cache en avance =
+// simple checkout en retard, pas un défaut d'install). compareSemver null (version illisible)
+// -> pas d'alerte (fail-open).
+const pluginVersion = pluginActive ? pluginInstalledVersion() : null;
+const versionDrift = !!(version && pluginVersion && compareSemver(version, pluginVersion) === 1);
+
 // Canal effectif : conflit (deux canaux) > plugin > manuel. En plugin sain, hooks/skill sont
 // portés par le plugin — on l'affiche explicitement au lieu du « — » trompeur du canal manuel.
 const channel = doubleInstall ? 'plugin + manuel (CONFLIT)' : pluginActive ? 'plugin' : 'manuel';
@@ -130,6 +159,7 @@ log('');
 log('Version installée : ' + (version || 'inconnue'));
 log('Claude settings : ' + setOk);
 log('Canal : ' + channel);
+if (pluginActive) log('Plugin installé : ' + (pluginVersion || 'version inconnue'));
 if (pluginProvides) {
   log('Hooks / skill / commandes : fournis par le plugin');
 } else {
@@ -145,6 +175,11 @@ if (doubleInstall) {
   log('Avertissement : double installation détectée (plugin + canal manuel legacy) — ' +
     'les hooks PMZ tirent deux fois. Migration : node install/migrate-to-plugin.js.');
 }
+if (versionDrift) {
+  log('Avertissement : dérive de version — cette source est en ' + version + ', le plugin ' +
+    'installé en ' + pluginVersion + '. Les sessions exécutent le cache plugin, pas la source : ' +
+    'node install/build-plugin.js puis « claude plugin update pmz » + redémarrage.');
+}
 
 // Statut. setOk illisible = rouge quel que soit le canal. Deux canaux actifs = orange (à
 // résoudre). En plugin sain, hooks/skill sont fournis par le plugin : on n'exige PAS le
@@ -152,7 +187,7 @@ if (doubleInstall) {
 let status = 'vert';
 if (setOk !== 'OK') status = 'rouge';
 else if (doubleInstall) status = 'orange';
-else if (pluginActive) { if (scriptsOk !== 'OK' || double) status = 'orange'; }
+else if (pluginActive) { if (scriptsOk !== 'OK' || double || versionDrift) status = 'orange'; }
 else if (hooksOk !== 'OK') status = 'rouge';
 else if (skillOk !== 'OK' || scriptsOk !== 'OK' || double) status = 'orange';
 log('');

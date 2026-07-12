@@ -2,6 +2,23 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-13 (v1.1.2 — doctor : détection de la dérive de version source ↔ plugin installé)
+
+Suite directe du post-mortem v1.1.1 (à la demande de l'utilisateur) : le doctor détecte
+désormais lui-même le scénario « fixes committés mais cache plugin figé ».
+
+- `promptimizer/install/doctor.js` : affiche « Plugin installé : x.y.z » (VERSION embarquée
+  dans le cache — le code qui tourne vraiment — repli sur `installed_plugins.json`) ; si la
+  source (l'arbre du doctor) est **en avance** sur le plugin installé → avertissement « dérive
+  de version » avec la marche à suivre (rebuild + `claude plugin update pmz` + redémarrage) et
+  **statut orange**. L'autre direction (cache en avance = checkout en retard) n'alerte pas ;
+  version illisible → pas d'alerte (fail-open).
+- `test/run-tests.js` : nouveau bloc bac à sable (cache copié avec VERSION en retard → orange +
+  message) + non-régression versions alignées → vert — **522 OK, 0 échec**.
+- `ARCHITECTURE.md` : bullet doctor (canal plugin) mis à jour.
+- `promptimizer/VERSION` + `plugin.json` : 1.1.1 → **1.1.2** ; rebuild + cache mis à jour
+  (doctor vert en conditions réelles, versions alignées).
+
 ## 2026-07-13 (v1.1.1 — fiabilité du renommage : validation immédiate + redéploiement)
 
 Retour direct : renommage « pas fiable au global » — démarre une fois sur deux, tantôt en début
