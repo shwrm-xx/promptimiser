@@ -130,9 +130,13 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   existe. `backlog.js: doneLot` fait de même par défaut (chemin de clôture **manuelle**, ex.
   `/close-batch`) : sans ça, le compteur restait figé sur ce chemin et le même « Lot N »
   revenait indéfiniment d'une session à l'autre (fix 2026-07-11). `session-start.js` en déduit
-  un titre de session suggéré (**« [XXX] focus du lot »**, `XXX` = trigramme du projet, cf. lot
-  #35 ci-dessous) construit sur le titre du lot backlog le plus pertinent
-  (`lib/lot.js: suggestedTitle`, 40c) — priorité : lot **en cours** (travail qui continue) >
+  un titre de session suggéré selon la nomenclature **« [XXX] PlanTitle #N · résumé »** (`XXX` =
+  trigramme du projet ; `PlanTitle` = nom de plan ≤ 3 mots = l'`epic` du lot borné à 3 mots, le
+  « voyageur » qui reste juste selon le lot travaillé ; `#N` = ID backlog du lot ; `résumé` = son
+  focus, préfixe métier « Lot X — » redondant retiré). Un lot **sans epic** (pas de plan nommé)
+  bascule sur **« [XXX] Session Libre · résumé »** — sans `#N`, puisqu'il n'y a pas de plan
+  (retour utilisateur : « rester constant et clair », cf. lot ci-dessous). Construit sur le lot
+  backlog le plus pertinent (`lib/lot.js: suggestedTitle`) — priorité : lot **en cours** (travail qui continue) >
   dernier lot **clos** (ce qui vient d'être fait, cas le plus fréquent juste après une clôture —
   sans ce fallback le titre reste nu et ne dit rien de l'avancée réelle) > prochain lot à faire
   (dernier recours). Parmi les lots clos, le « dernier » est celui au `closed_at` le plus récent,
@@ -154,7 +158,7 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   manuelle/ancienne, champ absent), on l'affiche quand même — mieux qu'un titre nu, et rien ne
   prouve que c'est faux. Si le plan de lots n'a **lui-même aucun titre à offrir** (backlog absent
   ou `lots: []` — retour utilisateur : un titre nu ne sert à rien pour retracer l'avancée),
-  `suggestedTitle` **déduit** un intitulé des infos disponibles plutôt que de retomber nu : dernier
+  `suggestedTitle` retombe sur **« Session Libre »** et lui **déduit** un résumé des infos disponibles plutôt que de rester nu : dernier
   résumé `CHANGELOG.md` (parenthèse finale du dernier titre `##` — convention de ce dépôt — ignorée
   si ce n'est qu'un marqueur `(lot N)` non descriptif), sinon sujet du dernier commit. Cette
   déduction ne s'applique **jamais** quand le plan contient un lot mais qu'il est écarté comme

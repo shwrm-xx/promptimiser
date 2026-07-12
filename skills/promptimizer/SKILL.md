@@ -35,6 +35,10 @@ Quand un projet n'est pas initialisé (présence de `.vibe-agent/` absente) :
 Demande large (plusieurs sujets, ≥ 6 puces, refactor global…) : proposer un découpage en
 **2 à 5 lots**, le faire valider en une question, puis le persister via `/pmz-scope` ou
 `node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "…"` (+ `start --id N`).
+Au découpage, proposer aussi un **nom de plan court (≤ 3 mots, validé par l'utilisateur)** et le
+poser sur chaque lot via `--epic "<NomDePlan>"` : c'est lui qui nomme le plan dans le titre de
+session (`[XXX] NomDePlan #N · résumé`). Sans nom de plan, la session s'affiche `[XXX] Session
+Libre · résumé`.
 Traiter **uniquement le premier lot**. Le suivi est automatique ensuite : clôture au commit
 (hook Stop), avancement dans le handoff, réinjection au démarrage et après compaction.
 

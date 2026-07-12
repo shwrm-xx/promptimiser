@@ -2,6 +2,34 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (v1.1.0 — nomenclature de titre de session : nom de plan + #lot + résumé)
+
+Retour direct : depuis le passage en plugin, le renommage de session était « inférieur à
+avant » — pas de numéro de lot, format instable d'une session à l'autre. Nouvelle nomenclature
+**validée utilisateur** : `[XXX] PlanTitle #N · résumé`, et `[XXX] Session Libre · résumé` quand
+aucun plan ne nomme le lot. Le renommage de la session **précédente** reste la priorité du 1er
+tour (mémoire `feedback-session-rename-priority`), inchangé côté déclenchement.
+
+- `promptimizer/lib/lot.js: suggestedTitle` / `titleForLot` : format refondu.
+  - `#N` = **ID backlog** du lot retenu (le `#N` visible dans `backlog.js show`).
+  - `PlanTitle` = nom de plan **≤ 3 mots** = l'`epic` du lot (le « voyageur » qui reste juste
+    selon le lot travaillé, décision utilisateur), coupé au 1er séparateur `— / – / :` d'un
+    libellé long puis borné à 3 mots (`planName`). Absent → repli `Session Libre` (sans `#N`).
+  - `résumé` = focus du lot, préfixe de numérotation métier redondant retiré (`stripLotPrefix`,
+    ex. « Lot E1 — Namespace » → « Namespace », la numérotation canonique étant `#N`).
+  - Le repli déduction (backlog absent/vide) devient `[XXX] Session Libre · <résumé déduit>`
+    (CHANGELOG/commit) au lieu d'un `Lot N` nu ; troncature du résumé portée à 50 c.
+- `skills/promptimizer/SKILL.md` : au découpage, proposer un nom de plan court (≤ 3 mots, validé)
+  et le poser sur chaque lot via `--epic` — c'est lui qui nomme le plan dans le titre.
+- `ARCHITECTURE.md` : contrat du format mis à jour (nomenclature + Session Libre).
+- `promptimizer/VERSION` + `.claude-plugin/plugin.json` : 1.0.0 → 1.1.0 (canaux alignés).
+- Tests : section (partie N) et blocs `suggestedTitle` alignés sur le nouveau format ; nouveaux
+  cas — nomenclature complète `[XXX] <epic> #N · <focus sans préfixe>`, troncature du nom de plan
+  à 3 mots, `Session Libre` sans epic. 514 OK, 0 régression (`node test/run-tests.js`).
+- Choix signalé (interprétation minimale) : le suffixe `(partie N)` d'un lot multi-session est
+  **conservé** en fin de titre (non demandé retiré, additif au format) ; le champ `epic` long
+  historique n'est **pas** réécrit en base (la troncature d'affichage à 3 mots suffit).
+
 ## 2026-07-12 (Lot #40 — fiabilité du renommage de session, rappel doublé au 1er prompt)
 
 Retour direct : le renommage de session proposé par `session-start.js` n'était « plus

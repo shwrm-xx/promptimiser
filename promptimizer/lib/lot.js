@@ -78,21 +78,44 @@ function incrementLot(root) {
   return next;
 }
 
+// Repli quand aucun plan (epic) ne nomme le lot travaillé — cf. nomenclature validée
+// utilisateur : « [XXX] Session Libre · résumé » (pas de #lot, il n'y a pas de plan nommé).
+const SESSION_LIBRE = 'Session Libre';
+
 function truncateTitle(title) {
-  return title.length > 40 ? title.slice(0, 39) + '…' : title;
+  const t = String(title == null ? '' : title);
+  return t.length > 50 ? t.slice(0, 49) + '…' : t;
 }
 
-function withSuffix(base, l) {
-  return `${base} — ${truncateTitle(l.title)}`;
+// Retire un préfixe de numérotation métier redondant (« Lot E1 — », « Lot A0 : ») du focus :
+// la numérotation canonique du titre de session est désormais « #<id backlog> », ce label
+// ferait doublon (ex. « Diffusion pmz #34 · Lot E1 — Namespace »).
+function stripLotPrefix(title) {
+  return String(title == null ? '' : title).replace(/^lots?\s+[^\s—–:-]+\s*[—–:-]\s*/i, '');
 }
 
-// Titre de session pour un lot backlog donné : le trigramme du projet préfixe, le FOCUS du
-// lot (son titre, déjà rédigé par /pmz-scope avec sa propre numérotation métier le cas
-// échéant, ex. « Lot E1 — Namespace plugin pmz ») prime — jamais de numéro d'ID backlog
-// concurrent en plus (double numérotation, cf. lot #35). Suffixe « (partie N) » quand N>1
-// sessions ont travaillé ce lot sans le clore (touches falsy/≤1 : rien, cas normal).
+// Nom de plan (≤ 3 mots) = l'epic du lot, le « voyageur » qui reste juste selon le lot
+// réellement travaillé (décision utilisateur). Coupe au 1er séparateur — / – / : d'un libellé
+// long, puis borne à 3 mots. Epic absent/vide -> null (le titre bascule en « Session Libre »).
+function planName(l) {
+  const raw = l && l.epic ? String(l.epic).trim() : '';
+  if (!raw) return null;
+  const head = raw.split(/\s+[—–:]\s+/)[0].trim() || raw;
+  const words = head.split(/\s+/).slice(0, 3).join(' ').replace(/[\s—–:·-]+$/, '');
+  return words || null;
+}
+
+// Titre de session pour un lot backlog donné — nomenclature « [XXX] PlanTitle #NbLot · résumé »
+// (validée utilisateur) : trigramme du projet, nom de plan (epic court), numéro de lot = ID
+// backlog (le « #N » visible dans `backlog.js show`), puis le focus du lot en résumé. Sans
+// epic : « [XXX] Session Libre · résumé » (pas de plan nommé, donc pas de #lot). Suffixe
+// « (partie N) » quand N>1 sessions ont travaillé ce lot sans le clore (touches ≤1 : rien).
 function titleForLot(trigram, l, touches) {
-  const base = `[${trigram}] ${truncateTitle(l.title)}`;
+  const resume = truncateTitle(stripLotPrefix(l.title));
+  const plan = planName(l);
+  const base = plan
+    ? `[${trigram}] ${plan} #${l.id} · ${resume}`
+    : `[${trigram}] ${SESSION_LIBRE} · ${resume}`;
   return touches > 1 ? `${base} (partie ${touches})` : base;
 }
 
@@ -127,7 +150,7 @@ function deduceTitle(root) {
 
 function suggestedTitle(root) {
   const trigram = trigramLib.readTrigram(root);
-  const base = `[${trigram}] Lot ${getLotCounter(root) + 1}`;
+  const libre = `[${trigram}] ${SESSION_LIBRE}`;
   try {
     // require paresseux : backlog.js require lot.js en tête, un require en tête ici
     // créerait un cycle de modules.
@@ -167,16 +190,16 @@ function suggestedTitle(root) {
       // à faire ensuite) : un titre EXISTE dans le plan mais ne décrit pas la session
       // précédente — le taire plutôt que le remplacer par une autre supposition (même
       // logique que le fix « ne jamais mentir sur ce qui a été fait »).
-      return base;
+      return libre;
     }
   } catch (_) {
     /* fail-open : on tente quand même la déduction ci-dessous */
   }
-  // Aucun titre dans le plan (backlog absent ou vide) : on en déduit un des infos
-  // disponibles (dernier titre CHANGELOG, sinon dernier commit) plutôt que de retomber
-  // sur un titre nu, non descriptif.
+  // Aucun titre dans le plan (backlog absent ou vide) : session sans plan nommé -> « Session
+  // Libre », suffixée d'un résumé déduit des infos disponibles (dernier titre CHANGELOG, sinon
+  // dernier commit) plutôt qu'un titre nu, non descriptif.
   const deduced = deduceTitle(root);
-  return deduced ? withSuffix(base, { title: deduced }) : base;
+  return deduced ? `${libre} · ${truncateTitle(stripLotPrefix(deduced))}` : libre;
 }
 
 module.exports = { readEpic, writeEpic, getLotCounter, incrementLot, suggestedTitle, MAX_EPIC };
