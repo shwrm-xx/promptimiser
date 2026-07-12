@@ -2,6 +2,24 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (Lot E1 — Namespace plugin pmz)
+
+**Lot #34**. Le plugin Claude Code s'identifie désormais `pmz` (au lieu de `promptimizer`) :
+le namespace des commandes est piloté directement par `plugin.json` `name` (constat du spike
+D1) — `/pmz:about`, `/pmz:scope`, etc., aligné sur les commandes déjà nommées `/pmz-*` du canal
+manuel. L'identité « Promptimizer » reste le nom du projet (description, README, branding).
+
+- `promptimizer/.claude-plugin/plugin.json` : `name: "pmz"`.
+- `promptimizer/install/build-plugin.js` : `marketplace.json` référence `pmz`, logs d'exemple
+  mis à jour (`claude plugin install pmz@pmz-local`).
+- `promptimizer/install/doctor.js` : détection de double installation cherche `pmz` (au lieu de
+  `promptimizer`) dans la sortie de `claude plugin list`.
+- `promptimizer/install/migrate-to-plugin.js` + nouveau `migrate-to-plugin-all.js` (enchaîne
+  build + migration + install en une commande) : commandes affichées mises à jour.
+- README/ARCHITECTURE : doc de namespace/installation à jour.
+- Tests : nouvelle assertion `plugin.json name=pmz` + `marketplace.json plugins[0].name=pmz` ;
+  486 OK.
+
 ## 2026-07-12 (Lot D4 — Diffusion tiers + doc distribution)
 
 **Lot #33 (dernier de l'epic D)**. Diffusion générique à un tiers (entreprise, équipe,

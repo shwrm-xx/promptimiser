@@ -301,10 +301,19 @@ manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string r
   du PATH GUI macOS) — remplace le `resolveNodeBin()` de `merge-settings.js`, inutilisable pour un
   plugin distribué (chemin machine-spécifique). Invoqué via `sh` car le bit +x n'est pas préservé
   en `.zip`. Fail-open : `node` introuvable → exit 0 silencieux.
-- **Diagnostic** = `claude plugin details promptimizer` (natif). `doctor.js` reste l'outil du
+- **Diagnostic** = `claude plugin details pmz` (natif). `doctor.js` reste l'outil du
   canal manuel (exclu du plugin).
 - **Régression assumée** (cf. D1) : pas de takeover réversible d'un hook Stop tiers en plugin ;
-  commandes namespacées `/promptimizer:*`.
+  commandes namespacées `/pmz:*`.
+- **Identifiant plugin = `pmz`, pas `promptimizer`** (lot E1) : le namespace des commandes est
+  piloté directement par `plugin.json` `name` (constat empirique du spike D1, pas configurable
+  séparément) — `name: "pmz"` donne `/pmz:about`, `/pmz:scope`, etc., et aligne le canal plugin
+  sur les commandes déjà nommées `/pmz-*` du canal manuel. L'identité « Promptimizer » reste le
+  nom du projet (description du manifeste, README, branding) ; seul l'identifiant technique
+  change. Le dossier source `promptimizer/` (miroir plat) et le nom de dossier du plugin
+  assemblé restent inchangés — seule la déclaration `name` et les commandes d'install/diagnostic
+  qui la référencent (`marketplace.json`, `build-plugin.js`, `migrate-to-plugin.js`, doc) sont
+  mis à jour.
 
 ### Migration manuel → plugin + versioning semver (lot D3)
 

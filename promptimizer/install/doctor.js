@@ -48,14 +48,14 @@ if (fs.existsSync(MS)) {
 // tirent alors les mêmes hooks en même temps) :
 //   A. ce doctor tourne SOUS le plugin (CLAUDE_PLUGIN_ROOT posé par le harness) et des hooks
 //      PMZ légataires traînent encore dans settings.json ;
-//   B. ce doctor tourne en canal manuel et `claude plugin list` rapporte promptimizer déjà
+//   B. ce doctor tourne en canal manuel et `claude plugin list` rapporte pmz déjà
 //      installé (best-effort : absence de la commande = non détecté, jamais un throw).
 const IS_PLUGIN = !!(process.env.CLAUDE_PLUGIN_ROOT && process.env.CLAUDE_PLUGIN_ROOT.trim());
 function pluginAlsoInstalled() {
   try {
     const r = spawnSync('claude', ['plugin', 'list'], { encoding: 'utf8' });
     if (r.error || r.status !== 0) return false;
-    return /promptimizer/i.test(String(r.stdout || ''));
+    return /\bpmz\b/i.test(String(r.stdout || ''));
   } catch (_) { return false; }
 }
 const doubleInstall = IS_PLUGIN ? legacyHooksPresent : (legacyHooksPresent && pluginAlsoInstalled());

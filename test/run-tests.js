@@ -2197,7 +2197,7 @@ section('build-plugin.js — assemble le plugin Claude Code (layout conventionne
   // Manifeste : JSON valide, version alignée sur VERSION (semver direct, lot D3).
   let manifest = null;
   try { manifest = JSON.parse(fs.readFileSync(path.join(plugin, '.claude-plugin', 'plugin.json'), 'utf8')); } catch (_) { /* laissé null */ }
-  ok(manifest && manifest.name === 'promptimizer', 'build-plugin : plugin.json valide, name=promptimizer');
+  ok(manifest && manifest.name === 'pmz', 'build-plugin : plugin.json valide, name=pmz (lot E1)');
   const vfile = (fs.readFileSync(path.join(PKG, 'VERSION'), 'utf8') || '').trim();
   ok(manifest && manifest.version === vfile, 'build-plugin : version manifeste alignée sur VERSION');
 
@@ -2213,6 +2213,8 @@ section('build-plugin.js — assemble le plugin Claude Code (layout conventionne
   try { market = JSON.parse(fs.readFileSync(path.join(out, 'marketplace', '.claude-plugin', 'marketplace.json'), 'utf8')); } catch (_) { /* null */ }
   ok(market && market.plugins && market.plugins[0] && market.plugins[0].source === './promptimizer',
     'build-plugin : marketplace.json source = "./promptimizer" (string relative)');
+  ok(market && market.plugins && market.plugins[0] && market.plugins[0].name === 'pmz',
+    'build-plugin : marketplace.json plugins[0].name = "pmz" (lot E1)');
 
   fs.rmSync(out, { recursive: true, force: true });
 }

@@ -50,11 +50,13 @@ Claude Code). Le dossier plugin est **assemblé** depuis la source :
 ```
 node promptimizer/install/build-plugin.js
 claude plugin marketplace add dist/marketplace
-claude plugin install promptimizer@pmz-local
+claude plugin install pmz@pmz-local
 ```
 
-Vérification : `claude plugin details promptimizer` (doit afficher **6 hooks** et les
-**7 commandes** ; commandes namespacées `/promptimizer:*`). **Distribution à un tiers**
+Vérification : `claude plugin details pmz` (doit afficher **6 hooks** et les
+**7 commandes** ; commandes namespacées `/pmz:*`, ex. `/pmz:about`, `/pmz:scope`). Le nom du
+plugin (identifiant technique, pilote le namespace des commandes) est `pmz` ; l'identité
+« Promptimizer » reste le nom du projet/produit (description, branding). **Distribution à un tiers**
 (entreprise, équipe, communauté) : partager le dossier `dist/marketplace/` (ou un dépôt git
 privé) et `marketplace add` en local — zéro réseau externe requis. Pour que chaque poste n'ait
 pas à relancer `marketplace add` à la main, référencer la marketplace dans `settings.json`

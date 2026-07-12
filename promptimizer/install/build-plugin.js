@@ -19,7 +19,7 @@
 //
 // Test bac à sable (jamais le vrai ~/.claude) :
 //   node build-plugin.js && CLAUDE_CONFIG_DIR=/tmp/x claude plugin marketplace add dist/marketplace \
-//     && CLAUDE_CONFIG_DIR=/tmp/x claude plugin install promptimizer@pmz-local
+//     && CLAUDE_CONFIG_DIR=/tmp/x claude plugin install pmz@pmz-local
 //
 // Usage : node build-plugin.js [dossierSortie]   (défaut : <repo>/dist)
 // stdlib seule, fail-safe : exit 1 avec message si un composant attendu manque.
@@ -105,7 +105,7 @@ fs.writeFileSync(path.join(MARKET, '.claude-plugin', 'marketplace.json'),
     name: MARKETPLACE_NAME,
     owner: { name: 'Marwan' },
     metadata: { description: 'Marketplace locale Promptimizer (gouvernance de session vibecoding).' },
-    plugins: [{ name: 'promptimizer', source: './promptimizer' }],
+    plugins: [{ name: 'pmz', source: './promptimizer' }],
   }, null, 2) + '\n');
 
 // ── 8. Bits +x (posix) : wrapper + scripts + hooks ──
@@ -120,4 +120,4 @@ log('  marketplace       : ' + path.join(MARKET, '.claude-plugin', 'marketplace.
 log('');
 log('Test (bac à sable) :');
 log(`  CLAUDE_CONFIG_DIR=/tmp/pmz-sbx claude plugin marketplace add "${MARKET}"`);
-log('  CLAUDE_CONFIG_DIR=/tmp/pmz-sbx claude plugin install promptimizer@' + MARKETPLACE_NAME);
+log('  CLAUDE_CONFIG_DIR=/tmp/pmz-sbx claude plugin install pmz@' + MARKETPLACE_NAME);
