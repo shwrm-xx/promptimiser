@@ -16,7 +16,10 @@ const { gitRoot, isFullyInitialized } = require('../lib/project');
 const { autoInitGitAndBootstrap } = require('../lib/bootstrap');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { loadBacklog, currentLot, progress } = require('../lib/backlog');
-const { MSG_LARGE, MSG_INIT_BEFORE_CODE, autoInitMessage, largeWithPlanMessage, occupancyPromptMessage } = require('../lib/messages');
+const {
+  MSG_LARGE, MSG_INIT_BEFORE_CODE, autoInitMessage, largeWithPlanMessage, occupancyPromptMessage,
+  sessionTitleMessage,
+} = require('../lib/messages');
 const occupancy = require('../lib/occupancy');
 
 const OCC_PROMPT_THRESHOLD = 500000;
@@ -60,6 +63,15 @@ function main() {
 
   st.prompt_reminders = st.prompt_reminders || {};
   const parts = [];
+
+  // 2e rappel du titre de renommage (lot #40) : session-start.js l'a déjà injecté au
+  // SessionStart, mais noyé au milieu d'autres infos, il est parfois zappé par l'agent.
+  // Reproposé ICI, au 1er prompt, sans recalcul (titre déjà persisté, pas de nouvel appel
+  // à suggestedTitle — un recalcul fausserait le compteur « (partie N) » de touchLot).
+  if (st.pending_title_rename && !st.prompt_reminders.title_rename) {
+    st.prompt_reminders.title_rename = true;
+    parts.push(sessionTitleMessage(st.pending_title_rename));
+  }
 
   let msg = null;
   let key = null;

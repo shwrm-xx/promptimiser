@@ -2,6 +2,34 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (Lot #40 — fiabilité du renommage de session, rappel doublé au 1er prompt)
+
+Retour direct : le renommage de session proposé par `session-start.js` n'était « plus
+systématique », sur plusieurs projets. Diagnostic : le mécanisme lui-même fonctionne
+(vérifié : `session_id` correctement mis à jour par projet, message bien injecté) — le vrai
+point de fragilité est **structurel** : la suggestion n'apparaît qu'**une seule fois**, dans le
+contexte additionnel de `SessionStart`, noyée au milieu d'autres rappels (handoff, plan de
+lots…) et injectée AVANT le premier tour — rien ne la ramène si elle n'est pas traitée tout de
+suite, contrairement aux autres nudges PMZ (occupation, init, lot trop large) qui remontent
+aussi sur le premier `UserPromptSubmit`.
+
+- `promptimizer/lib/state.js` : nouveau champ persisté `pending_title_rename` (titre calculé
+  par `session-start.js`, remis à zéro à chaque nouvelle session comme le reste de l'état).
+- `promptimizer/hooks/session-start.js` : persiste le titre calculé (`suggestedTitle(root)`)
+  dans l'état de session en plus de l'injecter, sans changement de comportement au
+  `SessionStart` lui-même.
+- `promptimizer/hooks/user-prompt-submit.js` : réaffiche ce titre (déjà calculé, **jamais
+  recalculé** — un second appel à `suggestedTitle` fausserait le compteur « (partie N) » de
+  `touchLot`) au **premier** prompt de la session, si pas déjà vu là (anti-spam 1×/session,
+  même mécanique que les autres rappels `prompt_reminders`).
+- Tests : nouvelle section « rappel doublé » (session-start → titre injecté ; 1er prompt →
+  titre réaffiché à l'identique ; 2e prompt → silence ; pas de « (partie 2) » parasite). 513 OK
+  (+5), 0 régression.
+- Non couvert par ce lot (hors du périmètre code) : le fait d'agir sur l'instruction reste
+  entièrement à la charge de l'agent — un hook ne peut pas appeler l'outil de renommage
+  lui-même (cf. mémoire `feedback-session-rename-priority`). Ce lot double la visibilité, il ne
+  rend pas le renommage automatique.
+
 ## 2026-07-12 (Lot #37 — script de publication vers `plugin-release`, epic diffusion GitHub publique)
 
 Premier lot de l'epic « Diffusion pmz — marketplace GitHub publique » : rendre le plugin

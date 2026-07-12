@@ -2435,6 +2435,42 @@ section('doctor.js — canal plugin seul (installed_plugins.json) -> vert, plus 
   fs.rmSync(stage, { recursive: true, force: true });
 }
 
+// ============================ Q. RAPPEL DOUBLÉ DU RENOMMAGE (lot #40) ============================
+section('Titre suggéré : rappelé aussi au 1er UserPromptSubmit (fiabilité, lot #40)');
+{
+  const repo = path.join(SANDBOX, 'repo-title-reminder');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'CLAUDE.md'), 'règles');
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'premier commit']);
+  const addedQ = backlogLib.addLot(repo, 'Lot du rappel doublé', 'fait quand : test', 'sonnet');
+  backlogLib.startLot(repo, addedQ.id);
+
+  function ctxOf(r) { try { return JSON.parse(r.out).hookSpecificOutput.additionalContext || ''; } catch (_) { return ''; } }
+
+  // Q1. SessionStart : titre injecté (comportement déjà existant, non régressé)
+  const rStart = runHook('session-start.js', { source: 'startup', cwd: repo, session_id: 'sess-q1' });
+  const ctxStart = ctxOf(rStart);
+  ok(/Titre suggéré \(session PRÉCÉDENTE\)/.test(ctxStart), 'SessionStart : titre suggéré toujours injecté');
+
+  // Q2. 1er UserPromptSubmit de la même session : le titre est RÉAFFICHÉ (2e chance)
+  const rPrompt1 = runHook('user-prompt-submit.js', { cwd: repo, session_id: 'sess-q1', prompt: 'bonjour' });
+  const ctxPrompt1 = ctxOf(rPrompt1);
+  ok(/Titre suggéré \(session PRÉCÉDENTE\)/.test(ctxPrompt1), '1er UserPromptSubmit : titre réaffiché (2e chance)');
+  ok(ctxPrompt1.includes('Lot du rappel doublé'), '1er UserPromptSubmit : même titre que celui du SessionStart');
+
+  // Q3. 2e UserPromptSubmit de la même session : anti-spam, pas de répétition
+  const rPrompt2 = runHook('user-prompt-submit.js', { cwd: repo, session_id: 'sess-q1', prompt: 'et ensuite ?' });
+  ok(!/Titre suggéré/.test(ctxOf(rPrompt2)), '2e UserPromptSubmit : anti-spam, plus de rappel du titre');
+
+  // Q4. Pas de recalcul : suggestedTitle() lu directement ne montre pas « (partie 2) »
+  // (touchLot ne doit être incrémenté qu'une fois, par session-start.js — jamais par
+  // le rappel de user-prompt-submit.js, qui ne fait que relire l'état persisté).
+  ok(!/\(partie 2\)/.test(ctxPrompt1), 'pas de double incrément touchLot via le rappel UserPromptSubmit');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

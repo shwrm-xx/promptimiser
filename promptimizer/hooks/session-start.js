@@ -115,7 +115,12 @@ function main() {
     try {
       // suggestedTitle (via previousSessionId) doit lire session-state.json AVANT le
       // saveSessionState ci-dessous, qui l'écrase avec le session_id de CETTE session.
-      msg = msg + '\n\n' + sessionTitleMessage(suggestedTitle(root));
+      const title = suggestedTitle(root);
+      msg = msg + '\n\n' + sessionTitleMessage(title);
+      // Persisté pour un 2e rappel au 1er UserPromptSubmit (lot #40) — jamais recalculé
+      // depuis là-bas (suggestedTitle a un effet de bord : touchLot incrémente le
+      // compteur « (partie N) », un recalcul le fausserait).
+      st.pending_title_rename = title;
     } catch (_) {
       /* fail-open : le rappel de base part quand même */
     }
