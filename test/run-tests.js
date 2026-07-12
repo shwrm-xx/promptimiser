@@ -340,6 +340,25 @@ const messages = require(path.join(PKG, 'lib', 'messages'));
   ok(/\/close-batch/.test(m1) && /\/fresh-session/.test(m1), 'occupancyMessage nomme /close-batch et /fresh-session');
   const m2 = messages.occupancyMessage(1000000, 5);
   ok(/dernier palier fixe/i.test(m2), 'occupancyMessage : mentionne le palier flottant au-delà de 750k');
+
+  // T1 — argument chiffré anti-compaction au palier 300k (bucket ≥ 2), pas avant.
+  ok(/cache-write/.test(m1) && /×1,25/.test(m1) && /8k/.test(m1),
+    'occupancyMessage (300k) : argument chiffré compaction (cache-write ×1,25) vs handoff ~8k');
+  ok(/400k/.test(m1), 'occupancyMessage (320k) : cache-write ≈ 400k chiffré (320×1,25)');
+  ok(/5 min/.test(m1) && /1 h/.test(m1), 'occupancyMessage (300k) : TTL prudent (5 min clé API / 1 h abonnement)');
+  ok(!/[€$]|euros?|dollars?/i.test(m1), 'occupancyMessage : aucun prix codé en dur');
+  const mLow = messages.occupancyMessage(160000, 1);
+  ok(!/cache-write/.test(mLow), 'occupancyMessage (<300k, bucket 1) : pas encore de nudge chiffré');
+
+  // T1 — message pre-compact manuel : même argument chiffré, sans prix.
+  const mc = messages.compactionNudgeMessage(400000);
+  ok(/Compaction manuelle/.test(mc) && /cache-write/.test(mc) && /8k/.test(mc),
+    'compactionNudgeMessage : argument chiffré compaction vs handoff');
+  ok(/5 min/.test(mc) && /1 h/.test(mc) && !/[€$]|euros?|dollars?/i.test(mc),
+    'compactionNudgeMessage : TTL prudent, aucun prix codé en dur');
+  ok(/\/fresh-session/.test(mc) && /\/close-batch/.test(mc), 'compactionNudgeMessage : oriente vers close-batch/fresh-session');
+  const mc0 = messages.compactionNudgeMessage(null);
+  ok(/Compaction manuelle/.test(mc0) && !/cache-write/.test(mc0), 'compactionNudgeMessage : occ inconnue → nudge sans chiffre, fail-open');
 }
 ok(/\/close-batch/.test(messages.MSG_CLOTURE), 'MSG_CLOTURE nomme /close-batch');
 
@@ -1206,6 +1225,17 @@ section('Continuité — PreCompact sauve le handoff, compact réinjecte le lot,
   runHook('pre-compact.js', { cwd: repo, session_id: 's-q1' });
   ok(/RICHE-Q/.test(fs.readFileSync(hf, 'utf8')), 'PreCompact : handoff manuel préservé');
   fs.unlinkSync(hf);
+
+  // Q2b. PreCompact MANUEL (/compact) : rappel chiffré VISIBLE (systemMessage), non bloquant.
+  const rPcM = runHook('pre-compact.js', { cwd: repo, session_id: 's-q1', trigger: 'manual' });
+  let sysM = '';
+  try { sysM = JSON.parse(rPcM.out).systemMessage || ''; } catch (_) {}
+  ok(rPcM.code === 0 && /Compaction manuelle/.test(sysM) && /\/fresh-session/.test(sysM),
+    'PreCompact manuel → systemMessage chiffré vers fresh-session, exit 0');
+  // Q2c. PreCompact AUTO : pas de nudge (compaction subie).
+  const rPcA = runHook('pre-compact.js', { cwd: repo, session_id: 's-q1', trigger: 'auto' });
+  ok(rPcA.code === 0 && !/Compaction manuelle/.test(rPcA.out || ''), 'PreCompact auto : aucun nudge');
+  fs.existsSync(hf) && fs.unlinkSync(hf);
 
   // Q3. SessionStart compact : réinjection minimale du lot en cours (≤ 300 chars)
   const rC = runHook('session-start.js', { source: 'compact', cwd: repo, session_id: 's-q2' });

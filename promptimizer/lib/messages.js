@@ -55,6 +55,19 @@ const MSG_INIT_BEFORE_CODE = [
   'Projet neuf : initialise le socle (CLAUDE.md/AGENTS.md/.vibe-agent) avant de coder, avec lecture minimale.',
 ].join('\n');
 
+// Argument CHIFFRÉ anti-compaction, partagé par occupancyMessage (palier 300k) et le
+// hook pre-compact. Compacter fait relire tout le transcript au résumeur : ≈ l'occupation
+// courante réécrite en cache-write (×1,25) PUIS un résumé lossy ; clôturer + repartir d'un
+// handoff coûte ~8k sans perte. Aucun prix codé en dur (on raisonne en tokens, pas en €) ;
+// TTL formulé prudemment (dépend du plan : clé API vs abonnement).
+function compactionCostLines(occ) {
+  const write = Math.round((occ * 1.25) / 1000);
+  return [
+    `Compacter ≈ faire relire tout le transcript au résumeur : réécriture de l'occupation en cache-write (×1,25 ≈ ${write}k tokens) + un résumé lossy.`,
+    "Clôturer puis repartir d'un handoff ≈ ~8k tokens, sans perte. Le cache expire de toute façon après ~5 min (clé API) / ~1 h (abonnement) : inutile de compacter pour « garder » le contexte.",
+  ];
+}
+
 function occupancyMessage(occ, bucket) {
   const k = Math.round(occ / 1000);
   let repere;
@@ -68,11 +81,28 @@ function occupancyMessage(occ, bucket) {
     const nextFloating = last + (bucket - BUCKETS.length + 1) * FLOATING_STEP;
     repere = `au-delà du dernier palier fixe — prochain rappel ~${Math.round(nextFloating / 1000)}k`;
   }
-  return [
+  const lines = [
     `Contexte ≈ ${k}k tokens (${repere}).`,
     'Pense à : git diff/git grep plutôt que relire.',
     "Lot fini → lance /close-batch. Sinon → /fresh-session après un commit intermédiaire pour repartir au plancher.",
-  ].join('\n');
+  ];
+  // À partir du palier 300k (bucket ≥ 2), ajoute l'argument chiffré : compacter coûte
+  // plus cher qu'une clôture + session fraîche. Ces messages sont VISIBLES (systemMessage),
+  // pas réinjectés dans le contexte — donc ce détail n'ajoute aucun coût de cache.
+  if (bucket >= 2) lines.push(...compactionCostLines(occ));
+  return lines.join('\n');
+}
+
+// Message VISIBLE émis par pre-compact sur une compaction MANUELLE (/compact) : rappelle
+// en chiffres qu'une clôture + session fraîche coûte moins qu'une compaction. Informatif,
+// jamais bloquant (il est déjà trop tard pour empêcher la compaction en cours).
+function compactionNudgeMessage(occ) {
+  const lines = ['Compaction manuelle demandée.'];
+  if (occ != null && occ > 0) lines.push(...compactionCostLines(occ));
+  lines.push(
+    "Alternative la prochaine fois : /close-batch (lot fini) ou commit intermédiaire + /fresh-session — repart d'un handoff sans résumé lossy.",
+  );
+  return lines.join('\n');
 }
 
 // Nudge occupation HAUTE injecté dans UserPromptSubmit (coûte du contexte) — donc
@@ -185,7 +215,7 @@ function sessionTitleMessage(title) {
 
 module.exports = {
   MSG_ACTIF, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
-  occupancyMessage, occupancyPromptMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
+  occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
   compactResumeMessage, backlogResumeMessage, largeWithPlanMessage,
   costlyTurnMessage, bustIntraMessage, pauseTtlMessage,
 };

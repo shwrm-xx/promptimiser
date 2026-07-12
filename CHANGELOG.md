@@ -2,6 +2,27 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-12 (dégraissage tokens — Lot T1 : nudge anti-compaction chiffré)
+
+Épic « dégraissage tokens ». **Lot T1** : les rappels d'occupation invitaient à clôturer sans
+jamais dire *pourquoi* compacter coûte plus cher — argument désormais **chiffré**, pour rendre le
+choix « clôture + session fraîche » évident au bon moment.
+
+- `promptimizer/lib/messages.js` : helper `compactionCostLines(occ)` partagé — compacter ≈ faire
+  relire tout le transcript au résumeur (réécriture de l'occupation en **cache-write ×1,25**) +
+  un résumé lossy, vs clôturer + repartir d'un handoff (**~8k**, sans perte). `occupancyMessage`
+  l'ajoute **à partir du palier 300k** (bucket ≥ 2), pas avant. Nouveau `compactionNudgeMessage(occ)`.
+- `promptimizer/hooks/pre-compact.js` : sur compaction **manuelle** (`/compact`), émet un
+  `systemMessage` chiffré (non bloquant, fail-open sur lecture d'occupation) ; `auto` reste
+  silencieux. Handoff toujours écrit avant.
+- TTL formulé prudemment (**~5 min** clé API / **~1 h** abonnement), **aucun prix codé en dur** —
+  on raisonne en tokens, jamais en €/$. Messages portés par `systemMessage` (visibles, **non
+  réinjectés**) → zéro coût de cache ajouté.
+- `ARCHITECTURE.md` : ligne `pre-compact.js` du tableau des hooks mise à jour (le contrat passe de
+  « passThrough pur » à `systemMessage` sur `manual`).
+- Vérifié : `node test/run-tests.js` → **397 OK, 0 échec** (11 nouveaux tests : chiffrage,
+  palier 300k vs <300k, TTL, absence de prix, hook manual/auto).
+
 ## 2026-07-12 (export — Lot D : verrou de découplage + doc autonomie)
 
 Épic « rendre PMZ totalement exportable ». **Lot D** (dernier de l'epic) : rien ne prouvait

@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 34,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-12T08:50:07.158Z",
+  "updated_at": "2026-07-12T08:58:57.945Z",
   "lots": [
     {
       "id": 1,
@@ -320,12 +320,12 @@
       "id": 25,
       "title": "Lot T1 — Nudge anti-compaction chiffré",
       "scope": "fait quand : occupancyMessage au palier 300k + message pre-compact (manual) expliquent en chiffres compaction (réécriture ~occ en cache-write x1,25 + résumé) vs clôture + session fraîche (~8k) ; TTL formulé prudemment (5 min clé API / 1h abonnement), aucun prix codé en dur ; tests messages verts",
-      "status": "todo",
+      "status": "in_progress",
       "model_hint": "opus",
       "closed_commit": null,
       "closed_at": null,
       "closed_session_id": null,
-      "started_at": null,
+      "started_at": "2026-07-12T08:58:57.944Z",
       "lot_number": null,
       "note": null
     },
