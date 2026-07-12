@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 25,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-12T08:18:32.406Z",
+  "updated_at": "2026-07-12T08:35:06.099Z",
   "lots": [
     {
       "id": 1,
@@ -281,13 +281,13 @@
       "id": 22,
       "title": "Installeur Node cross-platform",
       "scope": "fait quand : install.js (stdlib) installe sur macOS/Linux/Windows via claude-dir, xattr/quarantine gardé à darwin ; lanceurs .command (mac) + .sh (linux) + .ps1 (windows) appellent node install.js ; package.command idem cross-platform ; tests bac-à-sable verts",
-      "status": "todo",
+      "status": "done",
       "model_hint": "opus",
-      "closed_commit": null,
-      "closed_at": null,
+      "closed_commit": "1050616",
+      "closed_at": "2026-07-12T08:35:06.098Z",
       "closed_session_id": null,
       "started_at": null,
-      "lot_number": null,
+      "lot_number": 13,
       "note": null
     },
     {
