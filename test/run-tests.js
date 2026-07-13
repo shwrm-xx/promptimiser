@@ -461,23 +461,23 @@ section('suggestedTitle : suffixe « (partie N) » quand un lot dépasse une ses
   backlogLib0.startLot(repo, l.id);
 
   // 1er appel (1re session sur ce lot) : pas de suffixe. Lot sans epic -> « Session Libre ».
-  ok(lot.suggestedTitle(repo) === `[${trg}] Session Libre · Lot qui traîne`,
+  ok(lot.suggestedTitle(repo) === `[${trg} · #${l.id}] Session Libre · Lot qui traîne`,
     '1er touch : pas de « (partie N) » (cas normal, silence sur la 1re session)');
   // 2e appel (le lot est toujours in_progress -> 2e session dessus) : « (partie 2) ».
-  ok(lot.suggestedTitle(repo) === `[${trg}] Session Libre · Lot qui traîne (partie 2)`,
+  ok(lot.suggestedTitle(repo) === `[${trg} · #${l.id}] Session Libre · Lot qui traîne (partie 2)`,
     '2e touch sur un lot toujours ouvert : suffixe « (partie 2) »');
-  ok(lot.suggestedTitle(repo) === `[${trg}] Session Libre · Lot qui traîne (partie 3)`,
+  ok(lot.suggestedTitle(repo) === `[${trg} · #${l.id}] Session Libre · Lot qui traîne (partie 3)`,
     '3e touch : « (partie 3) »');
 
   // Clôture : le récap du dernier lot clos ne porte plus de suffixe (le travail est fini).
   backlogLib0.doneLot(repo, l.id);
-  ok(lot.suggestedTitle(repo) === `[${trg}] Session Libre · Lot qui traîne`,
+  ok(lot.suggestedTitle(repo) === `[${trg} · #${l.id}] Session Libre · Lot qui traîne`,
     'lot clos : pas de « (partie N) » sur le récap final, peu importe combien de sessions ça a pris');
 
   // Un nouveau lot démarré repart de « partie 1 » (compteur remis à 0 par startLot).
   const l2 = backlogLib0.addLot(repo, 'Lot suivant', null, 'sonnet');
   backlogLib0.startLot(repo, l2.id);
-  ok(lot.suggestedTitle(repo) === `[${trg}] Session Libre · Lot suivant`,
+  ok(lot.suggestedTitle(repo) === `[${trg} · #${l2.id}] Session Libre · Lot suivant`,
     'nouveau lot démarré : compteur de sessions repart à zéro, pas de suffixe hérité');
 }
 {
@@ -976,20 +976,20 @@ section('backlog — champ epic optionnel du lot (lot #28)');
   const long = backlogLib.addLot(repo, 'Lot long epic', null, 'sonnet', 'y'.repeat(200));
   ok(!!long && long.epic.length <= backlogLib.MAX_EPIC, 'addLot : epic tronqué au cap');
 
-  // P7. nomenclature complète « [XXX] PlanTitle #NbLot · résumé » : l'epic (nom de plan)
-  // préfixe, l'ID backlog donne le #N, le focus du lot fait le résumé (préfixe métier
-  // « Lot X — » redondant retiré, la numérotation canonique étant #N).
+  // P7. nomenclature complète « [XXX · #Y] PlanTitle · Lot #X · résumé » : #Y = id backlog
+  // global (accolé au trigramme), PlanTitle = epic ≤ 3 mots, Lot #X = rang dans le plan
+  // (ici 1er lot de son epic), résumé = focus du lot (préfixe métier « Lot X — » retiré).
   const trgN = trigram.deriveTrigram(repo);
   const planLot = backlogLib.addLot(repo, 'Lot E1 — Namespace plugin pmz', null, 'opus', 'Diffusion pmz — marketplace GitHub publique');
   backlogLib.startLot(repo, planLot.id);
-  ok(lot.suggestedTitle(repo) === `[${trgN}] Diffusion pmz #${planLot.id} · Namespace plugin pmz`,
-    'suggestedTitle : [XXX] <epic 3 mots> #<id> · <focus sans préfixe métier>');
+  ok(lot.suggestedTitle(repo) === `[${trgN} · #${planLot.id}] Diffusion pmz · Lot #1 · Namespace plugin pmz`,
+    'suggestedTitle : [XXX · #Y] <epic 3 mots> · Lot #X · <focus sans préfixe métier>');
 
   // P8. epic borné à 3 mots quel que soit sa longueur (nom de plan « clair et constant »).
   backlogLib.doneLot(repo, planLot.id);
   const wide = backlogLib.addLot(repo, 'Focus large', null, 'sonnet', 'Un deux trois quatre cinq');
   backlogLib.startLot(repo, wide.id);
-  ok(lot.suggestedTitle(repo) === `[${trgN}] Un deux trois #${wide.id} · Focus large`,
+  ok(lot.suggestedTitle(repo) === `[${trgN} · #${wide.id}] Un deux trois · Lot #1 · Focus large`,
     'suggestedTitle : nom de plan tronqué à 3 mots');
 
   // P9. about.js : affiche l'epic du lot en cours (ici `wide`) plutôt que le label global
@@ -1148,7 +1148,7 @@ section('Backlog — auto-clôture au Stop, handoff enrichi, titre de session');
   const trgBf = trigram.deriveTrigram(repo);
 
   // P1. titre de session = focus du lot en cours (1er touch : pas de « (partie N) »)
-  ok(lot.suggestedTitle(repo) === `[${trgBf}] Session Libre · Premier périmètre`, 'suggestedTitle : titre = focus du lot en cours (sans epic -> Session Libre)');
+  ok(lot.suggestedTitle(repo) === `[${trgBf} · #1] Session Libre · Premier périmètre`, 'suggestedTitle : titre = focus du lot en cours (sans epic -> Session Libre)');
 
   // P2. lot ouvert → rappel de clôture (comportement existant intact)
   fs.writeFileSync(path.join(repo, 'w.txt'), 'x');
@@ -1179,7 +1179,7 @@ section('Backlog — auto-clôture au Stop, handoff enrichi, titre de session');
   ok(done1.status === 'done' && !!done1.closed_commit && Number.isFinite(done1.lot_number),
     'auto-clôture : done + commit + lot_number posés');
   ok(backlogLib.currentLot(b1) === null, 'auto-clôture : pas de promotion automatique du suivant');
-  ok(lot.suggestedTitle(repo) === `[${trgBf}] Session Libre · Premier périmètre`,
+  ok(lot.suggestedTitle(repo) === `[${trgBf} · #1] Session Libre · Premier périmètre`,
     'suggestedTitle après clôture : titre = dernier lot CLOS (pas « Deuxième périmètre », le suivant à faire)');
 
   // P5. handoff après clôture : avancement à jour
@@ -1228,13 +1228,13 @@ section('suggestedTitle : le numéro affiché suit l\'ID backlog même si lot-co
   lot.incrementLot(repo);
   ok(lot.getLotCounter(repo) === 4, 'précondition : lot-counter a dérivé à 4 (≠ ID backlog 1)');
   const trgDrift = trigram.deriveTrigram(repo);
-  ok(lot.suggestedTitle(repo) === `[${trgDrift}] Session Libre · Huitième périmètre`,
+  ok(lot.suggestedTitle(repo) === `[${trgDrift} · #1] Session Libre · Huitième périmètre`,
     'lot en cours : titre = focus du lot backlog, jamais lié au compteur lot-counter dérivé');
 
   runNode(BKLG, ['add', '--cwd', repo, '--title', 'Neuvième périmètre', '--model', 'sonnet']);
   runNode(BKLG, ['done', '--cwd', repo, '--id', '1']);
   runNode(BKLG, ['start', '--cwd', repo, '--id', '2']);
-  ok(lot.suggestedTitle(repo) === `[${trgDrift}] Session Libre · Neuvième périmètre`,
+  ok(lot.suggestedTitle(repo) === `[${trgDrift} · #2] Session Libre · Neuvième périmètre`,
     'lot suivant démarré : titre passe au focus du nouveau lot, indépendamment du compteur');
 }
 
@@ -1265,14 +1265,14 @@ section('suggestedTitle : lot_number null/recyclé ne fige plus la sélection su
   });
   backlogLib.saveBacklog(repo, b);
   const trgLdn = trigram.deriveTrigram(repo);
-  ok(lot.suggestedTitle(repo) === `[${trgLdn}] Session Libre · Conformite Liquid Glass`,
+  ok(lot.suggestedTitle(repo) === `[${trgLdn} · #4] Session Libre · Conformite Liquid Glass`,
     'lastDoneLot : dernier clos = closed_at le plus récent (id 4), PAS le plus grand lot_number (id 1)');
 
   // Clôtures legacy sans closed_at exploitable : l'id monotone tranche, jamais lot_number.
   const b2 = backlogLib.loadBacklog(repo);
   b2.lots.forEach((l) => { l.closed_at = null; });
   backlogLib.saveBacklog(repo, b2);
-  ok(lot.suggestedTitle(repo) === `[${trgLdn}] Session Libre · Conformite Liquid Glass`,
+  ok(lot.suggestedTitle(repo) === `[${trgLdn} · #4] Session Libre · Conformite Liquid Glass`,
     'lastDoneLot : sans closed_at, le plus grand id tranche (pas le lot_number recyclé)');
 }
 
@@ -1319,9 +1319,9 @@ section('suggestedTitle : chaque session est titrée par LE lot qu\'elle a clos 
   const t3 = lot.suggestedTitle(repo);
   // #1 a le closed_at MAX (23:59) et l'id le plus PETIT : l'attribution le sélectionne pour
   // sess-1 sans dépendre ni du closed_at max, ni du repli id-desc (qui donnerait #3).
-  ok(t1 === `[${trg}] Session Libre · Lot un`, 'sess-1 → lot #1 (attribution, indépendante de closed_at/id)');
-  ok(t2 === `[${trg}] Session Libre · Lot deux`, 'sess-2 → titre du lot #2 clos par sess-2');
-  ok(t3 === `[${trg}] Session Libre · Lot trois`, 'sess-3 → titre du lot #3 clos par sess-3');
+  ok(t1 === `[${trg} · #1] Session Libre · Lot un`, 'sess-1 → lot #1 (attribution, indépendante de closed_at/id)');
+  ok(t2 === `[${trg} · #2] Session Libre · Lot deux`, 'sess-2 → titre du lot #2 clos par sess-2');
+  ok(t3 === `[${trg} · #3] Session Libre · Lot trois`, 'sess-3 → titre du lot #3 clos par sess-3');
   ok(t1 !== t2 && t2 !== t3, '3 sessions successives → 3 titres DISTINCTS (plus de titre figé)');
 }
 
@@ -1340,7 +1340,7 @@ section('suggestedTitle : plan entièrement clos (aucun in_progress ni todo)');
   const b = backlogLib.loadBacklog(repo);
   ok(backlogLib.currentLot(b) === null && backlogLib.nextLot(b) === null,
     'plan sans lot in_progress/todo (précondition du test)');
-  ok(lot.suggestedTitle(repo) === `[${trigram.deriveTrigram(repo)}] Session Libre · Correctifs socle`,
+  ok(lot.suggestedTitle(repo) === `[${trigram.deriveTrigram(repo)} · #1] Session Libre · Correctifs socle`,
     'suggestedTitle : titre = dernier lot clos même sans lot en cours/à faire (avant le fix : titre nu)');
 }
 
@@ -1369,7 +1369,7 @@ section('suggestedTitle : un lot clos par une session plus ancienne ne doit pas 
   ok(bA.lots.find((l) => l.id === 1).closed_session_id === 'sess-A',
     'doneLot (auto-clôture) : closed_session_id posé au sid de la session qui clôt');
   const trgMismatch = trigram.deriveTrigram(repo);
-  ok(lot.suggestedTitle(repo) === `[${trgMismatch}] Session Libre · Travail session A`,
+  ok(lot.suggestedTitle(repo) === `[${trgMismatch} · #1] Session Libre · Travail session A`,
     'juste après clôture par sess-A : titre visible (session précédente = sess-A, ça matche)');
 
   // Session B (no-op, ne clôt rien) démarre : session-start.js estampille son propre id
@@ -1378,7 +1378,7 @@ section('suggestedTitle : un lot clos par une session plus ancienne ne doit pas 
 
   // "Session C" (ce test) : la session précédente est désormais sess-B, qui n'a rien
   // clos -> le lot fermé par sess-A ne doit plus être suggéré (clôture plus ancienne).
-  ok(lot.suggestedTitle(repo) !== `[${trgMismatch}] Session Libre · Travail session A`,
+  ok(lot.suggestedTitle(repo) !== `[${trgMismatch} · #1] Session Libre · Travail session A`,
     'après une session B sans activité de lot : le lot de sess-A n\'est plus suggéré (mismatch détecté)');
   ok(lot.suggestedTitle(repo) === `[${trgMismatch}] Session Libre`,
     'titre retombe sur la forme nue « Session Libre » plutôt que de mentir sur ce qui vient de se passer');

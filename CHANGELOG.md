@@ -2,6 +2,27 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-13 (v1.1.6 — nomenclature : deux numéros distincts « [XXX · #Y] Plan · Lot #X · résumé »)
+
+Retour utilisateur : le `#N` du titre (id backlog global : #34, #40) est absurde quand on
+raisonne « lot 1..5 de ce plan » — un plan de 5 lots affichait « #40 ». Nouveau format **validé
+utilisateur** : deux numéros, chacun accolé à ce qu'il qualifie.
+
+- Format : `[XXX · #Y] PlanTitle · Lot #X · résumé`. `#Y` = id backlog **global** (accolé au
+  trigramme, monotone sur tout le projet). `Lot #X` = **rang du lot dans son plan** (accolé au
+  nom de plan, remis à zéro à chaque plan). Sans epic : `[XXX · #Y] Session Libre · résumé`
+  (pas de `Lot #X`). Sans lot (titre déduit) : `[XXX] Session Libre · résumé` (pas de `#Y`).
+- `promptimizer/lib/backlog.js` : nouveau `lotRankInEpic(b, l)` (rang 1-based par id parmi les
+  lots du même epic, tous statuts).
+- `promptimizer/lib/lot.js: titleForLot` : signature `(trigram, l, touches, rank)` ; tag
+  `[XXX · #Y]` ; segment `Lot #X · ` inséré quand un plan et un rang existent.
+- Vérifié sur backlog japlan réel : #33→Lot #2, #34→Lot #3, #37→Lot #6 (plan « Cohérence
+  front ») ; #40→Lot #3 (plan « Fiabilité gestes »).
+- `test/run-tests.js` : tous les attendus de titre migrés au nouveau format — **536 OK**.
+- `ARCHITECTURE.md`, `skills/promptimizer/SKILL.md`, `commands/pmz-scope.md` : nomenclature
+  réécrite.
+- `VERSION` + `plugin.json` : 1.1.5 → **1.1.6** ; rebuild + cache réaligné.
+
 ## 2026-07-13 (v1.1.5 — renommage : attribution par session + repli par id, fin du titre figé)
 
 Retour utilisateur : sur japlan-app, **3 sessions successives nommées exactement pareil**

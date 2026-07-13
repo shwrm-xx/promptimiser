@@ -130,12 +130,17 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   existe. `backlog.js: doneLot` fait de même par défaut (chemin de clôture **manuelle**, ex.
   `/close-batch`) : sans ça, le compteur restait figé sur ce chemin et le même « Lot N »
   revenait indéfiniment d'une session à l'autre (fix 2026-07-11). `session-start.js` en déduit
-  un titre de session suggéré selon la nomenclature **« [XXX] PlanTitle #N · résumé »** (`XXX` =
-  trigramme du projet ; `PlanTitle` = nom de plan ≤ 3 mots = l'`epic` du lot borné à 3 mots, le
-  « voyageur » qui reste juste selon le lot travaillé ; `#N` = ID backlog du lot ; `résumé` = son
-  focus, préfixe métier « Lot X — » redondant retiré). Un lot **sans epic** (pas de plan nommé)
-  bascule sur **« [XXX] Session Libre · résumé »** — sans `#N`, puisqu'il n'y a pas de plan
-  (retour utilisateur : « rester constant et clair », cf. lot ci-dessous). Construit sur le lot
+  un titre de session suggéré selon la nomenclature **« [XXX · #Y] PlanTitle · Lot #X · résumé »**
+  (validée utilisateur 2026-07-13 ; `XXX` = trigramme du projet ; `#Y` = **ID backlog global** du
+  lot, accolé au trigramme — le `#N` de `backlog.js show`, monotone sur tout le projet ; `PlanTitle`
+  = nom de plan ≤ 3 mots = l'`epic` du lot borné à 3 mots ; `Lot #X` = **rang du lot dans son plan**
+  (`lotRankInEpic`), accolé au nom de plan, remis à zéro à chaque plan — colle au modèle mental
+  « lot 1..5 de CE plan », contre le `#Y` global jugé absurde par l'utilisateur qui voyait « #40 »
+  sur un plan de 5 lots ; `résumé` = focus du lot, préfixe métier « Lot X — » redondant retiré).
+  Un lot **sans epic** (pas de plan nommé) bascule sur **« [XXX · #Y] Session Libre · résumé »** —
+  sans `Lot #X` (aucun plan où le ranger) mais l'`#Y` accompagne toujours le trigramme. Sans lot du
+  tout (titre déduit du CHANGELOG/commit) : **« [XXX] Session Libre · résumé »** (pas d'`#Y` à
+  afficher). Construit sur le lot
   backlog le plus pertinent (`lib/lot.js: suggestedTitle`) — priorité : lot **en cours** (travail qui continue) >
   lot **attribué à la session précédente** (`lotClosedBySession` : `closed_session_id === previousSessionId`,
   cf. plus bas — chemin **primaire**, ajouté v1.1.5) > dernier lot **clos** (repli sans attribution

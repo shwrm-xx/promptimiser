@@ -16,8 +16,9 @@ quand : … » vérifiable** — au-delà, redécouper plutôt que grossir un lo
    `opus` pour du raisonnement lourd/archi) — obligatoire, jamais omis.
    Si ce découpage porte une **feature/epic** identifiable, proposer aussi un **nom de plan
    court (≤ 3 mots, cap 60 caractères)** — c'est lui qui nomme le plan dans le titre de
-   session (`[XXX] NomDePlan #N · résumé`) ; sinon l'omettre (epic = label optionnel, la
-   session s'affichera `[XXX] Session Libre · résumé`).
+   session (`[XXX · #Y] NomDePlan · Lot #X · résumé` — `#Y` = id backlog global, `Lot #X` = rang
+   du lot dans le plan) ; sinon l'omettre (epic = label optionnel, la session s'affichera
+   `[XXX · #Y] Session Libre · résumé`).
 2. Faire valider le découpage, les modèles préconisés **et l'epic éventuel** par
    l'utilisateur en **UNE** question (pas dix).
 3. Si un epic a été validé, l'enregistrer une fois pour la session/le titre :

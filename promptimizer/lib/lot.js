@@ -105,17 +105,21 @@ function planName(l) {
   return words || null;
 }
 
-// Titre de session pour un lot backlog donné — nomenclature « [XXX] PlanTitle #NbLot · résumé »
-// (validée utilisateur) : trigramme du projet, nom de plan (epic court), numéro de lot = ID
-// backlog (le « #N » visible dans `backlog.js show`), puis le focus du lot en résumé. Sans
-// epic : « [XXX] Session Libre · résumé » (pas de plan nommé, donc pas de #lot). Suffixe
-// « (partie N) » quand N>1 sessions ont travaillé ce lot sans le clore (touches ≤1 : rien).
-function titleForLot(trigram, l, touches) {
+// Titre de session pour un lot backlog donné — nomenclature « [XXX · #Y] PlanTitle · Lot #X · résumé »
+// (validée utilisateur 2026-07-13) : deux numéros distincts, chacun accolé à ce qu'il qualifie.
+//   - Y = ID backlog GLOBAL (le « #N » de `backlog.js show`), accolé au trigramme.
+//   - X = rang du lot DANS SON PLAN (epic), remis à zéro à chaque plan (cf. lotRankInEpic),
+//         accolé au nom de plan — colle au modèle mental « lot 1..5 de ce plan ».
+// Sans epic : « [XXX · #Y] Session Libre · résumé » (pas de plan → pas de « Lot #X »). Sans lot
+// du tout (id null, cas déduit) : « [XXX] Session Libre · résumé » (pas d'id à afficher).
+// Suffixe « (partie N) » quand N>1 sessions ont travaillé ce lot sans le clore (touches ≤1 : rien).
+function titleForLot(trigram, l, touches, rank) {
   const resume = truncateTitle(stripLotPrefix(l.title));
   const plan = planName(l);
+  const tag = l.id != null ? `${trigram} · #${l.id}` : trigram;
   const base = plan
-    ? `[${trigram}] ${plan} #${l.id} · ${resume}`
-    : `[${trigram}] ${SESSION_LIBRE} · ${resume}`;
+    ? `[${tag}] ${plan} · ${rank ? `Lot #${rank} · ` : ''}${resume}`
+    : `[${tag}] ${SESSION_LIBRE} · ${resume}`;
   return touches > 1 ? `${base} (partie ${touches})` : base;
 }
 
@@ -163,10 +167,12 @@ function suggestedTitle(root) {
       // lot ouvert (« (partie N) » si >1, cf. titleForLot) — incrémenté ICI (une fois par
       // vrai démarrage de session, cf. hooks/session-start.js) car c'est le seul point de
       // passage qui décrit la session précédente à la session suivante.
+      // Rang dans le plan calculé au point d'appel (backlog `b` sous la main).
+      const T = (l, touches) => titleForLot(trigram, l, touches, backlog.lotRankInEpic(b, l));
       const cur = backlog.currentLot(b);
       if (cur) {
         const touches = backlog.touchLot(root, cur.id) || 1;
-        return titleForLot(trigram, cur, touches);
+        return T(cur, touches);
       }
       const prevSid = previousSessionId(root);
       // Chemin PRIMAIRE : le lot que la session PRÉCÉDENTE a réellement clos (attribution
@@ -174,7 +180,7 @@ function suggestedTitle(root) {
       // et distinct d'une session à l'autre — chaque session clôt son propre lot, donc plus
       // de titre figé identique sur plusieurs sessions (bug japlan : 3 sessions → même #34).
       const mine = backlog.lotClosedBySession(b, prevSid);
-      if (mine) return titleForLot(trigram, mine, 0);
+      if (mine) return T(mine, 0);
       // Repli SANS attribution possible (clôture manuelle/legacy, closed_session_id absent) :
       // dernier lot clos par id. Mais un lot clos par une session ANTÉRIEURE à la précédente
       // ne décrit pas cette session-là (ex. « état des lieux » qui n'a rien clos) : on ne
@@ -185,11 +191,11 @@ function suggestedTitle(root) {
         const knownStale = last.closed_session_id && prevSid && last.closed_session_id !== prevSid;
         // Pas de « (partie N) » sur un lot déjà clos : le travail est fini, peu importe
         // combien de sessions ça a pris pour y arriver.
-        if (!knownStale) return titleForLot(trigram, last, 0);
+        if (!knownStale) return T(last, 0);
       }
       // Prochain lot à faire : dernier recours, encore à venir.
       const next = backlog.nextLot(b);
-      if (next) return titleForLot(trigram, next, 0);
+      if (next) return T(next, 0);
       // Plan non vide mais rien d'exploitable pour CETTE session (lot clos périmé, rien
       // à faire ensuite) : un titre EXISTE dans le plan mais ne décrit pas la session
       // précédente — le taire plutôt que le remplacer par une autre supposition (même

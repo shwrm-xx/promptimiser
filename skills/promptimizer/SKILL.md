@@ -37,7 +37,8 @@ Demande large (plusieurs sujets, ≥ 6 puces, refactor global…) : proposer un 
 `node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "…"` (+ `start --id N`).
 Au découpage, proposer aussi un **nom de plan court (≤ 3 mots, validé par l'utilisateur)** et le
 poser sur chaque lot via `--epic "<NomDePlan>"` : c'est lui qui nomme le plan dans le titre de
-session (`[XXX] NomDePlan #N · résumé`). Sans nom de plan, la session s'affiche `[XXX] Session
+session (`[XXX · #Y] NomDePlan · Lot #X · résumé` — `#Y` = id backlog global, `Lot #X` = rang
+dans le plan). Sans nom de plan, la session s'affiche `[XXX · #Y] Session
 Libre · résumé`.
 Traiter **uniquement le premier lot**. Le suivi est automatique ensuite : clôture au commit
 (hook Stop), avancement dans le handoff, réinjection au démarrage et après compaction.

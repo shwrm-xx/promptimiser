@@ -242,6 +242,18 @@ function lastDoneLot(b) {
   return done[0];
 }
 
+// Rang (1-based) d'un lot DANS SON PLAN (epic) : position par id croissant parmi les lots du
+// même epic, tous statuts confondus (stable, indépendant des drops/ordre de clôture). C'est le
+// « Lot #X » du titre de session — l'utilisateur pense « lot 1..5 de CE plan », pas en id global
+// (#34, #40) qui ne remet jamais à zéro entre plans (retour utilisateur 2026-07-13). null si le
+// lot n'a pas d'epic (pas de plan où le ranger → « Session Libre » sans « Lot #X »).
+function lotRankInEpic(b, l) {
+  if (!l || !l.epic) return null;
+  const peers = b.lots.filter((x) => x.epic === l.epic).sort((a, c) => (a.id || 0) - (c.id || 0));
+  const idx = peers.findIndex((x) => x.id === l.id);
+  return idx >= 0 ? idx + 1 : null;
+}
+
 // Lot clos par UNE session donnée (closed_session_id === sid) — signal d'attribution fiable
 // posé par stop.js à l'auto-clôture. Renvoie le plus grand id parmi les correspondances (la
 // dernière chose que cette session a faite si elle en a clos plusieurs), ou null. C'est le
@@ -346,7 +358,7 @@ function reconcile(root) {
 
 module.exports = {
   backlogFile, loadBacklog, saveBacklog, addLot, setVerify, startLot, doneLot, dropLot, noteLot,
-  touchLot, currentLot, nextLot, lastDoneLot, lotClosedBySession, progress, summaryLines, reconcile,
+  touchLot, currentLot, nextLot, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot,
   MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_NOTE, MAX_TODOS,
 };
