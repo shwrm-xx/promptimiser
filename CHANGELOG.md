@@ -2,6 +2,34 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-13 (v1.1.5 — renommage : attribution par session + repli par id, fin du titre figé)
+
+Retour utilisateur : sur japlan-app, **3 sessions successives nommées exactement pareil**
+(« [JAP] Cohérence front #34 · Quick wins… ») et un renommage globalement peu pertinent.
+Diagnostic sur données réelles (backlog japlan reproduit en bac à sable) : deux bugs cumulés.
+
+1. **`lastDoneLot` triait par `closed_at`** — horodatage prouvé non fiable (dates à la journée,
+   valeurs à la seconde ronde saisies à la main, clôtures dans le désordre) : le vieux lot #34
+   (`closed_at` 23:06, postérieur au vrai dernier #40 à 23:03) « gagnait » → même lot renvoyé
+   à chaque session.
+2. **Aucune attribution par session** : `closed_session_id` n'était qu'un garde *négatif* ;
+   `suggestedTitle` ne savait pas quel lot la session précédente avait réellement clos, donc
+   renvoyait le même lot déterministe à toutes → titre byte-identique, sans même `(partie N)`.
+
+- `promptimizer/lib/backlog.js` : `lastDoneLot` trie désormais par **`id` décroissant**
+  (monotone, jamais recyclé ni sale) ; nouveau `lotClosedBySession(b, sid)` = lot clos par une
+  session donnée (plus grand id parmi les correspondances).
+- `promptimizer/lib/lot.js: suggestedTitle` : chemin **primaire** = `lotClosedBySession(prevSid)`
+  (le lot que la session précédente a réellement clos) ; repli = `lastDoneLot` (id) avec le
+  garde anti-clôture-ancienne inchangé. Chaque session est titrée par SON lot → 3 sessions →
+  3 titres distincts.
+- Vérifié sur le backlog japlan réel (bac à sable) : suggestedTitle passe de `#34 Quick wins`
+  (figé, faux) à `#40 Fiabilité gestes` (le vrai dernier lot).
+- `test/run-tests.js` : P1quater (3 sessions → 3 titres distincts, closed_at volontairement
+  dans le désordre) ; P1ter/commentaire realigné sur le tri par id — **536 OK, 0 échec**.
+- `ARCHITECTURE.md` : contrat de priorité de `suggestedTitle` réécrit (attribution > repli id).
+- `promptimizer/VERSION` + `plugin.json` : 1.1.4 → **1.1.5** ; rebuild + cache réaligné.
+
 ## 2026-07-13 (v1.1.4 — garde-fou build : commande requise absente = build refusé)
 
 Suite du post-mortem v1.1.3 (à la demande de l'utilisateur) : empêcher qu'une suppression

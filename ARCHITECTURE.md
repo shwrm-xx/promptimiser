@@ -137,12 +137,17 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   bascule sur **« [XXX] Session Libre · résumé »** — sans `#N`, puisqu'il n'y a pas de plan
   (retour utilisateur : « rester constant et clair », cf. lot ci-dessous). Construit sur le lot
   backlog le plus pertinent (`lib/lot.js: suggestedTitle`) — priorité : lot **en cours** (travail qui continue) >
-  dernier lot **clos** (ce qui vient d'être fait, cas le plus fréquent juste après une clôture —
-  sans ce fallback le titre reste nu et ne dit rien de l'avancée réelle) > prochain lot à faire
-  (dernier recours). Parmi les lots clos, le « dernier » est celui au `closed_at` le plus récent,
-  puis au plus grand `id` — **jamais** trié par `lot_number` : ce compteur global peut être `null`
-  ou recyclé sur d'anciennes clôtures, et son plus grand *cohérent* figeait alors la sélection sur
-  un vieux lot (retour utilisateur : renommage bloqué sur « Lot 7 » — fix 2026-07-12). **Le N affiché est l'ID backlog du lot retenu** (`lib/backlog.js`, le
+  lot **attribué à la session précédente** (`lotClosedBySession` : `closed_session_id === previousSessionId`,
+  cf. plus bas — chemin **primaire**, ajouté v1.1.5) > dernier lot **clos** (repli sans attribution
+  possible) > prochain lot à faire (dernier recours). L'attribution est le vrai signal « qu'a fait
+  la session précédente » : chaque session clôt son propre lot, donc 3 sessions successives
+  reçoivent 3 titres **distincts** (retour utilisateur japlan-app : 3 sessions nommées à
+  l'identique « #34 » — fix 2026-07-13). En repli, le « dernier » lot clos est celui au plus grand
+  **`id`** — **ni** `lot_number` (compteur global recyclé/`null`, figeait « Lot 7 » — fix 2026-07-12),
+  **ni** `closed_at` : cet horodatage s'est révélé **non fiable** sur données réelles (dates à la
+  journée, valeurs saisies à la main, clôtures dans le désordre — un vieux #34 au `closed_at`
+  postérieur au vrai dernier #40 → titre figé). L'`id` backlog est monotone, jamais recyclé, jamais
+  `null` (cf. `addLot`) : seul référentiel stable pour le repli. **Le N affiché est l'ID backlog du lot retenu** (`lib/backlog.js`, le
   référentiel que l'utilisateur voit dans `backlog.js show`), **jamais** `lot-counter.json` —
   ce compteur avance à chaque transition working-tree sale → propre, y compris sur un commit de
   bookkeeping de clôture qui n'ajoute aucun lot, et dérivait donc du numéro backlog au fil du

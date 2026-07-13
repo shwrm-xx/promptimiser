@@ -168,16 +168,20 @@ function suggestedTitle(root) {
         const touches = backlog.touchLot(root, cur.id) || 1;
         return titleForLot(trigram, cur, touches);
       }
-      // Dernier lot clos = ce qui vient d'être fait, cas le plus fréquent juste après une
-      // clôture (sinon le titre retombe nu). Mais un lot clos par une session ANTÉRIEURE à
-      // la précédente ne décrit pas cette session-là (ex. une session « état des lieux »
-      // qui n'a rien clos) : on ne l'affiche que si aucune preuve du contraire n'existe —
-      // closed_session_id absent (clôture manuelle/ancienne, pas de trace) => on l'affiche
-      // quand même (mieux qu'un titre nu) ; closed_session_id présent mais différent de la
-      // session précédente réelle => clôture avérée plus ancienne, on le tait.
+      const prevSid = previousSessionId(root);
+      // Chemin PRIMAIRE : le lot que la session PRÉCÉDENTE a réellement clos (attribution
+      // par closed_session_id, posé par stop.js). Fiable, indépendant des horodatages sales,
+      // et distinct d'une session à l'autre — chaque session clôt son propre lot, donc plus
+      // de titre figé identique sur plusieurs sessions (bug japlan : 3 sessions → même #34).
+      const mine = backlog.lotClosedBySession(b, prevSid);
+      if (mine) return titleForLot(trigram, mine, 0);
+      // Repli SANS attribution possible (clôture manuelle/legacy, closed_session_id absent) :
+      // dernier lot clos par id. Mais un lot clos par une session ANTÉRIEURE à la précédente
+      // ne décrit pas cette session-là (ex. « état des lieux » qui n'a rien clos) : on ne
+      // l'affiche que si aucune preuve du contraire n'existe — closed_session_id absent =>
+      // affiché (mieux qu'un titre nu) ; présent mais ≠ session précédente => tu.
       const last = backlog.lastDoneLot(b);
       if (last) {
-        const prevSid = previousSessionId(root);
         const knownStale = last.closed_session_id && prevSid && last.closed_session_id !== prevSid;
         // Pas de « (partie N) » sur un lot déjà clos : le travail est fini, peu importe
         // combien de sessions ça a pris pour y arriver.

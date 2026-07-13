@@ -1245,7 +1245,8 @@ section('suggestedTitle : lot_number null/recyclé ne fige plus la sélection su
   // (7) est porté par un VIEUX lot, les lots plus récents ont un lot_number null ou recyclé
   // (héritage d'anciennes clôtures legacy). Avant le fix, lastDoneLot triait par lot_number
   // décroissant et retombait donc éternellement sur ce vieux lot 7 — « toujours Lot 7 » en
-  // renommage de session. Après le fix : tri par closed_at le plus récent, puis id.
+  // renommage de session. Après le fix : tri par **id** décroissant (monotone, jamais recyclé
+  // ni sale, contrairement à lot_number ET closed_at) → id 4.
   const repo = path.join(SANDBOX, 'repo-lastdone-lotnum-corrupt');
   fs.mkdirSync(repo, { recursive: true });
   execFileSync('git', ['init', '-q', repo]);
@@ -1273,6 +1274,55 @@ section('suggestedTitle : lot_number null/recyclé ne fige plus la sélection su
   backlogLib.saveBacklog(repo, b2);
   ok(lot.suggestedTitle(repo) === `[${trgLdn}] Session Libre · Conformite Liquid Glass`,
     'lastDoneLot : sans closed_at, le plus grand id tranche (pas le lot_number recyclé)');
+}
+
+// == P1quater. ATTRIBUTION PAR SESSION : 3 sessions → 3 titres distincts (bug japlan #34 figé) ==
+section('suggestedTitle : chaque session est titrée par LE lot qu\'elle a clos (attribution closed_session_id)');
+{
+  // Reproduit le bug observé sur japlan-app : 3 sessions successives nommées EXACTEMENT
+  // pareil (« #34 Quick wins »). Cause : lastDoneLot triait par closed_at (horodatage sale,
+  // clôtures dans le désordre) et renvoyait toujours le même vieux lot, sans distinguer ce
+  // que CHAQUE session avait clos. Fix : attribution par closed_session_id.
+  const repo = path.join(SANDBOX, 'repo-attrib-3sessions');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'CLAUDE.md'), 'règles');
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const empty = path.join(SANDBOX, 'empty.jsonl');
+  const trg = trigram.deriveTrigram(repo);
+
+  // 3 lots, chacun clos par une session distincte. On plante des closed_at DANS LE DÉSORDRE
+  // (lot #1 le plus récent) pour prouver que l'attribution ne dépend PAS de closed_at.
+  for (const t of ['Lot un', 'Lot deux', 'Lot trois']) {
+    runNode(BKLG, ['add', '--cwd', repo, '--title', t, '--model', 'sonnet']);
+  }
+  const closeBy = (id, sid) => {
+    runNode(BKLG, ['start', '--cwd', repo, '--id', String(id)]);
+    const b = backlogLib.loadBacklog(repo);
+    const l = b.lots.find((x) => x.id === id);
+    l.status = 'done'; l.closed_session_id = sid;
+    l.closed_at = id === 1 ? '2026-07-12T23:59:00.000Z' : '2026-07-12T20:0' + id + ':00.000Z';
+    backlogLib.saveBacklog(repo, b);
+  };
+  closeBy(1, 'sess-1'); closeBy(2, 'sess-2'); closeBy(3, 'sess-3');
+
+  // Session précédente = sess-1 → titre du lot #1 (pas le repli, pas le closed_at max).
+  const stEach = require(path.join(PKG, 'lib', 'state'));
+  const setPrev = (sid) => stEach.saveSessionState(repo, Object.assign(stEach.loadSessionState(repo, null), { session_id: sid }));
+  setPrev('sess-1');
+  const t1 = lot.suggestedTitle(repo);
+  setPrev('sess-2');
+  const t2 = lot.suggestedTitle(repo);
+  setPrev('sess-3');
+  const t3 = lot.suggestedTitle(repo);
+  // #1 a le closed_at MAX (23:59) et l'id le plus PETIT : l'attribution le sélectionne pour
+  // sess-1 sans dépendre ni du closed_at max, ni du repli id-desc (qui donnerait #3).
+  ok(t1 === `[${trg}] Session Libre · Lot un`, 'sess-1 → lot #1 (attribution, indépendante de closed_at/id)');
+  ok(t2 === `[${trg}] Session Libre · Lot deux`, 'sess-2 → titre du lot #2 clos par sess-2');
+  ok(t3 === `[${trg}] Session Libre · Lot trois`, 'sess-3 → titre du lot #3 clos par sess-3');
+  ok(t1 !== t2 && t2 !== t3, '3 sessions successives → 3 titres DISTINCTS (plus de titre figé)');
 }
 
 // ============================ P2. TITRE DE SESSION QUAND TOUT LE PLAN EST FAIT ============================

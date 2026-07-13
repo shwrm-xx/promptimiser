@@ -222,21 +222,38 @@ function nextLot(b) {
   return b.lots.find((l) => l.status === 'todo') || null;
 }
 
-// Dernier lot clos (closed_at le plus récent, sinon plus grand id) — décrit ce qui vient
-// d'être FAIT, utile pour nommer une session qui vient de clore un lot sans qu'aucun autre
-// ne soit encore in_progress/todo (sinon suggestedTitle retombe sur un titre nu).
-// On NE trie PLUS par lot_number : ce compteur global (lot-counter.json) avance
-// indépendamment de l'id, peut être null ou recyclé sur des clôtures anciennes/legacy, et
-// figeait alors la sélection sur le plus grand lot_number cohérent (bug « toujours le
-// même Lot N » session après session). L'id backlog est monotone, jamais recyclé, jamais
-// null (cf. addLot) et c'est déjà le référentiel affiché par titleForBacklogLot : trier
-// dessus rend le nommage de session cohérent bout-en-bout et immunisé aux lot_number sales.
+// Dernier lot clos = plus grand **id** (repli quand aucune attribution par session n'est
+// possible, cf. lotClosedBySession + lib/lot.js). Décrit ce qui vient d'être FAIT, utile pour
+// nommer une session qui a clos un lot sans qu'aucun autre ne soit in_progress/todo.
+// Historique des tris essayés, tous abandonnés sur données réelles (japlan-app) :
+//   - lot_number : compteur global recyclé/null sur clôtures legacy → figeait un vieux lot.
+//   - closed_at  : horodatage NON fiable — mix de dates à la journée (« 2026-07-11 »), de
+//     valeurs à la seconde ronde saisies à la main, et de clôtures dans le désordre ; un lot
+//     ancien (#34, closed_at 23:06 édité) « battait » le vrai dernier (#40, 23:03) → même
+//     titre figé session après session.
+// L'id backlog est monotone, jamais recyclé, jamais null (cf. addLot) et c'est le référentiel
+// affiché (#N) : le trier rend le nommage stable et immunisé aux horodatages sales. Compromis
+// assumé : une clôture RÉTROACTIVE d'un vieux lot ne sera pas « le dernier » — mais ce cas est
+// couvert par l'attribution par session (le chemin primaire), le repli restant un pis-aller.
 function lastDoneLot(b) {
   const done = b.lots.filter((l) => l.status === 'done');
   if (!done.length) return null;
-  done.sort((a, c) => String(c.closed_at || '').localeCompare(String(a.closed_at || ''))
-    || (c.id || 0) - (a.id || 0));
+  done.sort((a, c) => (c.id || 0) - (a.id || 0));
   return done[0];
+}
+
+// Lot clos par UNE session donnée (closed_session_id === sid) — signal d'attribution fiable
+// posé par stop.js à l'auto-clôture. Renvoie le plus grand id parmi les correspondances (la
+// dernière chose que cette session a faite si elle en a clos plusieurs), ou null. C'est le
+// chemin PRIMAIRE de suggestedTitle : il décrit exactement ce que la session précédente a
+// clos, indépendamment des horodatages sales et sans jamais figer le même lot d'une session
+// à l'autre (chaque session clôt son propre lot → titre distinct).
+function lotClosedBySession(b, sid) {
+  if (!sid) return null;
+  const mine = b.lots.filter((l) => l.status === 'done' && l.closed_session_id === sid);
+  if (!mine.length) return null;
+  mine.sort((a, c) => (c.id || 0) - (a.id || 0));
+  return mine[0];
 }
 
 function progress(b) {
@@ -329,7 +346,7 @@ function reconcile(root) {
 
 module.exports = {
   backlogFile, loadBacklog, saveBacklog, addLot, setVerify, startLot, doneLot, dropLot, noteLot,
-  touchLot, currentLot, nextLot, lastDoneLot, progress, summaryLines, reconcile,
+  touchLot, currentLot, nextLot, lastDoneLot, lotClosedBySession, progress, summaryLines, reconcile,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot,
   MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_NOTE, MAX_TODOS,
 };
