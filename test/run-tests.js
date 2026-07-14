@@ -2648,6 +2648,56 @@ section('Titre suggéré : rappelé aussi au 1er UserPromptSubmit (fiabilité, l
   ok(!/\(partie 2\)/.test(ctxPrompt1), 'pas de double incrément touchLot via le rappel UserPromptSubmit');
 }
 
+// ============================ R. VIGIE MODÈLE RÉEL VS PRÉCONISÉ (lot #42) ============================
+section('Vigie modèle réel vs préconisé (UserPromptSubmit, anti-spam 1×/session, lot #42)');
+{
+  const modelwatch = require(path.join(PKG, 'lib', 'modelwatch'));
+  function modelLine(model) {
+    return JSON.stringify({ type: 'assistant', message: { model } });
+  }
+
+  // R1. readLastModel / modelsDiffer — unités
+  const tSonnet = writeTranscript('r-sonnet.jsonl', ['{"type":"user"}', modelLine('claude-sonnet-5')]);
+  ok(modelwatch.readLastModel(tSonnet) === 'claude-sonnet-5', 'readLastModel : lit le modèle du dernier message assistant');
+  ok(modelwatch.modelsDiffer('sonnet', 'claude-sonnet-5') === false, 'modelsDiffer : hint contenu dans le modèle réel -> pas de diff');
+  ok(modelwatch.modelsDiffer('opus', 'claude-sonnet-5') === true, 'modelsDiffer : hint absent du modèle réel -> diff');
+  ok(modelwatch.readLastModel(null) === null, 'readLastModel : transcript_path absent -> null, fail-open');
+  ok(modelwatch.readLastModel(path.join(SANDBOX, 'inexistant.jsonl')) === null, 'readLastModel : fichier absent -> null, fail-open');
+
+  // R2. bout-en-bout via le hook
+  const repo = path.join(SANDBOX, 'repo-model-watch');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'CLAUDE.md'), 'règles');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'premier commit']);
+  const lotMW = backlogLib.addLot(repo, 'Lot vigie modèle', 'fait quand : test', 'opus');
+  backlogLib.startLot(repo, lotMW.id);
+
+  function ctxOf(r) { try { return JSON.parse(r.out).hookSpecificOutput.additionalContext || ''; } catch (_) { return ''; } }
+
+  // R2a. modèle réel != model_hint ('opus' attendu, 'sonnet' détecté) -> nudge présent
+  const tMismatch = writeTranscript('r-mismatch.jsonl', [modelLine('claude-sonnet-5')]);
+  const rMismatch = runHook('user-prompt-submit.js', { cwd: repo, session_id: 'sess-mw1', prompt: 'bonjour', transcript_path: tMismatch });
+  const ctxMismatch = ctxOf(rMismatch);
+  ok(/Modèle réel.*≠.*préconisé/.test(ctxMismatch), 'mismatch : nudge injecté');
+  ok(ctxMismatch.includes('Lot vigie modèle') && ctxMismatch.includes('claude-sonnet-5'), 'mismatch : nomme le lot et le modèle réel');
+
+  // R2b. anti-spam : 2e prompt de la même session -> pas de répétition
+  const rMismatch2 = runHook('user-prompt-submit.js', { cwd: repo, session_id: 'sess-mw1', prompt: 'et ensuite ?', transcript_path: tMismatch });
+  ok(!/Modèle réel/.test(ctxOf(rMismatch2)), 'anti-spam : pas de 2e nudge dans la même session');
+
+  // R2c. modèle réel == model_hint -> pas de nudge (nouvelle session)
+  const tMatch = writeTranscript('r-match.jsonl', [modelLine('claude-opus-4-8')]);
+  const rMatch = runHook('user-prompt-submit.js', { cwd: repo, session_id: 'sess-mw2', prompt: 'bonjour', transcript_path: tMatch });
+  ok(!/Modèle réel/.test(ctxOf(rMatch)), 'modèle conforme au hint -> pas de nudge');
+
+  // R2d. transcript illisible -> fail-open, exit 0, pas de crash
+  const rNoTranscript = runHook('user-prompt-submit.js', { cwd: repo, session_id: 'sess-mw3', prompt: 'bonjour', transcript_path: path.join(SANDBOX, 'absent.jsonl') });
+  ok(rNoTranscript.code === 0, 'transcript illisible -> fail-open, exit 0');
+  ok(!/Modèle réel/.test(ctxOf(rNoTranscript)), 'transcript illisible -> pas de nudge (rien à comparer)');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

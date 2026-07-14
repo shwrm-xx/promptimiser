@@ -2,6 +2,24 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-14 (lot #42 — vigie modèle réel vs préconisé)
+
+`user-prompt-submit.js` compare désormais, au 1er prompt de chaque session, le modèle qui a
+effectivement répondu (`lib/modelwatch.js: readLastModel`, lu dans le transcript comme
+`occupancy.js` lit l'occupation — fenêtre depuis la fin, agrandie si besoin) au `model_hint` du
+lot backlog `in_progress`. Correspondance par sous-chaîne insensible à la casse (`modelsDiffer`)
+plutôt qu'une énum de modèles à resynchroniser à chaque sortie. Nudge `additionalContext` court
+si divergence, plafonné 1×/session (clé `model_mismatch` dans `prompt_reminders`) — fail-open
+total (backlog absent, transcript illisible, aucun lot en cours → silence).
+
+Vérifié en bac à sable réel (hook invoqué en ligne de commande, mismatch détecté puis anti-spam
+confirmé au 2e prompt) en plus des tests unitaires. `ARCHITECTURE.md` mis à jour ;
+`test/run-tests.js` : 559 OK, 0 échec.
+
+En profitant du lot : le backlog portait une clôture erronée du lot #42 (staged mais non
+commitée, marqué `done` avec le SHA du fix de lot #41) sans que la fonctionnalité existe dans le
+code — revert avant de redémarrer le lot proprement via `backlog.js start`.
+
 ## 2026-07-14 (lot #41 — effort par lot, persisté et réaffiché)
 
 `backlog.js add` accepte désormais `--effort` (`low`/`medium`/`high`/`xhigh`, refus doux si

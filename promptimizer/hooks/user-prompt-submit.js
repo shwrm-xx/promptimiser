@@ -18,9 +18,10 @@ const { loadSessionState, saveSessionState } = require('../lib/state');
 const { loadBacklog, currentLot, progress } = require('../lib/backlog');
 const {
   MSG_LARGE, MSG_INIT_BEFORE_CODE, autoInitMessage, largeWithPlanMessage, occupancyPromptMessage,
-  sessionTitleMessage,
+  sessionTitleMessage, modelMismatchMessage,
 } = require('../lib/messages');
 const occupancy = require('../lib/occupancy');
+const { readLastModel, modelsDiffer } = require('../lib/modelwatch');
 
 const OCC_PROMPT_THRESHOLD = 500000;
 
@@ -92,6 +93,26 @@ function main() {
       st.prompt_reminders[key] = true;
       parts.push(msg);
     }
+  }
+
+  // Vigie modèle réel vs préconisé (lot #42) : au 1er prompt du lot en cours (anti-spam
+  // 1×/session — prompt_reminders repart à zéro sur nouvelle session_id, cf. lib/state.js),
+  // si le modèle qui répond ce tour diffère du model_hint, nudge. Fail-open : toute erreur
+  // (backlog absent, transcript illisible) => pas de nudge, jamais de blocage du prompt.
+  try {
+    if (!st.prompt_reminders.model_mismatch) {
+      const b = loadBacklog(root);
+      const cur = currentLot(b);
+      if (cur && cur.model_hint) {
+        const actualModel = readLastModel(input.transcript_path);
+        if (actualModel && modelsDiffer(cur.model_hint, actualModel)) {
+          st.prompt_reminders.model_mismatch = true;
+          parts.push(modelMismatchMessage(cur, actualModel));
+        }
+      }
+    }
+  } catch (_) {
+    /* fail-open : pas de nudge modèle ce tour */
   }
 
   // Nudge occupation haute — indépendant du init/broad ci-dessus, 1×/palier

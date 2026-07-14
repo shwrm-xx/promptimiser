@@ -226,9 +226,18 @@ function sessionTitleMessage(title) {
   ].join('\n');
 }
 
+// Vigie modèle réel vs préconisé (lot #42) : le modèle qui répond ce tour ne correspond pas
+// au model_hint du lot en cours. Injecté au 1er prompt du lot, 1×/session (anti-spam).
+function modelMismatchMessage(lot, actualModel) {
+  return [
+    `Modèle réel (${actualModel}) ≠ modèle préconisé pour le lot en cours (« ${lot.title} » : ${lot.model_hint}).`,
+    'Vérifie si le changement de modèle est volontaire ou si la session a démarré avec le mauvais modèle.',
+  ].join('\n');
+}
+
 module.exports = {
   MSG_ACTIF, MSG_ACTIF_SLIM, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
   compactResumeMessage, backlogResumeMessage, largeWithPlanMessage,
-  costlyTurnMessage, bustIntraMessage, pauseTtlMessage,
+  costlyTurnMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage,
 };
