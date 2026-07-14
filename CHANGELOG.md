@@ -2,6 +2,22 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-14 (lot #38 — doc du canal GitHub public)
+
+Documentation seule (aucun code touché) : le canal de diffusion GitHub public, jusqu'ici
+« objectif lointain », est désormais documenté comme canal opérationnel.
+
+- `README.md` (§ plugin) : prérequis dépôt public ; côté mainteneur
+  `node promptimizer/install/publish-plugin.js --push` (assemble `dist/marketplace/` et pousse
+  son contenu seul sur la branche orpheline `plugin-release`) ; côté utilisateur final
+  `claude plugin marketplace add shwrm-xx/promptimiser@plugin-release` puis
+  `claude plugin install pmz@pmz-marketplace`.
+- `ARCHITECTURE.md` (§ Diffusion tiers) : la puce « Public GitHub reste un objectif lointain »
+  remplacée par le canal documenté (branche orpheline, push explicite seulement, mécanique
+  `extraKnownMarketplaces` inchangée).
+- Note : la branche `plugin-release` n'a encore jamais été poussée — la publication réelle
+  reste à faire (lot #39).
+
 ## 2026-07-13 (v1.1.6 — nomenclature : deux numéros distincts « [XXX · #Y] Plan · Lot #X · résumé »)
 
 Retour utilisateur : le `#N` du titre (id backlog global : #34, #40) est absurde quand on

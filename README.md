@@ -73,7 +73,24 @@ pas à relancer `marketplace add` à la main, référencer la marketplace dans `
 ```
 
 (`source` peut aussi être `"github"` ou un chemin local — cf. doc officielle marketplace Claude
-Code.) **Public GitHub** : objectif lointain, même mécanique (source `github`), pas encore fait.
+Code.)
+
+**Canal GitHub public.** Prérequis : le dépôt doit être **public** (la commande
+`marketplace add owner/repo` de Claude Code lit le dépôt sans authentification). Côté mainteneur,
+publier l'artefact de build sur la branche orpheline `plugin-release` :
+
+```
+node promptimizer/install/publish-plugin.js --push
+```
+
+(le script assemble `dist/marketplace/` via `build-plugin.js` puis pousse son contenu seul sur
+`plugin-release` — la branche ne partage aucun historique avec `main`). Côté utilisateur final :
+
+```
+claude plugin marketplace add shwrm-xx/promptimiser@plugin-release
+claude plugin install pmz@pmz-marketplace
+```
+
 Les deux canaux (manuel / plugin) sont détaillés dans [ARCHITECTURE.md](ARCHITECTURE.md) ; le
 verdict de faisabilité dans [docs/decisions/D1-plugin-go-nogo.md](docs/decisions/D1-plugin-go-nogo.md).
 

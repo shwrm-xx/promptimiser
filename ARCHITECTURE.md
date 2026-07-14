@@ -381,8 +381,13 @@ manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string r
 - **`extraKnownMarketplaces`** (`settings.json`, user ou projet) documenté au README pour éviter
   un `marketplace add` manuel par poste : chaque organisation référence son propre dépôt (source
   `git`, `github`, ou chemin local) sans changement de code côté PMZ.
-- **Public GitHub reste un objectif lointain** (pas fait) : même mécanique (`extraKnownMarketplaces`
-  avec source `github`), simplement pas encore publié.
+- **Canal GitHub public (lot #38)** : documenté et outillé. Prérequis : dépôt **public**
+  (`marketplace add owner/repo` lit sans authentification). `install/publish-plugin.js` assemble
+  `dist/marketplace/` (via `build-plugin.js`) et le pousse **seul** sur la branche orpheline
+  `plugin-release` (aucun historique partagé avec `main` ; push uniquement si `--push` explicite).
+  Côté utilisateur : `claude plugin marketplace add shwrm-xx/promptimiser@plugin-release` puis
+  `claude plugin install pmz@pmz-marketplace`. Même mécanique `extraKnownMarketplaces` (source
+  `github`) pour éviter le `marketplace add` par poste.
 - **Windows non testé réel dans ce lot** : pas de machine Windows disponible dans l'environnement
   d'exécution de ce tour ; les wrappers (`bin/pmz-hook`) et la résolution de chemins
   (`claude-dir.js`) restent donc vérifiés seulement par lecture de code + tests unitaires
