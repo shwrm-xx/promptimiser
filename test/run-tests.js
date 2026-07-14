@@ -2115,6 +2115,28 @@ section('Version PMZ historisée + commande about');
   ok(/non initialisé/.test(aOutside.out), 'about : hors-git -> statut non initialisé annoncé');
 }
 
+section('Commande help : liste dérivée des commandes réellement installées');
+{
+  const HELP = path.join(PKG, 'scripts', 'help.js');
+  const cmdDir = path.join(PKG, 'commands');
+  const realCmds = fs.readdirSync(cmdDir).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3));
+
+  const hHelp = runNode(HELP, []);
+  ok(hHelp.code === 0, 'help : exit 0');
+  for (const name of realCmds) {
+    ok(new RegExp('\\*\\*' + name + '\\*\\*').test(hHelp.out), 'help : liste la commande ' + name);
+  }
+  ok(/help — /.test(hHelp.out) === false || /\*\*help\*\* — /.test(hHelp.out), 'help : se liste elle-même avec sa description');
+
+  // Fail-open : dossier commands/ absent -> jamais de throw, exit 0, sortie de repli.
+  const sbxHelp = path.join(SANDBOX, 'help-no-commands');
+  fs.mkdirSync(path.join(sbxHelp, 'scripts'), { recursive: true });
+  fs.copyFileSync(HELP, path.join(sbxHelp, 'scripts', 'help.js'));
+  const hMissing = runNode(path.join(sbxHelp, 'scripts', 'help.js'), []);
+  ok(hMissing.code === 0, 'help : commands/ absent -> exit 0 (fail-open)');
+  ok(/liste indisponible/.test(hMissing.out), 'help : commands/ absent -> repli annoncé');
+}
+
 section('claude-dir — résolution CLAUDE_CONFIG_DIR (portabilité, lot A)');
 {
   // Fonctions call-time : je pose/retire l'env AVANT chaque appel, sans recharger le module.

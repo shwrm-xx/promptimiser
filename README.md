@@ -54,7 +54,7 @@ claude plugin install pmz@pmz-local
 ```
 
 Vérification : `claude plugin details pmz` (doit afficher **6 hooks** et les
-**7 commandes** ; commandes namespacées `/pmz:*`, ex. `/pmz:about`, `/pmz:scope`). Le nom du
+**8 commandes** ; commandes namespacées `/pmz:*`, ex. `/pmz:about`, `/pmz:scope`). Le nom du
 plugin (identifiant technique, pilote le namespace des commandes) est `pmz` ; l'identité
 « Promptimizer » reste le nom du projet/produit (description, branding). **Distribution à un tiers**
 (entreprise, équipe, communauté) : partager le dossier `dist/marketplace/` (ou un dépôt git
@@ -155,10 +155,14 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
 ## Slash commands (secours)
 
 `/init` · `/scope` · `/budget` · `/check-context` · `/close-batch` · `/fresh-session` ·
-`/about` · `/statusline`
+`/about` · `/help` · `/statusline`
 
 `/about` affiche la version installée de PMZ (`promptimizer/VERSION`, historisée dans
 `CHANGELOG.md` à chaque évolution) ainsi que l'epic et le lot en cours du projet courant.
+
+`/help` liste toutes les commandes disponibles avec leur description, **dérivée des fichiers
+`commands/` réellement installés** (jamais une liste codée en dur) : sur le canal plugin,
+`statusline` n'y figure pas (exclue du build, cf. ci-dessous).
 
 `/statusline` **(opt-in, canal manuel)** pose la barre d'état PMZ dans `settings.json` :
 `PMZ v<version> · <epic> · lot #<id> <titre> · <faits>/<total> · ctx <occupation>` (occupation

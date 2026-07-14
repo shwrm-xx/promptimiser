@@ -2,6 +2,30 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-14 (commande /help) — v1.1.8
+
+Nouvelle commande **`/help`** (`/pmz:help` côté plugin) : liste toutes les commandes
+Promptimizer disponibles avec leur description.
+
+- **`scripts/help.js`** : lit le dossier `commands/` **frère** de `scripts/` (même structure
+  dans les deux canaux) et en dérive la liste — jamais de liste codée en dur qui périmerait à
+  chaque commande ajoutée/retirée. Fail-open : dossier absent/illisible → repli silencieux,
+  jamais de throw.
+- Ajoutée à `REQUIRED_COMMANDS` (garde-fou `build-plugin.js`). Sur le canal plugin, `statusline`
+  n'apparaît pas dans la sortie de `/help` (exclue du build, cf. lot #45) — reflet fidèle de ce
+  qui est réellement installé sur chaque canal, sans divergence possible entre doc et réalité.
+
+Contexte : demande initiale de rendre la statusline disponible côté plugin sans action
+utilisateur — **non réalisable** aujourd'hui (le manifeste plugin Claude Code ne supporte que
+`agent`/`subagentStatusLine`, pas la statusline primaire ; issue GitHub anthropics/claude-code
+#64074 ouvert). Décision : statu quo (statusline reste manuelle), remplacé par cette commande
+`/help` sur une demande séparée.
+
+Vérifié : `node test/run-tests.js` (**634 OK**, section dédiée : liste toutes les commandes
+réelles, se liste elle-même, fail-open sur dossier `commands/` absent) ; build plugin en bac à
+sable → `help` présente, `statusline` absente de sa sortie, conforme au canal manuel (9
+commandes réelles vs 8 dans le plugin).
+
 ## 2026-07-14 (lot #45 — statusline PMZ opt-in) — v1.1.7
 
 Barre d'état Claude Code **opt-in** affichant, en temps réel, l'état PMZ de la session :
