@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 46,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-14T11:20:48.553Z",
+  "updated_at": "2026-07-14T11:21:08.752Z",
   "lots": [
     {
       "id": 1,
@@ -733,7 +733,7 @@
       "effort_hint": "medium",
       "epic": "Autopilote PMZ",
       "verify": null,
-      "closed_commit": "d87d3bb",
+      "closed_commit": "49d7337",
       "closed_at": "2026-07-14T11:20:48.552Z",
       "closed_session_id": null,
       "closed_occupancy": null,
