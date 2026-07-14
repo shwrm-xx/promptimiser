@@ -2,6 +2,32 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-14 (lot #45 — statusline PMZ opt-in) — v1.1.7
+
+Barre d'état Claude Code **opt-in** affichant, en temps réel, l'état PMZ de la session :
+`PMZ v<version> · <epic> · lot #<id> <titre> · <faits>/<total> · ctx <occupation>`.
+
+- **Renderer** `scripts/statusline.js` : lit le JSON stdin de Claude Code (`transcript_path`,
+  `workspace.current_dir`), émet **une seule ligne**. Fail-open total (toute erreur → ligne vide +
+  exit 0), respecte le kill-switch `PMZ_DISABLE`. Occupation via `occupancy.readLastOccupancy`
+  (indépendante de l'état projet) ; epic/lot/progression via le backlog déduit du cwd.
+- **Assemblage pur** `messages.statusLineText` (testable sans disque/stdin, saute toute partie absente).
+- **Câblage** `merge-settings.js` : modes `--statusline` / `--statusline-remove` + champ
+  `statusline: none|pmz|third-party` dans `--check`. **Invariants** : pose uniquement sur demande
+  explicite (jamais dans l'install par défaut) ; ne remplace **jamais** une `statusLine` tierce
+  (préservée + note) ; retrait et désinstallation (`--remove`) ne touchent que **notre** entrée
+  (tag `promptimizer/scripts/statusline.js`).
+- **Chemin stable** : renderer pointé sous `pmzDir()` = miroir manuel `~/.claude/promptimizer/scripts/`,
+  hors du dossier versionné du plugin → survit aux updates. La statusline est donc une feature du
+  **canal manuel** ; commande `/statusline` (`commands/statusline.md`) **exclue du build plugin**
+  (elle invoque `install/merge-settings.js`, absent du plugin).
+
+Vérifié : `node test/run-tests.js` (**621 OK**, section U ajoutée : statusLineText pur, renderer
+fail-open + kill-switch + rendu réel, préservation d'une statusLine tierce, retrait propre,
+`--check`, nettoyage à `--remove`) ; rendu réel sur ce dépôt →
+`PMZ v1.1.7 · Autopilote PMZ · lot #45 Statusline PMZ opt-in · 44/45 · ctx 120k` (une ligne) ;
+build plugin vert, `statusline.md` absent du plugin.
+
 ## 2026-07-14 (lot #44 — clôture prouvée : verify auto + garde-fou CHANGELOG)
 
 À l'**auto-clôture** d'un lot (`stop.js`, quand le working tree redevient propre et qu'un seul lot

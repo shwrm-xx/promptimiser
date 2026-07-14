@@ -36,7 +36,10 @@ const PLUGIN = path.join(MARKET, 'promptimizer');         // racine du plugin
 
 const MARKETPLACE_NAME = 'pmz-local';
 // Composants EXCLUS du plugin : l'installeur manuel (obsolète en plugin) et le bruit OS.
-const EXCLUDE = new Set(['install', '.DS_Store']);
+// `statusline.md` : commande opt-in du CANAL MANUEL uniquement (lot #45). Elle invoque
+// install/merge-settings.js, absent du plugin (install/ exclu) → la livrer dans le plugin
+// donnerait une commande cassée. La statusline reste une feature settings.json = canal manuel.
+const EXCLUDE = new Set(['install', '.DS_Store', 'statusline.md']);
 
 // Garde-fou anti-suppression accidentelle (post-mortem v1.1.3 : le cleanup 7533d72 avait
 // supprimé pmz-scope/pmz-init/pmz-about de la source, croyant à tort les commandes namespacées

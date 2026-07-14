@@ -2877,6 +2877,89 @@ section('Clôture prouvée : verify à l\'auto-clôture + garde-fou CHANGELOG (l
   }
 }
 
+// ============================ U. STATUSLINE OPT-IN (lot #45) ============================
+section('Statusline opt-in : rendu + merge-settings (préserve tierce, retrait propre, lot #45)');
+{
+  const STL = path.join(PKG, 'scripts', 'statusline.js');
+  function runStatusline(inputObj, env) {
+    const input = typeof inputObj === 'string' ? inputObj : JSON.stringify(inputObj);
+    try {
+      const out = execFileSync(process.execPath, [STL], {
+        input, encoding: 'utf8', env: Object.assign({}, process.env, env || {}),
+      });
+      return { code: 0, out };
+    } catch (e) { return { code: e.status == null ? 1 : e.status, out: (e.stdout || '').toString() }; }
+  }
+
+  // U1. statusLineText — pure : assemblage complet, saut des parties absentes, toujours « PMZ ».
+  ok(messages.statusLineText({ version: '9.9.9', epic: 'E', lot: { id: 7, title: 'T' }, done: 2, total: 5, occ: 320000 })
+    === 'PMZ v9.9.9 · E · lot #7 T · 2/5 · ctx 320k', 'statusLineText : ligne complète assemblée');
+  ok(messages.statusLineText({ version: '1.0.0' }) === 'PMZ v1.0.0', 'statusLineText : version seule (aucun séparateur orphelin)');
+  ok(messages.statusLineText({}) === 'PMZ', 'statusLineText : vide -> « PMZ »');
+  ok(messages.statusLineText({ version: '1.0.0', occ: 0 }) === 'PMZ v1.0.0', 'statusLineText : occ 0 -> pas de ctx');
+  ok(!/\/\d/.test(messages.statusLineText({ version: '1.0.0', done: 1 })), 'statusLineText : total manquant -> pas de progression');
+
+  // U2. Renderer — fail-open sur stdin vide/malformé/{} : toujours exit 0, exactement 1 ligne.
+  for (const inp of ['', '{bad json', {}]) {
+    const r = runStatusline(inp);
+    ok(r.code === 0, `statusline.js : stdin ${JSON.stringify(inp).slice(0, 12)} -> exit 0`);
+    ok(r.out.split('\n').filter((l) => l.length).length <= 1, 'statusline.js : au plus une ligne');
+  }
+  // U2bis. Kill-switch : PMZ_DISABLE=1 -> ligne vide.
+  ok(runStatusline({}, { PMZ_DISABLE: '1' }).out.trim() === '', 'statusline.js : PMZ_DISABLE=1 -> muet');
+  // U2ter. Rendu réel : transcript à 320k (hors-git) -> version + « ctx 320k » sur une ligne.
+  {
+    const r = runStatusline({ transcript_path: tA, cwd: SANDBOX });
+    ok(r.code === 0 && /^PMZ\b/.test(r.out) && /ctx 320k/.test(r.out), 'statusline.js : rendu réel -> PMZ … ctx 320k');
+  }
+
+  // U3. merge-settings --statusline sur settings vierge -> pose NOTRE statusLine.
+  writeSettings({ permissions: { allow: ['Read'] } });
+  runNode(MS, [SP, '--statusline'], { PMZ_STATE_DIR: STATE });
+  let s = readSettings();
+  ok(s.statusLine && /promptimizer\/scripts\/statusline\.js/.test(s.statusLine.command), '--statusline : statusLine PMZ posée');
+  ok(s.permissions && s.permissions.allow[0] === 'Read', '--statusline : permissions préservées');
+
+  // U4. --statusline sur une statusLine TIERCE -> préservée, non remplacée.
+  writeSettings({ statusLine: { type: 'command', command: 'my-own-statusline.sh' } });
+  const rThird = runNode(MS, [SP, '--statusline'], { PMZ_STATE_DIR: STATE });
+  s = readSettings();
+  ok(s.statusLine.command === 'my-own-statusline.sh', '--statusline : statusLine tierce NON remplacée');
+  ok(/tierce/i.test(rThird.out), '--statusline : note « tierce préservée »');
+
+  // U5. --statusline-remove ne retire JAMAIS une tierce.
+  runNode(MS, [SP, '--statusline-remove'], { PMZ_STATE_DIR: STATE });
+  s = readSettings();
+  ok(s.statusLine && s.statusLine.command === 'my-own-statusline.sh', '--statusline-remove : tierce préservée');
+
+  // U6. --statusline-remove retire NOTRE statusLine, et elle seule.
+  writeSettings({});
+  runNode(MS, [SP, '--statusline'], { PMZ_STATE_DIR: STATE });
+  runNode(MS, [SP, '--statusline-remove'], { PMZ_STATE_DIR: STATE });
+  s = readSettings();
+  ok(!s.statusLine, '--statusline-remove : statusLine PMZ retirée');
+
+  // U7. --check rapporte l'état statusline (none / pmz / third-party).
+  writeSettings({});
+  ok(JSON.parse(runNode(MS, [SP, '--check'], { PMZ_STATE_DIR: STATE }).out).statusline === 'none', '--check : statusline none');
+  runNode(MS, [SP, '--statusline'], { PMZ_STATE_DIR: STATE });
+  ok(JSON.parse(runNode(MS, [SP, '--check'], { PMZ_STATE_DIR: STATE }).out).statusline === 'pmz', '--check : statusline pmz');
+  writeSettings({ statusLine: { type: 'command', command: 'x.sh' } });
+  ok(JSON.parse(runNode(MS, [SP, '--check'], { PMZ_STATE_DIR: STATE }).out).statusline === 'third-party', '--check : statusline third-party');
+
+  // U8. Désinstallation (--remove) nettoie NOTRE statusline mais pas une tierce.
+  writeSettings({});
+  runNode(MS, [SP, '--statusline'], { PMZ_STATE_DIR: STATE });
+  runNode(MS, [SP], { PMZ_STATE_DIR: STATE }); // install hooks par-dessus
+  runNode(MS, [SP, '--remove'], { PMZ_STATE_DIR: STATE });
+  s = readSettings();
+  ok(!s.statusLine, '--remove : statusLine PMZ nettoyée à la désinstallation');
+  writeSettings({ statusLine: { type: 'command', command: 'keep.sh' } });
+  runNode(MS, [SP, '--remove'], { PMZ_STATE_DIR: STATE });
+  s = readSettings();
+  ok(s.statusLine && s.statusLine.command === 'keep.sh', '--remove : statusLine tierce préservée');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

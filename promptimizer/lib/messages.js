@@ -130,6 +130,26 @@ function fmtK(n) {
   return v >= 1000 ? `${Math.round(v / 1000)}k` : `${Math.round(v)}`;
 }
 
+// Ligne UNIQUE de la statusline (lot #45, opt-in) : version PMZ + epic/lot + occupation
+// temps réel. Pure et testable — aucun accès disque/stdin. L'assemblage saute toute partie
+// absente (jamais de séparateur orphelin « ·  · »). Toujours au moins « PMZ ».
+function clip(s, n) { s = String(s); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+function statusLineText(info) {
+  const i = info || {};
+  const parts = ['PMZ' + (i.version ? ` v${i.version}` : '')];
+  if (i.epic) parts.push(clip(i.epic, 24));
+  if (i.lot) {
+    let s = `lot #${i.lot.id}`;
+    if (i.lot.title) s += ` ${clip(i.lot.title, 24)}`;
+    parts.push(s);
+  }
+  if (Number.isFinite(i.done) && Number.isFinite(i.total) && i.total > 0) {
+    parts.push(`${i.done}/${i.total}`);
+  }
+  if (Number.isFinite(i.occ) && i.occ > 0) parts.push(`ctx ${fmtK(i.occ)}`);
+  return parts.join(' · ');
+}
+
 // Tour coûteux : +delta d'occupation notable sur le dernier tour (anti-spam 3 tours).
 function costlyTurnMessage(turn) {
   return [
@@ -275,5 +295,5 @@ module.exports = {
   occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
   compactResumeMessage, backlogResumeMessage, largeWithPlanMessage,
   costlyTurnMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
-  fmtK,
+  fmtK, statusLineText,
 };

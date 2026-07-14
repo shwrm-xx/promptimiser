@@ -8,9 +8,11 @@
 // - prise de relais réversible d'un hook Stop context-guard.py (--takeover / restore au --remove)
 //
 // Usage :
-//   node merge-settings.js [settingsPath] [--takeover]   (install)
-//   node merge-settings.js [settingsPath] --remove        (désinstall, restaure si possible)
-//   node merge-settings.js [settingsPath] --check         (diagnostic JSON)
+//   node merge-settings.js [settingsPath] [--takeover]     (install)
+//   node merge-settings.js [settingsPath] --remove          (désinstall, restaure + retire notre statusline)
+//   node merge-settings.js [settingsPath] --check           (diagnostic JSON)
+//   node merge-settings.js [settingsPath] --statusline      (opt-in : pose la statusline PMZ, jamais sur une tierce)
+//   node merge-settings.js [settingsPath] --statusline-remove (retire la statusline PMZ, jamais une tierce)
 const fs = require('fs');
 const path = require('path');
 const { SETTINGS_TIMEOUT_S } = require('../lib/timeouts');
@@ -47,6 +49,20 @@ function resolveNodeBin() {
 const NODE_BIN = resolveNodeBin();
 const STATE_DIR = process.env.PMZ_STATE_DIR || cdir.stateDir();
 const SIDECAR = path.join(STATE_DIR, 'taken-over.json');
+
+// Statusline PMZ (lot #45, opt-in). Chemin ABSOLU vers le renderer sous pmzDir() —
+// c.-à-d. le miroir manuel stable ~/.claude/promptimizer/, HORS du dossier versionné du
+// plugin : la statusline (feature settings.json) appartient au canal manuel, comme les
+// hooks-dans-settings. Le tag `promptimizer/scripts/statusline.js` identifie NOTRE entrée
+// pour ne jamais toucher une statusLine tierce.
+const SL_SCRIPT = path.join(cdir.pmzDir(), 'scripts', 'statusline.js');
+const SL_TAG = 'promptimizer/scripts/statusline.js';
+function pmzStatusLine() {
+  return { type: 'command', command: `"${NODE_BIN}" ${SL_SCRIPT}`, padding: 0 };
+}
+function isPmzStatusLine(sl) {
+  return !!(sl && typeof sl === 'object' && typeof sl.command === 'string' && sl.command.includes(SL_TAG));
+}
 
 const T = SETTINGS_TIMEOUT_S;
 const PMZ_HOOKS = {
@@ -159,7 +175,11 @@ function writeSettings(settingsPath, obj) {
 function main() {
   const args = process.argv.slice(2);
   const settingsPath = args.find((a) => !a.startsWith('--')) || cdir.settingsPath();
-  const mode = args.includes('--remove') ? 'remove' : args.includes('--check') ? 'check' : 'install';
+  const mode = args.includes('--remove') ? 'remove'
+    : args.includes('--check') ? 'check'
+    : args.includes('--statusline') ? 'statusline'
+    : args.includes('--statusline-remove') ? 'statusline-remove'
+    : 'install';
   const doTakeover = args.includes('--takeover');
 
   // Lecture STRICTE (abort si JSON invalide).
@@ -182,11 +202,14 @@ function main() {
     const guardPresent = Object.values(hooks).some((arr) => Array.isArray(arr) && arr.some(hasContextGuard));
     const doubleStop = Array.isArray(hooks.Stop) &&
       hooks.Stop.some(isVsgEntry) && hooks.Stop.some(hasContextGuard);
+    const sl = settings.statusLine;
+    const statusline = !sl ? 'none' : isPmzStatusLine(sl) ? 'pmz' : 'third-party';
     process.stdout.write(JSON.stringify({
       settings_exists: fs.existsSync(settingsPath),
       pmz_hooks_present: vsgPresent,
       context_guard_present: guardPresent,
       double_stop: doubleStop,
+      statusline,
     }, null, 2) + '\n');
     process.exit(0);
   }
@@ -205,6 +228,21 @@ function main() {
       if (taken.length) note = `Prise de relais : ${taken.length} hook(s) context-guard.py désactivé(s) (réversible).`;
     }
     addVsg(hooks);
+  } else if (mode === 'statusline') {
+    // Opt-in : ne JAMAIS écraser une statusLine tierce (préservation stricte de l'existant).
+    if (settings.statusLine && !isPmzStatusLine(settings.statusLine)) {
+      note = 'statusLine tierce détectée — PMZ ne la remplace pas (préservée). Retire-la d\'abord pour poser la statusline PMZ.';
+    } else {
+      settings.statusLine = pmzStatusLine();
+      note = `statusLine PMZ posée → ${SL_SCRIPT}. Redémarre la session pour l'afficher.`;
+    }
+  } else if (mode === 'statusline-remove') {
+    if (isPmzStatusLine(settings.statusLine)) {
+      delete settings.statusLine;
+      note = 'statusLine PMZ retirée.';
+    } else {
+      note = 'Aucune statusLine PMZ à retirer' + (settings.statusLine ? ' (une statusLine tierce est présente, préservée).' : '.');
+    }
   } else { // remove
     stripVsg(hooks);
     const res = restore(hooks);
@@ -213,6 +251,8 @@ function main() {
     } else if (res.restored.length) {
       note = `Restauration : ${res.restored.length} hook(s) context-guard.py réactivé(s).`;
     }
+    // Nettoyage de NOTRE statusline uniquement (jamais une tierce).
+    if (isPmzStatusLine(settings.statusLine)) delete settings.statusLine;
     if (Object.keys(hooks).length === 0) delete settings.hooks;
   }
 

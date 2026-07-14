@@ -337,6 +337,26 @@ retirées sont sérialisées dans le **sidecar** `state/taken-over.json` ; `--re
 depuis ce sidecar** (le backup horodaté n'est qu'un filet de secours, pas la source de
 restauration) et **signale** un sidecar corrompu au lieu de l'avaler. Écriture atomique, perms 0600.
 
+### Statusline opt-in (lot #45)
+
+Barre d'état Claude Code **opt-in** : `PMZ v<version> · <epic> · lot #<id> <titre> · <faits>/<total> · ctx <occupation>`.
+`scripts/statusline.js` reçoit le JSON stdin de Claude Code (`transcript_path`, `workspace.current_dir`)
+et n'émet qu'**une** ligne (fail-open total : toute erreur → ligne vide + exit 0 ; kill-switch
+`PMZ_DISABLE`). Occupation lue en temps réel via `occupancy.readLastOccupancy` (indépendante de
+l'état projet) ; epic/lot/progression via le backlog du projet déduit du cwd. Assemblage confié à
+la fonction **pure** `messages.statusLineText` (testable sans disque/stdin, saute toute partie absente).
+
+Câblage dans `merge-settings.js` (`--statusline` / `--statusline-remove`), exposé par la commande
+`/statusline`. **Invariants** : (1) pose **uniquement sur demande explicite**, jamais dans l'install
+par défaut ; (2) ne remplace **jamais** une `statusLine` tierce (détectée → préservée + note, PMZ non
+posée) ; (3) `--statusline-remove` et la désinstallation (`--remove`) ne retirent que **notre** entrée
+(tag `promptimizer/scripts/statusline.js`), jamais une tierce ; (4) `--check` rapporte
+`statusline: none|pmz|third-party`. **Chemin stable** : le renderer pointé dans `settings.json` vit
+sous `pmzDir()` = **miroir manuel** `~/.claude/promptimizer/scripts/`, HORS du dossier versionné du
+plugin → survit aux updates. Conséquence : la statusline est une feature du **canal manuel** (comme
+les hooks-dans-`settings.json` — le canal plugin ne touche jamais `settings.json`) ; `statusline.md`
+est **exclu du build plugin** (il invoque `install/merge-settings.js`, absent du plugin).
+
 ### Canal plugin Claude Code (lot D2, alternatif à l'install manuelle)
 
 Le format plugin impose `commands/`, `skills/`, `hooks/hooks.json` **à la racine du plugin**, sans

@@ -155,10 +155,16 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
 ## Slash commands (secours)
 
 `/init` · `/scope` · `/budget` · `/check-context` · `/close-batch` · `/fresh-session` ·
-`/about`
+`/about` · `/statusline`
 
 `/about` affiche la version installée de PMZ (`promptimizer/VERSION`, historisée dans
 `CHANGELOG.md` à chaque évolution) ainsi que l'epic et le lot en cours du projet courant.
+
+`/statusline` **(opt-in, canal manuel)** pose la barre d'état PMZ dans `settings.json` :
+`PMZ v<version> · <epic> · lot #<id> <titre> · <faits>/<total> · ctx <occupation>` (occupation
+temps réel). Posée **uniquement sur demande explicite** ; **jamais** si une `statusLine` tierce
+existe (préservée) ; retrait propre via la même commande (`--statusline-remove`) et à la
+désinstallation. Un redémarrage de session peut être nécessaire pour l'affichage.
 
 `/budget` et `/check-context` chiffrent leur statut vert/orange/rouge en **tokens réels**
 (occupation courante du contexte + gaspillage de relecture), avec repli annoncé sur le comptage
