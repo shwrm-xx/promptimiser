@@ -20,6 +20,14 @@ const MAX_NOTE = 200;
 const MAX_TODOS = 30;
 const MAX_TODO_CHARS = 120;
 const STATUSES = ['todo', 'in_progress', 'done', 'dropped'];
+// Budget de coût par lot (tokens de SORTIE cumulés, cf. addCost/cost_tokens). Aligné sur la
+// règle de découpe (scope.md : « 1 lot sous ~300k tokens ») : au-delà, un lot a grossi et
+// gagne à être redécoupé plutôt qu'étiré. COST_WARN = seuil « à l'approche » (nudge en cours
+// de lot) ; COST_BUDGET = seuil de dépassement (message durci). Coût = sortie uniquement :
+// métrique monotone, agrégeable trans-session et robuste à la compaction (contrairement à
+// l'occupation, qui est un instantané remis à zéro en session fraîche).
+const COST_BUDGET_TOKENS = 300000;
+const COST_WARN_TOKENS = 250000;
 
 function backlogFile(root) {
   return path.join(vibeDir(root), 'backlog.json');
@@ -59,6 +67,10 @@ function loadBacklog(root) {
       closed_at: l.closed_at || null,
       closed_session_id: l.closed_session_id || null,
       closed_occupancy: Number.isFinite(l.closed_occupancy) ? l.closed_occupancy : null,
+      // Coût réel cumulé du lot = tokens de sortie sommés sur tous les tours où il était
+      // en cours (cf. addCost, appelé par stop.js). Agrégé trans-session (porté par le lot,
+      // pas par l'état de session), figé de fait à la clôture. Négatif/NaN -> 0.
+      cost_tokens: Number.isFinite(l.cost_tokens) && l.cost_tokens > 0 ? l.cost_tokens : 0,
       started_at: l.started_at || null,
       lot_number: Number.isFinite(l.lot_number) ? l.lot_number : null,
       note: l.note ? trunc(l.note, MAX_NOTE) : null,
@@ -132,6 +144,7 @@ function addLot(root, title, scope, modelHint, epic, verify, effortHint) {
     closed_at: null,
     closed_session_id: null,
     closed_occupancy: null,
+    cost_tokens: 0,
     started_at: null,
     lot_number: null,
     note: null,
@@ -179,6 +192,21 @@ function touchLot(root, id) {
   if (!lot || lot.status !== 'in_progress') return null;
   lot.session_touches = (lot.session_touches || 0) + 1;
   return saveBacklog(root, b) ? lot.session_touches : null;
+}
+
+// Agrège le coût réel (tokens de sortie du tour écoulé) sur le lot EN COURS. Appelé une
+// fois par tour par stop.js avec turn.out. N'accumule QUE sur un lot in_progress (un lot
+// clos/à faire ne « consomme » pas). tokens <= 0 -> no-op silencieux (renvoie le lot tel
+// quel sans réécriture inutile). Renvoie le lot à jour, ou null si introuvable/pas en cours.
+// Persistance sur le lot (pas l'état de session) => l'agrégat survit aux sessions fraîches.
+function addCost(root, id, tokens) {
+  const n = Number(tokens);
+  const b = loadBacklog(root);
+  const lot = findLot(b, id);
+  if (!lot || lot.status !== 'in_progress') return null;
+  if (!Number.isFinite(n) || n <= 0) return lot;
+  lot.cost_tokens = (Number.isFinite(lot.cost_tokens) ? lot.cost_tokens : 0) + Math.round(n);
+  return saveBacklog(root, b) ? lot : null;
 }
 
 // Idempotent : un lot déjà done est rendu tel quel, sans réécriture.
@@ -370,7 +398,8 @@ function reconcile(root) {
 
 module.exports = {
   backlogFile, loadBacklog, saveBacklog, addLot, setVerify, startLot, doneLot, dropLot, noteLot,
-  touchLot, currentLot, nextLot, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
+  touchLot, addCost, currentLot, nextLot, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot, modelEffortTag,
   MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_NOTE, MAX_TODOS, EFFORT_LEVELS,
+  COST_BUDGET_TOKENS, COST_WARN_TOKENS,
 };

@@ -9,6 +9,7 @@ const { parseCwd } = require('../lib/cli');
 const backlog = require('../lib/backlog');
 const lot = require('../lib/lot');
 const trigram = require('../lib/trigram');
+const { fmtK } = require('../lib/messages');
 
 const LABELS = { todo: 'à faire', in_progress: 'en cours', done: 'fait', dropped: 'abandonné' };
 
@@ -42,6 +43,7 @@ function show(root, json, epicFilter) {
     if (l.status === 'done' && l.closed_commit) line += ` — commit ${l.closed_commit}`;
     else if (l.scope) line += ` — ${l.scope}`;
     if (l.status === 'done' && Number.isFinite(l.closed_occupancy)) line += ` (occupation à la clôture : ${l.closed_occupancy})`;
+    if (Number.isFinite(l.cost_tokens) && l.cost_tokens > 0) line += ` (coût ~${fmtK(l.cost_tokens)} tokens de sortie)`;
     if (l.note) line += ` (note : ${l.note})`;
     out(line);
   }

@@ -10,6 +10,8 @@ const DEFAULT_STATE = {
   session_id: null,
   session_start_reminded: false, // anti-spam du rappel SessionStart (1×/session)
   closure_reminded_for_batch: false,
+  cost_reminded_for_batch: false, // anti-spam de l'alerte coût par lot (lot #43) : 1× par
+  // lot·session, réarmé quand le working tree redevient propre (nouveau lot, cf. stop.js)
   prompt_reminders: {}, // anti-spam des rappels UserPromptSubmit (clé -> true)
   pending_title_rename: null, // titre suggéré calculé par session-start.js (lot #40),
   // reproposé au 1er UserPromptSubmit si non encore vu là — jamais recalculé (sinon

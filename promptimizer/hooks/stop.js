@@ -19,12 +19,12 @@ const { writeAutoHandoff } = require('../lib/handoff');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { loadContextLedger, recordOccupancy } = require('../lib/ledger');
 const { incrementLot } = require('../lib/lot');
-const { loadBacklog, doneLot, nextLot, progress } = require('../lib/backlog');
+const { loadBacklog, doneLot, nextLot, progress, currentLot, addCost, COST_WARN_TOKENS } = require('../lib/backlog');
 const occupancy = require('../lib/occupancy');
 const turnstats = require('../lib/turnstats');
 const {
   MSG_CLOTURE, MSG_LECTURE, occupancyMessage, lotClosedMessage,
-  costlyTurnMessage, bustIntraMessage, pauseTtlMessage,
+  costlyTurnMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage,
 } = require('../lib/messages');
 
 function main() {
@@ -69,10 +69,29 @@ function main() {
     ensureLedger(root);
     // Miroir compact de l'occupation dans le ledger projet (aperçu lisible).
     if (turn && turn.occ != null) recordOccupancy(root, { occ: turn.occ, delta: turn.delta, sessionId: sid });
+    const st = loadSessionState(root, sid);
+
+    // (a4) coût réel par lot (#43) : agrège la sortie du tour écoulé sur le lot EN COURS
+    // (porté par le lot -> agrégat trans-session) et alerte à l'approche du budget ~300k
+    // avec proposition de redécoupage. Message VISIBLE (systemMessage) donc sans coût de
+    // cache, plafonné 1× par lot·session (réarmé quand le tree redevient propre, plus bas).
+    // Fail-open dédié : une erreur d'agrégation ne casse jamais la clôture ci-dessous.
+    try {
+      const cur = currentLot(loadBacklog(root));
+      if (cur) {
+        const updated = (turn && turn.out > 0) ? addCost(root, cur.id, turn.out) : cur;
+        const cost = updated && Number.isFinite(updated.cost_tokens) ? updated.cost_tokens : 0;
+        if (cost >= COST_WARN_TOKENS && !st.cost_reminded_for_batch) {
+          st.cost_reminded_for_batch = true;
+          saveSessionState(root, st);
+          parts.push(lotCostMessage(updated, cost));
+        }
+      }
+    } catch (_) { /* fail-open : pas d'agrégation ni d'alerte de coût ce tour */ }
+
     // gitStatusMeaningful : le churn .vibe-agent/ (ledgers, handoff réécrit à
     // chaque tour) ne doit pas compter comme lot ouvert ni bloquer sa clôture.
     const open = gitStatusMeaningful(root).length > 0;
-    const st = loadSessionState(root, sid);
     if (open && !st.closure_reminded_for_batch) {
       parts.push(MSG_CLOTURE);
       // Relectures évitables du lot (ledger context) -> note concrète (spirit de MSG_LECTURE).
@@ -85,6 +104,7 @@ function main() {
       saveSessionState(root, st);
     } else if (!open && st.closure_reminded_for_batch) {
       st.closure_reminded_for_batch = false; // working tree propre -> nouveau lot
+      st.cost_reminded_for_batch = false;    // ... réarme aussi l'alerte de coût par lot (#43)
       saveSessionState(root, st);
       const closedNumber = incrementLot(root); // lot fermé -> le prochain sera proposé au SessionStart suivant
       // Auto-clôture du lot backlog — cas univoque seulement (exactement un in_progress) ;

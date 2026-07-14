@@ -2698,6 +2698,95 @@ section('Vigie modèle réel vs préconisé (UserPromptSubmit, anti-spam 1×/ses
   ok(!/Modèle réel/.test(ctxOf(rNoTranscript)), 'transcript illisible -> pas de nudge (rien à comparer)');
 }
 
+// ============================ S. COÛT RÉEL PAR LOT (lot #43) ============================
+section('Coût réel par lot (agrégation cost_tokens + alerte ~300k, lot #43)');
+{
+  // S1. addCost — unités : n'accumule que sur un lot in_progress, ignore <= 0, agrège.
+  const repoU = path.join(SANDBOX, 'repo-cost-unit');
+  fs.mkdirSync(repoU, { recursive: true });
+  execFileSync('git', ['init', '-q', repoU]);
+  const lU = backlogLib.addLot(repoU, 'Lot coût', 'fait quand : test', 'opus');
+  ok(lU.cost_tokens === 0, 'addLot : cost_tokens initialisé à 0');
+  ok(backlogLib.addCost(repoU, lU.id, 5000) === null, 'addCost : refusé sur un lot à faire (pas in_progress)');
+  backlogLib.startLot(repoU, lU.id);
+  ok(backlogLib.addCost(repoU, lU.id, 5000).cost_tokens === 5000, 'addCost : accumule sur le lot en cours');
+  ok(backlogLib.addCost(repoU, lU.id, 3000).cost_tokens === 8000, 'addCost : agrège (5000 + 3000)');
+  ok(backlogLib.addCost(repoU, lU.id, 0).cost_tokens === 8000, 'addCost : tokens=0 -> no-op (inchangé)');
+  ok(backlogLib.addCost(repoU, lU.id, -100).cost_tokens === 8000, 'addCost : tokens<0 -> no-op (inchangé)');
+  backlogLib.doneLot(repoU, lU.id, 'abc1234');
+  ok(backlogLib.addCost(repoU, lU.id, 9000) === null, 'addCost : refusé sur un lot clos');
+  ok(backlogLib.loadBacklog(repoU).lots[0].cost_tokens === 8000, 'clôture : cost_tokens figé et préservé');
+
+  // S2. loadBacklog : lot legacy sans champ cost_tokens -> normalisé à 0 (pas de crash).
+  const legacy = { version: 1, next_id: 2, lots: [{ id: 1, title: 'Legacy', status: 'done' }] };
+  const repoL = path.join(SANDBOX, 'repo-cost-legacy');
+  fs.mkdirSync(path.join(repoL, '.vibe-agent'), { recursive: true });
+  execFileSync('git', ['init', '-q', repoL]);
+  fs.writeFileSync(path.join(repoL, '.vibe-agent', 'backlog.json'), JSON.stringify(legacy));
+  ok(backlogLib.loadBacklog(repoL).lots[0].cost_tokens === 0, 'loadBacklog : cost_tokens absent -> 0 (rétrocompat)');
+
+  // S3. show CLI : affiche le coût quand > 0.
+  const showOut = runNode(BKLG, ['show', '--cwd', repoU]).out;
+  ok(/coût ~8k tokens de sortie/.test(showOut), 'show : coût cumulé affiché (« coût ~8k tokens de sortie »)');
+
+  // S4. bout-en-bout via stop.js : agrégation par tour + alerte 1×/lot·session + réarmement.
+  const repo = path.join(SANDBOX, 'repo-cost-e2e');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  // .vibe-agent/.gitignore comme le bootstrap : les ledgers réécrits chaque tour restent
+  // ignorés (sinon, une fois suivis, leur churn ferait échouer la détection de tree propre).
+  fs.mkdirSync(path.join(repo, '.vibe-agent'), { recursive: true });
+  fs.writeFileSync(path.join(repo, '.vibe-agent', '.gitignore'), '*\n!.gitignore\n!backlog.json\n!rules.yaml\n');
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const lE = backlogLib.addLot(repo, 'Gros lot', 'fait quand : test', 'opus');
+  backlogLib.startLot(repo, lE.id);
+  const sidC = 'sess-cost';
+  const tC = path.join(SANDBOX, 'cost.jsonl');
+  fs.writeFileSync(tC, '');
+  const sysMsg = (r) => { try { return JSON.parse(r.out).systemMessage || ''; } catch (_) { return ''; } };
+  fs.writeFileSync(path.join(repo, 'w.txt'), 'x'); // lot ouvert (tree sale)
+
+  // Tour 1 = baseline (out ignoré, pas d'accumulation), rappel de clôture attendu.
+  fs.appendFileSync(tC, usageLine(2000, 118000, 0, 500) + '\n');
+  const c1 = runHook('stop.js', { session_id: sidC, cwd: repo, transcript_path: tC });
+  ok(backlogLib.loadBacklog(repo).lots[0].cost_tokens === 0, 'e2e : tour baseline -> aucune accumulation (out=0)');
+  ok(!/tokens de sortie cumulés/.test(sysMsg(c1)), 'e2e : baseline -> pas d\'alerte coût');
+
+  // Tour 2 = sortie 260k -> cost_tokens=260k >= 250k -> alerte « en approche ».
+  fs.appendFileSync(tC, usageLine(3000, 197000, 0, 260000) + '\n');
+  const c2 = runHook('stop.js', { session_id: sidC, cwd: repo, transcript_path: tC });
+  ok(backlogLib.loadBacklog(repo).lots[0].cost_tokens === 260000, 'e2e : sortie du tour agrégée sur le lot (260k)');
+  ok(/Gros lot.*260k tokens de sortie cumulés/.test(sysMsg(c2)), 'e2e : alerte coût injectée (nomme le lot + le cumul)');
+  ok(/en approche du budget ~300k/.test(sysMsg(c2)), 'e2e : 260k < 300k -> message « en approche »');
+
+  // Tour 3 = encore de la sortie -> cumul monte mais anti-spam 1×/lot·session.
+  fs.appendFileSync(tC, usageLine(3000, 197000, 0, 5000) + '\n');
+  const c3 = runHook('stop.js', { session_id: sidC, cwd: repo, transcript_path: tC });
+  ok(backlogLib.loadBacklog(repo).lots[0].cost_tokens === 265000, 'e2e : accumulation continue (265k)');
+  ok(!/tokens de sortie cumulés/.test(sysMsg(c3)), 'e2e : anti-spam -> pas de 2e alerte dans la même session');
+
+  // Tour 4 = working tree propre -> auto-clôture + réarmement du flag de coût.
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'lot fini']);
+  runHook('stop.js', { session_id: sidC, cwd: repo, transcript_path: tC });
+  const bDone = backlogLib.loadBacklog(repo);
+  ok(bDone.lots[0].status === 'done' && bDone.lots[0].cost_tokens === 265000, 'e2e : clôture -> cost_tokens conservé (265k)');
+  const stAfter = JSON.parse(fs.readFileSync(path.join(repo, '.vibe-agent', 'session-state.json'), 'utf8'));
+  ok(stAfter.cost_reminded_for_batch === false, 'e2e : tree propre -> alerte de coût réarmée pour le prochain lot');
+
+  // S5. fail-open : stop.js ne casse jamais même si le lot n'existe pas / pas de transcript.
+  const repoF = path.join(SANDBOX, 'repo-cost-failopen');
+  fs.mkdirSync(repoF, { recursive: true });
+  execFileSync('git', ['init', '-q', repoF]);
+  fs.writeFileSync(path.join(repoF, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoF, 'add', '.']);
+  execFileSync('git', ['-C', repoF, 'commit', '-q', '-m', 'init']);
+  const cF = runHook('stop.js', { session_id: 'sess-cf', cwd: repoF, transcript_path: path.join(SANDBOX, 'nope.jsonl') });
+  ok(cF.code === 0, 'e2e : aucun lot + transcript absent -> exit 0 (fail-open)');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

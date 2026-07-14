@@ -2,6 +2,33 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-14 (lot #43 — coût réel par lot : agrégation + alerte ~300k)
+
+`stop.js` agrège désormais, à chaque tour, les **tokens de sortie** du tour
+(`turnstats.computeTurn().out`) sur le lot backlog `in_progress`, dans un nouveau champ
+`cost_tokens` porté par le lot (`lib/backlog.js: addCost`). Le choix de la sortie plutôt que de
+l'occupation contexte est délibéré : c'est une mesure monotone, sommable et robuste à la
+compaction — donc un **agrégat trans-session** fiable, figé de fait à la clôture. Affiché par
+`backlog.js show` (« coût ~Nk tokens de sortie »).
+
+Alerte en cours de lot : au-delà de `COST_WARN` (250k), `stop.js` émet un nudge `systemMessage`
+proposant un **redécoupage** (budget `COST_BUDGET` = ~300k/lot, aligné sur la règle de découpe de
+`scope.md`), durci au-delà de 300k. Plafonnée **1× par lot·session**
+(`cost_reminded_for_batch`, réarmée quand le working tree redevient propre → nouveau lot).
+Fail-open dédié : une erreur d'agrégation ne casse jamais la clôture ; `addCost` n'accumule que
+sur un lot `in_progress` et ignore `tokens ≤ 0`.
+
+Vérifié en bac à sable réel (hook `stop.js` invoqué en CLI sur un transcript fabriqué :
+agrégation par tour, alerte « en approche » au franchissement, anti-spam au tour suivant,
+auto-clôture avec `cost_tokens` conservé) en plus des tests. `ARCHITECTURE.md` mis à jour ;
+`test/run-tests.js` : 579 OK, 0 échec.
+
+Dette repérée en passant (hors scope, non corrigée) : `project.js: gitStatusMeaningful` peut
+laisser passer une entrée `.vibe-agent/` **worktree-modifiée** en 1ère ligne du porcelain, car
+`git().trim()` mange son espace de tête et décale le `slice(3)`. Latent en production (les
+ledgers `.vibe-agent/` sont gitignorés et `backlog.json` apparaît toujours **stagé** — préfixe
+non mangé) ; ne se déclenche qu'avec des ledgers suivis par git (repo non bootstrappé).
+
 ## 2026-07-14 (lot #42 — vigie modèle réel vs préconisé)
 
 `user-prompt-submit.js` compare désormais, au 1er prompt de chaque session, le modèle qui a

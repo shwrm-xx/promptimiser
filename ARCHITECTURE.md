@@ -32,7 +32,7 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
 | `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd`, `transcript_path` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large (anti-spam 1×/session), nudge occupation ≥ 500k en 2 lignes (anti-spam 1×/palier, lot B5), vigie modèle réel vs préconisé du lot en cours (anti-spam 1×/session, lot #42) |
 | `pre-tool-use.js` | PreToolUse `Bash` | `tool_input.command` | `permissionDecision` allow/ask/deny | sûreté commandes |
 | `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite` | `tool_input.file_path`, `tool_input.todos` | `additionalContext` (rare, advisory) + effet de bord ledgers | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite), signale une relecture complète redondante (lot B4) |
-| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), hygiène de lecture, rappel de clôture nommant les skills, incrémente le compteur de lot, auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, écrit le handoff auto (écrasé à chaque tour) |
+| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), hygiène de lecture, rappel de clôture nommant les skills, incrémente le compteur de lot, agrège le coût réel du lot en cours (`cost_tokens`) et alerte à l'approche du budget ~300k avec proposition de redécoupage (lot #43), auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, écrit le handoff auto (écrasé à chaque tour) |
 | `pre-compact.js` | PreCompact `manual\|auto` | `cwd`, `trigger`, `transcript_path` | `systemMessage` (manual) ou — (auto : effet de bord handoff seul) | sauve le handoff auto (plan de lots + todos compris) AVANT compaction ; la réinjection minimale se fait au SessionStart(compact). Sur `manual` (/compact), ajoute un rappel **chiffré** visible : compacter ≈ réécriture de l'occupation en cache-write (×1,25) + résumé lossy, vs clôture + handoff (~8k) — TTL prudent, aucun prix en dur (lot T1). `auto` reste silencieux (compaction subie) |
 
 ### Invariants NON négociables
@@ -108,6 +108,18 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   `session_id`) : le modèle ne change normalement pas en cours de session, une seule alerte
   suffit à signaler un mauvais démarrage. Fail-open total (backlog absent, transcript
   illisible, aucun lot en cours ou sans `model_hint` → silence, jamais de blocage).
+- **Coût réel par lot** (`backlog.js: addCost`, lot #43) : `stop.js` agrège chaque tour les
+  **tokens de sortie** du tour (`turnstats.computeTurn().out`) sur le lot `in_progress`, dans
+  le champ `cost_tokens` du lot lui-même — donc **agrégat trans-session** (porté par le lot,
+  pas par l'état de session), figé de fait à la clôture et affiché par `backlog.js show`. La
+  sortie est choisie plutôt que l'occupation car elle est **monotone, sommable et robuste à la
+  compaction** (l'occupation est un instantané remis à zéro en session fraîche). Au-delà de
+  `COST_WARN` (250k), `stop.js` émet un nudge `systemMessage` proposant un **redécoupage**
+  (budget `COST_BUDGET` = ~300k/lot, aligné sur la règle de découpe de `scope.md`), message
+  durci au-delà de 300k. Plafonné **1× par lot·session** (`cost_reminded_for_batch`, réarmé
+  quand le working tree redevient propre — nouveau lot). Fail-open dédié : une erreur
+  d'agrégation ne casse jamais la clôture. `cost_tokens` ne s'accumule que sur un lot
+  `in_progress` (un lot à faire/clos ne consomme pas) ; `addCost` est un no-op sur `tokens ≤ 0`.
 - **Ledgers projet** (`.vibe-agent/{read,context}-ledger.json`) : auto-créés par
   `ensureLedger` (tout hook qui touche au projet) puis maintenus par `post-tool-use.js`
   (atomique `tmp`+`rename`, cap FIFO). Servent l'advisory `/check-context`. Granularité
@@ -220,7 +232,10 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   exit 0, la décision de clore reste humaine/assistant). Champ `closed_occupancy` (lot #29) :
   occupation contexte du tour figée par `stop.js` à l'auto-clôture (`turnstats.computeTurn().occ`,
   métrologie de coût par lot) — `null` sur une clôture manuelle via le CLI (pas de transcript à ce
-  niveau). **Durabilité par défaut** (le backlog ne doit JAMAIS être perdu) : le
+  niveau). Champ `cost_tokens` (lot #43) : coût réel cumulé du lot = tokens de sortie sommés par
+  `stop.js` sur tous les tours où il était `in_progress` (`addCost`) — agrégat trans-session porté
+  par le lot, figé de fait à la clôture, affiché par `show` ; cf. puce « Coût réel par lot » plus
+  haut. **Durabilité par défaut** (le backlog ne doit JAMAIS être perdu) : le
   bootstrap pose un `.vibe-agent/.gitignore` **whitelist** (`*` puis `!.gitignore`, `!backlog.json`,
   `!rules.yaml`) — l'état éphémère (ledgers, handoff, session-state, snapshot) reste hors git, seul
   le plan durable est suivi ; et `saveBacklog` **stage** le fichier à chaque écriture (survit à un

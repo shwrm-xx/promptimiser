@@ -1,6 +1,7 @@
 'use strict';
 // Messages injectés par les hooks. Courts, conformes à la spec mwn/ (rg -> git grep).
 const { BUCKETS, FLOATING_STEP } = require('./occupancy');
+const { COST_BUDGET_TOKENS } = require('./backlog');
 
 const MSG_ACTIF = [
   'Promptimizer actif.',
@@ -226,6 +227,18 @@ function sessionTitleMessage(title) {
   ].join('\n');
 }
 
+// Coût réel par lot (lot #43) : le lot en cours a cumulé ~costTokens tokens de SORTIE, en
+// approche (>= COST_WARN) ou au-delà (>= COST_BUDGET) du budget ~300k/lot. Message VISIBLE
+// (systemMessage stop.js — jamais réinjecté), plafonné 1×/lot·session par l'appelant.
+function lotCostMessage(lot, costTokens) {
+  const over = (costTokens || 0) >= COST_BUDGET_TOKENS;
+  const budgetK = Math.round(COST_BUDGET_TOKENS / 1000);
+  return [
+    `Lot « ${lot.title} » : ~${fmtK(costTokens)} tokens de sortie cumulés — ${over ? `au-delà du budget ~${budgetK}k/lot` : `en approche du budget ~${budgetK}k/lot`}.`,
+    'Un lot devenu gros gagne à être redécoupé (un sous-lot livrable + commit intermédiaire, puis /fresh-session) plutôt qu\'étiré.',
+  ].join('\n');
+}
+
 // Vigie modèle réel vs préconisé (lot #42) : le modèle qui répond ce tour ne correspond pas
 // au model_hint du lot en cours. Injecté au 1er prompt du lot, 1×/session (anti-spam).
 function modelMismatchMessage(lot, actualModel) {
@@ -239,5 +252,6 @@ module.exports = {
   MSG_ACTIF, MSG_ACTIF_SLIM, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
   compactResumeMessage, backlogResumeMessage, largeWithPlanMessage,
-  costlyTurnMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage,
+  costlyTurnMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage,
+  fmtK,
 };
