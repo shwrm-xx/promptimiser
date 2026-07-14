@@ -2787,6 +2787,96 @@ section('Coût réel par lot (agrégation cost_tokens + alerte ~300k, lot #43)')
   ok(cF.code === 0, 'e2e : aucun lot + transcript absent -> exit 0 (fail-open)');
 }
 
+// ============================ T. CLÔTURE PROUVÉE (verify auto + garde-fou changelog, lot #44) ============================
+section('Clôture prouvée : verify à l\'auto-clôture + garde-fou CHANGELOG (lot #44)');
+{
+  // T1. runVerify — unités : succès, échec (avec tail), non-terminaison dans le délai (timedOut).
+  const repoV = path.join(SANDBOX, 'repo-verify-unit');
+  fs.mkdirSync(repoV, { recursive: true });
+  const vOk = project.runVerify(repoV, 'node -e "process.exit(0)"', 2000);
+  ok(vOk.ok === true, 'runVerify : commande qui réussit -> ok');
+  const vFail = project.runVerify(repoV, 'node -e "console.error(\'boom\');process.exit(1)"', 2000);
+  ok(vFail.ok === false && vFail.timedOut === false && /boom/.test(vFail.tail), 'runVerify : échec -> !ok, !timedOut, tail capturé');
+  const vTimeout = project.runVerify(repoV, 'node -e "setTimeout(function(){}, 5000)"', 300);
+  ok(vTimeout.ok === false && vTimeout.timedOut === true, 'runVerify : dépassement du délai court -> timedOut (pas un échec)');
+
+  // T2. closureProofMessage — unités : chaque branche + null quand rien à dire.
+  ok(/Verify du lot \(`x`\) : OK\./.test(messages.closureProofMessage({ cmd: 'x', ok: true }, false)), 'closureProofMessage : verify OK');
+  ok(/non terminée dans le délai court/.test(messages.closureProofMessage({ cmd: 'x', ok: false, timedOut: true }, false)), 'closureProofMessage : verify timeout -> pas « ÉCHEC »');
+  ok(/ÉCHEC.*à corriger/s.test(messages.closureProofMessage({ cmd: 'x', ok: false, timedOut: false, tail: 'zut' }, false)), 'closureProofMessage : verify échec');
+  ok(/Rappel doux.*CHANGELOG\.md/s.test(messages.closureProofMessage(null, true)), 'closureProofMessage : garde-fou CHANGELOG seul');
+  ok(messages.closureProofMessage(null, false) === null, 'closureProofMessage : rien à dire -> null');
+
+  // Fabrique un repo bootstrappé (ledgers ignorés) + helper d'auto-clôture (dirty -> arme le
+  // flag, puis commit -> transition tree propre = auto-clôture au Stop suivant).
+  const sysMsg = (r) => { try { return JSON.parse(r.out).systemMessage || ''; } catch (_) { return ''; } };
+  function bootRepo(name) {
+    const repo = path.join(SANDBOX, name);
+    fs.mkdirSync(path.join(repo, '.vibe-agent'), { recursive: true });
+    execFileSync('git', ['init', '-q', repo]);
+    fs.writeFileSync(path.join(repo, '.vibe-agent', '.gitignore'), '*\n!.gitignore\n!backlog.json\n!rules.yaml\n');
+    fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+    return repo;
+  }
+  const empT = path.join(SANDBOX, 'empty-t.jsonl');
+  fs.writeFileSync(empT, '');
+
+  // T3. e2e : verify du lot PASSE + commit de clôture SANS CHANGELOG -> « OK. » + « Rappel doux ».
+  {
+    const repo = bootRepo('repo-proof-ok');
+    const l = backlogLib.addLot(repo, 'Lot prouvé', 'fait quand : vert', 'opus', null, 'node -e "process.exit(0)"');
+    backlogLib.startLot(repo, l.id);
+    const sid = 'sess-proof-ok';
+    fs.writeFileSync(path.join(repo, 'w.txt'), 'x');
+    runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empT }); // arme closure_reminded
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'lot fini (sans changelog)']);
+    const r = runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empT });
+    const m = sysMsg(r);
+    ok(backlogLib.loadBacklog(repo).lots[0].status === 'done', 'e2e : lot auto-clôturé');
+    ok(/Lot « Lot prouvé » clos/.test(m), 'e2e : message de clôture présent');
+    ok(/Verify du lot \(`node -e "process\.exit\(0\)"`\) : OK\./.test(m), 'e2e : verify exécutée à l\'auto-clôture, résultat OK visible');
+    ok(/Rappel doux.*CHANGELOG\.md/s.test(m), 'e2e : commit de clôture sans CHANGELOG -> rappel doux');
+  }
+
+  // T4. e2e : commit de clôture QUI touche CHANGELOG.md -> pas de rappel doux ; verify en ÉCHEC visible.
+  {
+    const repo = bootRepo('repo-proof-changelog');
+    const l = backlogLib.addLot(repo, 'Lot échec', 'fait quand : vert', 'opus', null, 'node -e "process.exit(1)"');
+    backlogLib.startLot(repo, l.id);
+    const sid = 'sess-proof-cl';
+    fs.writeFileSync(path.join(repo, 'CHANGELOG.md'), '# Changelog\n');
+    fs.writeFileSync(path.join(repo, 'w.txt'), 'y');
+    runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empT });
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'lot fini (avec changelog)']);
+    const r = runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empT });
+    const m = sysMsg(r);
+    ok(!/Rappel doux/.test(m), 'e2e : commit de clôture touchant CHANGELOG -> aucun rappel doux');
+    ok(/Verify du lot.*ÉCHEC/s.test(m), 'e2e : verify en échec -> visible (clôture non bloquée)');
+    ok(backlogLib.loadBacklog(repo).lots[0].status === 'done', 'e2e : verify en échec ne bloque pas la clôture');
+  }
+
+  // T5. fail-open : lot SANS verify + commande impossible n'importe où -> exit 0, lot clôturé.
+  {
+    const repo = bootRepo('repo-proof-noverify');
+    const l = backlogLib.addLot(repo, 'Lot sans verify', 'fait quand : X', 'opus');
+    backlogLib.startLot(repo, l.id);
+    const sid = 'sess-proof-nv';
+    fs.writeFileSync(path.join(repo, 'CHANGELOG.md'), '# Changelog\n');
+    fs.writeFileSync(path.join(repo, 'w.txt'), 'z');
+    runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empT });
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'lot fini']);
+    const r = runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empT });
+    ok(r.code === 0, 'e2e : lot sans verify -> exit 0 (fail-open)');
+    ok(!/Verify du lot/.test(sysMsg(r)), 'e2e : lot sans verify -> aucune ligne verify');
+    ok(backlogLib.loadBacklog(repo).lots[0].status === 'done', 'e2e : lot sans verify auto-clôturé');
+  }
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

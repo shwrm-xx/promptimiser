@@ -6,8 +6,14 @@
 const SETTINGS_TIMEOUT_S = { sessionStart: 10, default: 5 };
 const WATCHDOG_MARGIN_MS = 500;
 
+// Verify exécutée à l'AUTO-clôture (hook Stop, lot #44) : timeout COURT, borné bien en deçà
+// du watchdog Stop (watchdogMs(5) = 4500 ms). execSync rend la main à ce délai au plus (le
+// process n'est pas tué), après quoi doneLot est déjà persisté -> aucune corruption d'état
+// même si le tour dépasse ensuite le watchdog. La preuve complète reste /close-batch (20 s).
+const VERIFY_AUTOCLOSE_MS = 2500;
+
 function watchdogMs(timeoutS) {
   return Math.max(0, timeoutS * 1000 - WATCHDOG_MARGIN_MS);
 }
 
-module.exports = { SETTINGS_TIMEOUT_S, WATCHDOG_MARGIN_MS, watchdogMs };
+module.exports = { SETTINGS_TIMEOUT_S, WATCHDOG_MARGIN_MS, VERIFY_AUTOCLOSE_MS, watchdogMs };

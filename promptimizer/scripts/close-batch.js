@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 // Checklist de clôture (format spec). Pré-rempli via audit-batch quand détectable.
-const { execSync } = require('child_process');
 const { compute } = require('./audit-batch');
+const { runVerify } = require('../lib/project');
 const { parseCwd } = require('../lib/cli');
 
 function yn(v) { return v ? 'oui' : 'non'; }
@@ -11,17 +11,8 @@ const PMZ_BASE = (process.env.CLAUDE_PLUGIN_ROOT || '').trim() || '~/.claude/pro
 
 // Exécute la commande verify du lot en cours (si posée) AVANT le `done` — preuve de
 // clôture. Jamais bloquant : un échec ne fait qu'ajouter une ligne « à corriger » dans
-// la checklist, la décision de marquer le lot fait reste à l'humain/l'assistant.
-function runVerify(root, cmd) {
-  try {
-    execSync(cmd, { cwd: root, timeout: 20000, stdio: 'pipe' });
-    return { ok: true };
-  } catch (e) {
-    const raw = String((e && e.stderr) || (e && e.stdout) || (e && e.message) || '').trim();
-    return { ok: false, tail: raw.split(/\r?\n/).slice(-5).join('\n  ') };
-  }
-}
-
+// la checklist, la décision de marquer le lot fait reste à l'humain/l'assistant. Timeout
+// large (20 s) : /close-batch est piloté par l'assistant, pas dans le budget serré d'un hook.
 function main() {
   const d = compute(parseCwd());
   const changelog = yn(d.changelog_touched);

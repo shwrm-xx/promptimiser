@@ -32,7 +32,7 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
 | `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd`, `transcript_path` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large (anti-spam 1×/session), nudge occupation ≥ 500k en 2 lignes (anti-spam 1×/palier, lot B5), vigie modèle réel vs préconisé du lot en cours (anti-spam 1×/session, lot #42) |
 | `pre-tool-use.js` | PreToolUse `Bash` | `tool_input.command` | `permissionDecision` allow/ask/deny | sûreté commandes |
 | `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite` | `tool_input.file_path`, `tool_input.todos` | `additionalContext` (rare, advisory) + effet de bord ledgers | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite), signale une relecture complète redondante (lot B4) |
-| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), hygiène de lecture, rappel de clôture nommant les skills, incrémente le compteur de lot, agrège le coût réel du lot en cours (`cost_tokens`) et alerte à l'approche du budget ~300k avec proposition de redécoupage (lot #43), auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, écrit le handoff auto (écrasé à chaque tour) |
+| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), hygiène de lecture, rappel de clôture nommant les skills, incrémente le compteur de lot, agrège le coût réel du lot en cours (`cost_tokens`) et alerte à l'approche du budget ~300k avec proposition de redécoupage (lot #43), auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, exécute la `verify` du lot à l'auto-clôture (timeout court `VERIFY_AUTOCLOSE_MS`, résultat visible, jamais bloquant) + rappel doux si le commit de clôture ne touche pas `CHANGELOG.md` (lot #44), écrit le handoff auto (écrasé à chaque tour) |
 | `pre-compact.js` | PreCompact `manual\|auto` | `cwd`, `trigger`, `transcript_path` | `systemMessage` (manual) ou — (auto : effet de bord handoff seul) | sauve le handoff auto (plan de lots + todos compris) AVANT compaction ; la réinjection minimale se fait au SessionStart(compact). Sur `manual` (/compact), ajoute un rappel **chiffré** visible : compacter ≈ réécriture de l'occupation en cache-write (×1,25) + résumé lossy, vs clôture + handoff (~8k) — TTL prudent, aucun prix en dur (lot T1). `auto` reste silencieux (compaction subie) |
 
 ### Invariants NON négociables
@@ -227,9 +227,18 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   touche à rien — réconciliation bête via `backlog.js reconcile`). Jamais de promotion
   automatique du suivant. Champ optionnel `verify` (cap 150c, `MAX_VERIFY`, lot #29) : commande
   shell de preuve de clôture, posée à l'`add --verify` ou éditée après coup (`backlog.js verify
-  --id N --set "…"`) — `/close-batch` (`scripts/close-batch.js`) l'exécute avant d'indiquer le
-  `done` et affiche OK/ÉCHEC (refus doux, **jamais bloquant** — même en échec la checklist reste
-  exit 0, la décision de clore reste humaine/assistant). Champ `closed_occupancy` (lot #29) :
+  --id N --set "…"`) — exécuté par `lib/project.js:runVerify` (helper partagé, ne throw jamais :
+  `{ok}` / `{ok:false, timedOut, tail}`). `/close-batch` (`scripts/close-batch.js`) l'appelle avec un
+  timeout large (20 s) avant d'indiquer le `done` et affiche OK/ÉCHEC (refus doux, **jamais bloquant**
+  — même en échec la checklist reste exit 0, la décision de clore reste humaine/assistant). À
+  l'**auto-clôture** (lot #44), `stop.js` l'exécute aussi mais avec un timeout **court**
+  (`VERIFY_AUTOCLOSE_MS` = 2500 ms, borné bien en deçà du watchdog Stop 4,5 s) : lancé **après** que
+  `doneLot` a persisté (un dépassement de watchdog ne peut donc pas corrompre le backlog), résultat
+  rendu visible par `messages.js:closureProofMessage` — une non-terminaison dans le délai court est
+  affichée « non terminée » (relancer via `/close-batch`), **pas** « ÉCHEC ». Le même message porte
+  un **garde-fou CHANGELOG** : rappel doux si le commit de clôture (HEAD, tree propre ⇒
+  `changelogTouched` se réduit au dernier commit) ne touche pas `CHANGELOG.md`. try/catch dédié →
+  fail-open : la clôture reste acquise même si la preuve échoue. Champ `closed_occupancy` (lot #29) :
   occupation contexte du tour figée par `stop.js` à l'auto-clôture (`turnstats.computeTurn().occ`,
   métrologie de coût par lot) — `null` sur une clôture manuelle via le CLI (pas de transcript à ce
   niveau). Champ `cost_tokens` (lot #43) : coût réel cumulé du lot = tokens de sortie sommés par

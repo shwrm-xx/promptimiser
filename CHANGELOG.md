@@ -2,6 +2,28 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-14 (lot #44 — clôture prouvée : verify auto + garde-fou CHANGELOG)
+
+À l'**auto-clôture** d'un lot (`stop.js`, quand le working tree redevient propre et qu'un seul lot
+est `in_progress`), la commande `verify` du lot — jusqu'ici exécutée seulement par `/close-batch` —
+est désormais lancée automatiquement et son résultat rendu **visible** (`systemMessage`).
+
+- **Timeout court** (`VERIFY_AUTOCLOSE_MS` = 2500 ms, `lib/timeouts.js`), borné bien en deçà du
+  watchdog Stop (4,5 s). La verify est lancée **après** que `doneLot` a persisté l'état : un
+  dépassement de watchdog ne peut donc pas corrompre le backlog (le lot reste marqué fait).
+- **Jamais bloquant** : une non-terminaison dans le délai court est affichée « non terminée —
+  relance via /close-batch », **pas** « ÉCHEC » (nouveau champ `timedOut` de `runVerify`, distingué
+  d'un vrai échec). Un échec réel affiche le tail, sans bloquer la clôture.
+- **Garde-fou CHANGELOG** : rappel doux si le commit de clôture ne touche pas `CHANGELOG.md`
+  (`changelogTouched`, réduit au dernier commit puisque le tree est propre).
+- `runVerify` extrait de `close-batch.js` vers `lib/project.js` (helper partagé, timeout
+  paramétrable, ne throw jamais) ; `close-batch.js` le réutilise (timeout large 20 s inchangé).
+  Nouveau `messages.js: closureProofMessage`. try/catch dédié dans `stop.js` → fail-open.
+
+Vérifié : `node test/run-tests.js` (597 OK, section T ajoutée) + bac à sable réel — auto-clôture
+avec verify lent (5 s) bornée à ~2,7 s < watchdog, message « non terminée », rappel CHANGELOG,
+exit 0, lot marqué fait malgré le timeout.
+
 ## 2026-07-14 (lot #43 — coût réel par lot : agrégation + alerte ~300k)
 
 `stop.js` agrège désormais, à chaque tour, les **tokens de sortie** du tour

@@ -2,7 +2,7 @@
 // Détection projet partagée. Aucune lecture massive : git + existsSync seulement.
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, execSync } = require('child_process');
 const { resolveTool } = require('./env');
 
 // Chemin absolu de git résolu une fois (même angle mort PATH que node sous les apps GUI macOS).
@@ -130,7 +130,24 @@ function changelogTouched(root) {
   return false;
 }
 
+// Exécute une commande verify (shell) avec timeout. Ne throw JAMAIS : renvoie
+// { ok } sur succès, { ok:false, timedOut, tail } sinon. timedOut distingue une
+// non-terminaison dans le délai (execSync tue l'enfant -> e.killed) d'un vrai échec :
+// à l'auto-clôture (timeout court) une suite de tests longue expire sans être « en échec ».
+// Partagé par scripts/close-batch.js (timeout large) et hooks/stop.js (timeout court, #44).
+function runVerify(root, cmd, timeoutMs) {
+  try {
+    execSync(cmd, { cwd: root, timeout: timeoutMs || 20000, stdio: 'pipe' });
+    return { ok: true };
+  } catch (e) {
+    // À l'expiration, execSync tue l'enfant : code ETIMEDOUT (signal SIGTERM), status null.
+    const timedOut = !!(e && (e.code === 'ETIMEDOUT' || (e.signal === 'SIGTERM' && e.status == null)));
+    const raw = String((e && e.stderr) || (e && e.stdout) || (e && e.message) || '').trim();
+    return { ok: false, timedOut, tail: raw.split(/\r?\n/).slice(-5).join('\n  ') };
+  }
+}
+
 module.exports = {
   git, gitRoot, vibeDir, isInitialized, ensureLedger, isFullyInitialized, exists, carriesRules, detectStack,
-  gitStatusPorcelain, gitStatusMeaningful, lastCommitEpoch, hasAnyCommit, changelogTouched,
+  gitStatusPorcelain, gitStatusMeaningful, lastCommitEpoch, hasAnyCommit, changelogTouched, runVerify,
 };

@@ -239,6 +239,28 @@ function lotCostMessage(lot, costTokens) {
   ].join('\n');
 }
 
+// Preuve de clôture à l'AUTO-clôture (lot #44) : à l'instant où le tree redevient propre et
+// que le lot univoque est marqué fait, on rend VISIBLE (systemMessage stop.js, jamais réinjecté)
+// (a) le résultat du verify du lot s'il en a un — jamais bloquant, une non-terminaison dans le
+// délai court n'est PAS un échec ; (b) un rappel doux si le commit de clôture ne touche pas
+// CHANGELOG.md. Renvoie null si rien à dire (pas de verify + CHANGELOG présent).
+function closureProofMessage(verify, changelogMissing) {
+  const lines = [];
+  if (verify && verify.cmd) {
+    if (verify.ok) {
+      lines.push(`Verify du lot (\`${verify.cmd}\`) : OK.`);
+    } else if (verify.timedOut) {
+      lines.push(`Verify du lot (\`${verify.cmd}\`) : non terminée dans le délai court de l'auto-clôture — relance-la via /close-batch pour la preuve complète.`);
+    } else {
+      lines.push(`Verify du lot (\`${verify.cmd}\`) : ÉCHEC (clôture non bloquée) — à corriger avant d'enchaîner :\n  ${verify.tail}`);
+    }
+  }
+  if (changelogMissing) {
+    lines.push('Rappel doux : le commit de clôture ne touche pas CHANGELOG.md — un lot de retours = une entrée datée au CHANGELOG.');
+  }
+  return lines.length ? lines.join('\n') : null;
+}
+
 // Vigie modèle réel vs préconisé (lot #42) : le modèle qui répond ce tour ne correspond pas
 // au model_hint du lot en cours. Injecté au 1er prompt du lot, 1×/session (anti-spam).
 function modelMismatchMessage(lot, actualModel) {
@@ -252,6 +274,6 @@ module.exports = {
   MSG_ACTIF, MSG_ACTIF_SLIM, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
   compactResumeMessage, backlogResumeMessage, largeWithPlanMessage,
-  costlyTurnMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage,
+  costlyTurnMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
   fmtK,
 };

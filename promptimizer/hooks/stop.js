@@ -7,14 +7,14 @@
 process.on('uncaughtException', () => process.exit(0));
 process.on('unhandledRejection', () => process.exit(0));
 const { armFailOpen } = require('../lib/guard');
-const { SETTINGS_TIMEOUT_S, watchdogMs } = require('../lib/timeouts');
+const { SETTINGS_TIMEOUT_S, VERIFY_AUTOCLOSE_MS, watchdogMs } = require('../lib/timeouts');
 armFailOpen(watchdogMs(SETTINGS_TIMEOUT_S.default));
 const { disabled } = require('../lib/env');
 if (disabled()) process.exit(0);
 
 const { parseHookInput } = require('../lib/stdin');
 const { systemMessage, passThrough } = require('../lib/output');
-const { gitRoot, ensureLedger, gitStatusMeaningful } = require('../lib/project');
+const { gitRoot, ensureLedger, gitStatusMeaningful, changelogTouched, runVerify } = require('../lib/project');
 const { writeAutoHandoff } = require('../lib/handoff');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { loadContextLedger, recordOccupancy } = require('../lib/ledger');
@@ -24,7 +24,7 @@ const occupancy = require('../lib/occupancy');
 const turnstats = require('../lib/turnstats');
 const {
   MSG_CLOTURE, MSG_LECTURE, occupancyMessage, lotClosedMessage,
-  costlyTurnMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage,
+  costlyTurnMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
 } = require('../lib/messages');
 
 function main() {
@@ -116,6 +116,18 @@ function main() {
         if (done) {
           const after = loadBacklog(root);
           parts.push(lotClosedMessage(done, nextLot(after), progress(after)));
+          // (b2) Preuve de clôture (lot #44) — APRÈS que doneLot a persisté l'état (un dépassement
+          // du watchdog pendant le verify ne peut donc plus corrompre le backlog). Jamais bloquant :
+          // le lot est déjà marqué fait quoi qu'il arrive ici. try/catch dédié -> fail-open local.
+          try {
+            const verify = done.verify
+              ? Object.assign({ cmd: done.verify }, runVerify(root, done.verify, VERIFY_AUTOCLOSE_MS))
+              : null;
+            // tree propre ici -> changelogTouched se réduit au dernier commit (celui de clôture).
+            const changelogMissing = !changelogTouched(root);
+            const proof = closureProofMessage(verify, changelogMissing);
+            if (proof) parts.push(proof);
+          } catch (_) { /* fail-open : la clôture reste acquise, pas de preuve ce tour */ }
         }
       }
     }
