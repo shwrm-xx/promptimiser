@@ -192,11 +192,14 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
 - **Plan de lots** (`.vibe-agent/backlog.json`, `lib/backlog.js` + CLI `scripts/backlog.js`) :
   le lot comme **objet persistant trans-session** — id, titre, « fait quand », statut
   (`todo|in_progress|done|dropped`), **préconisation de modèle** (`model_hint`, ex. `sonnet`/
-  `opus`), commit de clôture, et `closed_session_id` (session qui a clos le lot — `null` si
+  `opus`) et **effort de raisonnement** (`effort_hint`, énum `low|medium|high|xhigh`, lot #41),
+  commit de clôture, et `closed_session_id` (session qui a clos le lot — `null` si
   clôture manuelle via le CLI sans id, jamais deviné). Au plus un `in_progress` ; cap 20 lots
-  ouverts ; `doneLot` idempotent. `model_hint` est **obligatoire à l'`add` CLI** (refus doux sans `--model`) et
-  **réaffiché** partout où un lot est rendu (`show`/`start`/`next`, `summaryLines` → handoff auto)
-  sous forme `[modèle : …]` — jamais perdu silencieusement. Écrit par l'assistant (CLI) ; **auto-clos par `stop.js`**
+  ouverts ; `doneLot` idempotent. `model_hint` est **obligatoire à l'`add` CLI** (refus doux sans `--model`) ;
+  `effort_hint` est optionnel mais refusé (doux) si `--effort` est fourni hors énum. Les deux sont
+  **réaffichés** partout où un lot est rendu (`show`/`start`/`next`, `summaryLines` → handoff auto)
+  sous forme combinée `[modèle : … · effort …]` (`lib/backlog.js: modelEffortTag`) — jamais perdu
+  silencieusement. Écrit par l'assistant (CLI) ; **auto-clos par `stop.js`**
   quand le working tree redevient propre et qu'exactement un lot est `in_progress` (sinon ne
   touche à rien — réconciliation bête via `backlog.js reconcile`). Jamais de promotion
   automatique du suivant. Champ optionnel `verify` (cap 150c, `MAX_VERIFY`, lot #29) : commande

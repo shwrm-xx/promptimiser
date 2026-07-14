@@ -37,7 +37,7 @@ function show(root, json, epicFilter) {
   for (const l of lots) {
     let line = `- [${LABELS[l.status]}] #${l.id} « ${l.title} »`;
     if (l.epic) line += ` [epic : ${l.epic}]`;
-    if (l.model_hint) line += ` [modèle : ${l.model_hint}]`;
+    line += backlog.modelEffortTag(l);
     if (l.verify) line += ` [verify : ${l.verify}]`;
     if (l.status === 'done' && l.closed_commit) line += ` — commit ${l.closed_commit}`;
     else if (l.scope) line += ` — ${l.scope}`;
@@ -80,7 +80,11 @@ function main() {
     if (!model) {
       return out('Refusé : --model manquant. Une préconisation de modèle par lot est obligatoire (ex. --model sonnet ou --model opus).');
     }
-    const newLot = backlog.addLot(root, flag('title'), flag('scope'), model, flag('epic'), flag('verify'));
+    const effort = flag('effort');
+    if (effort && !backlog.EFFORT_LEVELS.includes(effort)) {
+      return out(`Refusé : --effort invalide (« ${effort} »). Valeurs acceptées : ${backlog.EFFORT_LEVELS.join(' | ')}.`);
+    }
+    const newLot = backlog.addLot(root, flag('title'), flag('scope'), model, flag('epic'), flag('verify'), effort);
     if (!newLot) {
       const b = backlog.loadBacklog(root);
       if (b.lots.filter((l) => l.status === 'todo' || l.status === 'in_progress').length >= backlog.MAX_LOTS_OPEN) {
@@ -88,7 +92,7 @@ function main() {
       }
       return out('Refusé : --title manquant ou vide.');
     }
-    return out(`Lot #${newLot.id} « ${newLot.title} » ajouté (à faire) [modèle : ${newLot.model_hint}]${newLot.epic ? ` [epic : ${newLot.epic}]` : ''}${newLot.verify ? ` [verify : ${newLot.verify}]` : ''}.`);
+    return out(`Lot #${newLot.id} « ${newLot.title} » ajouté (à faire)${backlog.modelEffortTag(newLot)}${newLot.epic ? ` [epic : ${newLot.epic}]` : ''}${newLot.verify ? ` [verify : ${newLot.verify}]` : ''}.`);
   }
 
   if (cmd === 'verify') {
@@ -105,7 +109,7 @@ function main() {
   if (cmd === 'start') {
     const lot = backlog.startLot(root, id);
     if (!lot) return out(`Lot #${id} introuvable ou déjà clos/abandonné.`);
-    return out(`Lot #${lot.id} « ${lot.title} » démarré (en cours)${lot.model_hint ? ` [modèle : ${lot.model_hint}]` : ''}.`);
+    return out(`Lot #${lot.id} « ${lot.title} » démarré (en cours)${backlog.modelEffortTag(lot)}.`);
   }
 
   if (cmd === 'done') {
@@ -128,7 +132,7 @@ function main() {
   if (cmd === 'next') {
     const lot = backlog.nextLot(backlog.loadBacklog(root));
     if (json) return out(JSON.stringify(lot));
-    return out(lot ? `Prochain lot : #${lot.id} « ${lot.title} »${lot.model_hint ? ` [modèle : ${lot.model_hint}]` : ''}${lot.scope ? ` — ${lot.scope}` : ''}.`
+    return out(lot ? `Prochain lot : #${lot.id} « ${lot.title} »${backlog.modelEffortTag(lot)}${lot.scope ? ` — ${lot.scope}` : ''}.`
       : 'Aucun lot à faire.');
   }
 

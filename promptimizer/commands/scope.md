@@ -13,7 +13,8 @@ quand : … » vérifiable** — au-delà, redécouper plutôt que grossir un lo
    par lot. Un lot = une **unité livrable** (1 commit cohérent), pas une étape d'exécution
    (les étapes fines restent dans la todo-list, capturée automatiquement).
    Pour **chaque** lot, préconiser un **modèle** (ex. `sonnet` pour du mécanique/CRUD,
-   `opus` pour du raisonnement lourd/archi) — obligatoire, jamais omis.
+   `opus` pour du raisonnement lourd/archi) **et un effort de raisonnement**
+   (`low` | `medium` | `high` | `xhigh`) — les deux sont obligatoires, jamais omis.
    Si ce découpage porte une **feature/epic** identifiable, proposer aussi un **nom de plan
    court (≤ 3 mots, cap 60 caractères)** — c'est lui qui nomme le plan dans le titre de
    session (`[XXX · #Y] NomDePlan · Lot #X · résumé` — `#Y` = id backlog global, `Lot #X` = rang
@@ -24,10 +25,11 @@ quand : … » vérifiable** — au-delà, redécouper plutôt que grossir un lo
 3. Si un epic a été validé, l'enregistrer une fois pour la session/le titre :
    `node ~/.claude/promptimizer/scripts/backlog.js epic --set "Nom de l'epic"`
    (écrit `.vibe-agent/epic`, cap 60 caractères).
-4. Persister chaque lot validé (un appel par lot), avec sa préconisation de modèle et,
-   si présent, l'epic :
-   `node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "fait quand : …" --model sonnet --epic "Nom de l'epic"`
-   (`--model` est **obligatoire** — l'ajout est refusé sans lui ; `--epic` reste optionnel)
+4. Persister chaque lot validé (un appel par lot), avec sa préconisation de modèle, son
+   effort et, si présent, l'epic :
+   `node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "fait quand : …" --model sonnet --effort medium --epic "Nom de l'epic"`
+   (`--model` est **obligatoire** — l'ajout est refusé sans lui ; `--effort` doit valoir
+   `low`/`medium`/`high`/`xhigh` sinon l'ajout est refusé ; `--epic` reste optionnel)
    puis démarrer le premier :
    `node ~/.claude/promptimizer/scripts/backlog.js start --id <id>`.
 5. Afficher le plan (`node ~/.claude/promptimizer/scripts/backlog.js show`, ou
@@ -37,5 +39,6 @@ Le suivi est ensuite automatique : le hook Stop clôt le lot au commit et annonc
 le handoff porte l'avancement (x/y faits), le plan est réinjecté au démarrage suivant et
 après compaction. `/close-batch` marque le lot fait si le hook ne l'a pas déjà fait.
 
-La préconisation de modèle est **réaffichée** à chaque `show`/`start` et dans le handoff
-auto (`[modèle : …]`) — pense à basculer de modèle avant d'attaquer un lot.
+La préconisation de modèle et l'effort sont **réaffichés** à chaque `show`/`start`/`next`
+et dans le handoff auto (`[modèle : … · effort …]`) — pense à basculer de modèle/effort
+avant d'attaquer un lot.

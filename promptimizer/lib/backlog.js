@@ -13,6 +13,7 @@ const MAX_LOTS_OPEN = 20; // lots todo+in_progress ; au-delà c'est un Jira, ref
 const MAX_TITLE = 80;
 const MAX_SCOPE = 400;
 const MAX_MODEL_HINT = 40; // préconisation de modèle par lot (ex. « sonnet », « opus »)
+const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh']; // effort de raisonnement par lot, cf. --effort
 const MAX_EPIC = 60; // label d'epic optionnel du lot, cf. .vibe-agent/epic (lib/lot.js)
 const MAX_VERIFY = 150; // commande shell de preuve de clôture, exécutée par /close-batch avant done
 const MAX_NOTE = 200;
@@ -51,6 +52,7 @@ function loadBacklog(root) {
       scope: l.scope ? trunc(l.scope, MAX_SCOPE) : null,
       status: STATUSES.includes(l.status) ? l.status : 'todo',
       model_hint: l.model_hint ? trunc(l.model_hint, MAX_MODEL_HINT) : null,
+      effort_hint: EFFORT_LEVELS.includes(l.effort_hint) ? l.effort_hint : null,
       epic: l.epic ? trunc(l.epic, MAX_EPIC) : null,
       verify: l.verify ? trunc(l.verify, MAX_VERIFY) : null,
       closed_commit: l.closed_commit || null,
@@ -94,6 +96,13 @@ function saveBacklog(root, b) {
   return okw;
 }
 
+// Tag d'affichage combiné réutilisé partout (CLI + summaryLines) : « [modèle : X · effort Y] »,
+// ou « [modèle : X] » seul si aucun effort posé. Vide si pas de model_hint (lot legacy).
+function modelEffortTag(l) {
+  if (!l || !l.model_hint) return '';
+  return ` [modèle : ${l.model_hint}${l.effort_hint ? ` · effort ${l.effort_hint}` : ''}]`;
+}
+
 function findLot(b, id) {
   return b.lots.find((l) => l.id === Number(id)) || null;
 }
@@ -102,10 +111,12 @@ function openCount(b) {
   return b.lots.filter((l) => l.status === 'todo' || l.status === 'in_progress').length;
 }
 
-// null si titre vide ou plan déjà au cap (refus doux, c'est au CLI de l'expliquer).
-function addLot(root, title, scope, modelHint, epic, verify) {
+// null si titre vide, plan déjà au cap, ou effort fourni mais hors énum (refus doux,
+// c'est au CLI de l'expliquer).
+function addLot(root, title, scope, modelHint, epic, verify, effortHint) {
   const t = trunc(title, MAX_TITLE);
   if (!t) return null;
+  if (effortHint && !EFFORT_LEVELS.includes(effortHint)) return null;
   const b = loadBacklog(root);
   if (openCount(b) >= MAX_LOTS_OPEN) return null;
   const lot = {
@@ -114,6 +125,7 @@ function addLot(root, title, scope, modelHint, epic, verify) {
     scope: scope ? trunc(scope, MAX_SCOPE) : null,
     status: 'todo',
     model_hint: modelHint ? trunc(modelHint, MAX_MODEL_HINT) : null,
+    effort_hint: effortHint && EFFORT_LEVELS.includes(effortHint) ? effortHint : null,
     epic: epic ? trunc(epic, MAX_EPIC) : null,
     verify: verify ? trunc(verify, MAX_VERIFY) : null,
     closed_commit: null,
@@ -285,12 +297,12 @@ function summaryLines(root) {
     let head = `Plan de lots : ${p.done}/${p.total} faits.`;
     if (cur) {
       head += ` Lot en cours : #${cur.id} « ${trunc(cur.title, 60)} »`;
-      if (cur.model_hint) head += ` [modèle : ${cur.model_hint}]`;
+      head += modelEffortTag(cur);
       if (cur.scope) head += ` — ${trunc(cur.scope, 120)}`;
     }
     lines.push(head);
     const upcoming = b.lots.filter((l) => l.status === 'todo').slice(0, 3)
-      .map((l) => `#${l.id} « ${trunc(l.title, 60)} »${l.model_hint ? ` [modèle : ${l.model_hint}]` : ''}`);
+      .map((l) => `#${l.id} « ${trunc(l.title, 60)} »${modelEffortTag(l)}`);
     if (upcoming.length) lines.push(`Suivants : ${upcoming.join(', ')}.`);
     return lines;
   } catch (_) {
@@ -359,6 +371,6 @@ function reconcile(root) {
 module.exports = {
   backlogFile, loadBacklog, saveBacklog, addLot, setVerify, startLot, doneLot, dropLot, noteLot,
   touchLot, currentLot, nextLot, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
-  todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot,
-  MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_NOTE, MAX_TODOS,
+  todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot, modelEffortTag,
+  MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_NOTE, MAX_TODOS, EFFORT_LEVELS,
 };

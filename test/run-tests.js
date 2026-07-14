@@ -938,6 +938,63 @@ section('backlog — model_hint (préconisation de modèle par lot)');
   ok(rShowLegacy.code === 0 && !/\[modèle :/.test(rShowLegacy.out), 'legacy : show sans tag modèle, exit 0');
 }
 
+// ==================== N-ter. B7 — EFFORT DE RAISONNEMENT PAR LOT ====================
+section('backlog — effort_hint (effort de raisonnement par lot)');
+{
+  const repo = path.join(SANDBOX, 'repo-effort-hint');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+
+  // E1. add avec --effort invalide : refusé, rien créé
+  const rBadEffort = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot invalide', '--model', 'sonnet', '--effort', 'extreme']);
+  ok(rBadEffort.code === 0 && /--effort invalide/.test(rBadEffort.out) && /Refus/.test(rBadEffort.out),
+    'add avec --effort invalide : refusé, exit 0');
+  ok(backlogLib.loadBacklog(repo).lots.length === 0, 'add avec --effort invalide : aucun lot persisté');
+
+  // E2. add sans --effort : toléré (effort optionnel), model_hint seul réaffiché
+  const rNoEffort = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot mécanique', '--model', 'sonnet']);
+  ok(/\[modèle : sonnet\]/.test(rNoEffort.out) && !/· effort/.test(rNoEffort.out), 'add sans --effort : tag modèle seul');
+  ok(backlogLib.loadBacklog(repo).lots[0].effort_hint === null, 'add sans --effort : effort_hint null');
+
+  // E3. add avec --effort valide : persisté + réaffiché combiné avec le modèle
+  const rAdd = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot plomberie', '--scope', 'fait quand : OK', '--model', 'sonnet', '--effort', 'medium']);
+  ok(/\[modèle : sonnet · effort medium\]/.test(rAdd.out), 'add : effort_hint réaffiché combiné avec le modèle');
+  let b = backlogLib.loadBacklog(repo);
+  ok(b.lots[1].effort_hint === 'medium', 'add : effort_hint persisté dans backlog.json');
+
+  // E4. show : effort réaffiché sur la ligne du lot
+  const rShow = runNode(BKLG, ['show', '--cwd', repo]);
+  ok(/\[modèle : sonnet · effort medium\]/.test(rShow.out), 'show : effort_hint réaffiché');
+
+  // E5. start : effort réaffiché
+  const rStart = runNode(BKLG, ['start', '--cwd', repo, '--id', String(b.lots[1].id)]);
+  ok(/\[modèle : sonnet · effort medium\]/.test(rStart.out), 'start : effort_hint réaffiché');
+
+  // E6. next : effort réaffiché sur le prochain lot todo (le lot 1, sans effort, est
+  // abandonné pour laisser le lot archi/opus/high seul candidat todo)
+  backlogLib.dropLot(repo, b.lots[0].id);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot archi', '--model', 'opus', '--effort', 'high']);
+  const rNext = runNode(BKLG, ['next', '--cwd', repo]);
+  ok(/\[modèle : opus · effort high\]/.test(rNext.out), 'next : effort_hint réaffiché');
+
+  // E7. summaryLines (→ handoff auto) : effort combiné sur le lot en cours
+  const sum = backlogLib.summaryLines(repo);
+  ok(/\[modèle : sonnet · effort medium\]/.test(sum[0]), 'summaryLines : effort_hint combiné sur le lot en cours');
+
+  // E8. lot legacy sans effort_hint : chargé sans crash, null
+  fs.writeFileSync(path.join(repo, '.vibe-agent', 'backlog.json'), JSON.stringify({
+    version: 1, next_id: 2, lots: [{ id: 1, title: 'Legacy', status: 'todo', model_hint: 'sonnet' }],
+  }));
+  b = backlogLib.loadBacklog(repo);
+  ok(b.lots[0].effort_hint === null, 'legacy : effort_hint absent → null, pas de crash');
+  const rShowLegacy = runNode(BKLG, ['show', '--cwd', repo]);
+  ok(rShowLegacy.code === 0 && /\[modèle : sonnet\]/.test(rShowLegacy.out) && !/effort/.test(rShowLegacy.out),
+    'legacy : show avec modèle seul, sans tag effort, exit 0');
+}
+
 section('backlog — champ epic optionnel du lot (lot #28)');
 {
   const repo = path.join(SANDBOX, 'repo-lot-epic');

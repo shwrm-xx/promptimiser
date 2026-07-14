@@ -2,6 +2,19 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-14 (lot #41 — effort par lot, persisté et réaffiché)
+
+`backlog.js add` accepte désormais `--effort` (`low`/`medium`/`high`/`xhigh`, refus doux si
+valeur hors énum), stocké dans `effort_hint`. Réaffiché partout où `model_hint` l'était déjà —
+`show`/`start`/`next`, `summaryLines` (handoff auto) — sous une forme combinée
+`[modèle : … · effort …]` (`lib/backlog.js: modelEffortTag`, remplace les concaténations
+dispersées). `scope.md` exige désormais modèle **et** effort pour chaque lot du découpage.
+`ARCHITECTURE.md` mis à jour ; `test/run-tests.js` : 548 OK, 0 échec.
+
+En profitant du lot : les lots #41-#45 (epic Autopilote PMZ) avaient leur effort bricolé en
+texte libre dans `model_hint` (ex. `"sonnet · medium"`, faute du vrai champ) — reséparés
+proprement en `model_hint`/`effort_hint`.
+
 ## 2026-07-14 (lot #39 — publication réelle + harmonisation des commandes)
 
 Dépôt `shwrm-xx/promptimiser` passé en public ; `publish-plugin.js --push` exécuté (premier push
