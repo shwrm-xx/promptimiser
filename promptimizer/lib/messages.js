@@ -22,7 +22,7 @@ const MSG_ACTIF_SLIM = [
 const MSG_NON_INIT = [
   'Projet non initialisé détecté.',
   'Promptimizer peut créer un socle prudent (CLAUDE.md, AGENTS.md, CHANGELOG.md, .vibe-agent/).',
-  "Propose à l'utilisateur de lancer /pmz-init (ou le bootstrap) et ne crée rien qu'APRÈS sa confirmation.",
+  "Propose à l'utilisateur de lancer /init (ou le bootstrap) et ne crée rien qu'APRÈS sa confirmation.",
   'Avant de coder : finaliser CLAUDE.md/AGENTS.md avec lecture minimale, puis proposer un premier lot court.',
 ].join('\n');
 
@@ -46,7 +46,7 @@ const MSG_HANDOFF = [
 const MSG_LARGE = [
   'Demande potentiellement large.',
   'Propose un découpage en 2 à 5 lots (1 lot = 1 commit livrable), fais-le valider, puis',
-  'persiste-le : /pmz-scope, ou node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "fait quand : …" (puis start --id N).',
+  'persiste-le : /scope, ou node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "fait quand : …" (puis start --id N).',
   'Traite ensuite UNIQUEMENT le premier lot.',
 ].join('\n');
 

@@ -48,7 +48,7 @@ if (IS_TTY) {
 if (/^o/i.test(ans)) {
   try { fs.rmSync(cdir.pmzDir(), { recursive: true, force: true }); } catch (_) { /* ignore */ }
   try { fs.rmSync(path.join(DEST, 'skills', 'promptimizer'), { recursive: true, force: true }); } catch (_) { /* ignore */ }
-  for (const c of ['budget', 'check-context', 'close-batch', 'fresh-session', 'pmz-init', 'pmz-about', 'pmz-scope']) {
+  for (const c of ['budget', 'check-context', 'close-batch', 'fresh-session', 'init', 'about', 'scope']) {
     try { fs.rmSync(path.join(DEST, 'commands', c + '.md'), { force: true }); } catch (_) { /* ignore */ }
   }
   log('Fichiers PMZ supprimés.');

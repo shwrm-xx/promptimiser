@@ -47,7 +47,7 @@ esac
 
 echo
 echo "── Delta Codex installé. ──"
-echo "• Pour chaque projet : laisse Claude Code créer AGENTS.md (/pmz-init)"
+echo "• Pour chaque projet : laisse Claude Code créer AGENTS.md (/init)"
 echo "  puis ouvre le projet dans Codex."
 echo "• AGENTS.md global : $AGENTS_DST"
 echo "• Désinstaller : supprimer ~/.codex/AGENTS.md et ~/bin/pmz-codex"

@@ -10,14 +10,14 @@ poursuit trois objectifs :
 2. **Clôture propre des lots** — rappelle vérification ciblée + `CHANGELOG` + commit + handoff ;
    le handoff est écrit dans `.vibe-agent/handoff.md` (auto à chaque fin de tour, riche via
    `/fresh-session`) et **injecté automatiquement au démarrage de la session suivante**.
-   Une grosse demande peut être **lotie** (`/pmz-scope`) en un plan de 2-5 lots persistant
+   Une grosse demande peut être **lotie** (`/scope`) en un plan de 2-5 lots persistant
    (`.vibe-agent/backlog.json`), **chaque lot portant une préconisation de modèle**
    (`sonnet`/`opus`, réaffichée à chaque `show`/`start` et dans le handoff) : chaque lot est
    clos automatiquement au commit, le suivant est annoncé, et le plan survit aux sessions
    comme à la compaction.
 3. **Initialisation prudente des projets** — propose de créer `CLAUDE.md` / `AGENTS.md` /
    `.vibe-agent/` / `CHANGELOG.md`, **uniquement après ta confirmation**, jamais d'écrasement.
-   Sur un **projet en cours** qui a déjà ces fichiers, `/pmz-init` ajoute la section « Règles
+   Sur un **projet en cours** qui a déjà ces fichiers, `/init` ajoute la section « Règles
    Promptimizer » taguée en fin de fichier (append-only, idempotent, réversible).
 
 Il fournit aussi un **delta Codex** (`AGENTS.md`) pour porter le même socle de règles.
@@ -154,10 +154,10 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
 
 ## Slash commands (secours)
 
-`/pmz-init` · `/pmz-scope` · `/budget` · `/check-context` · `/close-batch` · `/fresh-session` ·
-`/pmz-about`
+`/init` · `/scope` · `/budget` · `/check-context` · `/close-batch` · `/fresh-session` ·
+`/about`
 
-`/pmz-about` affiche la version installée de PMZ (`promptimizer/VERSION`, historisée dans
+`/about` affiche la version installée de PMZ (`promptimizer/VERSION`, historisée dans
 `CHANGELOG.md` à chaque évolution) ainsi que l'epic et le lot en cours du projet courant.
 
 `/budget` et `/check-context` chiffrent leur statut vert/orange/rouge en **tokens réels**

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 // CLI du plan de lots (.vibe-agent/backlog.json). Invoqué par l'assistant via
-// /pmz-scope, /close-batch ou la consigne MSG_LARGE. Arguments par argv (citables,
+// /scope, /close-batch ou la consigne MSG_LARGE. Arguments par argv (citables,
 // auditables par PreToolUse), sortie lisible par défaut, --json pour la machine.
 // Toujours exit 0 (fail-open) : une erreur de plan ne doit jamais casser un flux.
 const { gitRoot } = require('../lib/project');

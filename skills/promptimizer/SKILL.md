@@ -33,7 +33,7 @@ Quand un projet n'est pas initialisé (présence de `.vibe-agent/` absente) :
 
 ## 2bis. Lotir une grosse demande
 Demande large (plusieurs sujets, ≥ 6 puces, refactor global…) : proposer un découpage en
-**2 à 5 lots**, le faire valider en une question, puis le persister via `/pmz-scope` ou
+**2 à 5 lots**, le faire valider en une question, puis le persister via `/scope` ou
 `node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "…"` (+ `start --id N`).
 Au découpage, proposer aussi un **nom de plan court (≤ 3 mots, validé par l'utilisateur)** et le
 poser sur chaque lot via `--epic "<NomDePlan>"` : c'est lui qui nomme le plan dans le titre de

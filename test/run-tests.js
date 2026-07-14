@@ -544,7 +544,7 @@ const bootstrapLib = require(path.join(PKG, 'lib', 'bootstrap'));
   execFileSync('git', ['-C', repo, 'add', '.']);
   execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
   runHook('session-start.js', { source: 'startup', cwd: repo, session_id: 's-mature' });
-  ok(!fs.existsSync(path.join(repo, 'CLAUDE.md')), 'projet mature sans /pmz-init → CLAUDE.md toujours NON créé automatiquement');
+  ok(!fs.existsSync(path.join(repo, 'CLAUDE.md')), 'projet mature sans /init → CLAUDE.md toujours NON créé automatiquement');
 }
 
 // ============================ K2. SÉCURISATION DU BACKLOG (ADN) ============================
@@ -2332,7 +2332,7 @@ section('build-plugin.js — assemble le plugin Claude Code (layout conventionne
   ok(fs.existsSync(path.join(plugin, 'commands', 'close-batch.md')), 'build-plugin : commands/ présentes');
   // Garde-fou (v1.1.3) : les commandes /pmz:* attendues sont TOUTES portées par le plugin.
   for (const c of ['budget.md', 'check-context.md', 'close-batch.md', 'fresh-session.md',
-    'pmz-about.md', 'pmz-init.md', 'pmz-scope.md']) {
+    'about.md', 'init.md', 'scope.md']) {
     ok(fs.existsSync(path.join(plugin, 'commands', c)), 'build-plugin : commande requise présente — ' + c);
   }
   ok(fs.existsSync(path.join(plugin, 'bin', 'pmz-hook')), 'build-plugin : bin/pmz-hook présent');
@@ -2375,11 +2375,11 @@ section('build-plugin.js — commande requise supprimée -> build refusé (anti-
   fs.cpSync(PKG, srcCopy, { recursive: true });
   fs.mkdirSync(path.join(stage, 'skills'), { recursive: true });
   fs.cpSync(path.join(PKG, '..', 'skills', 'promptimizer'), path.join(stage, 'skills', 'promptimizer'), { recursive: true });
-  fs.rmSync(path.join(srcCopy, 'commands', 'pmz-scope.md'), { force: true });
+  fs.rmSync(path.join(srcCopy, 'commands', 'scope.md'), { force: true });
 
   const r = runNode(path.join(srcCopy, 'install', 'build-plugin.js'), [path.join(stage, 'dist')], {});
   ok(r.code !== 0, 'build-plugin : exit non-0 quand une commande requise manque');
-  ok(/pmz-scope\.md/.test(r.err || ''), 'build-plugin : nomme la commande manquante dans l\'erreur');
+  ok(/scope\.md/.test(r.err || ''), 'build-plugin : nomme la commande manquante dans l\'erreur');
   ok(/REQUIRED_COMMANDS/.test(r.err || ''), 'build-plugin : indique la marche à suivre (REQUIRED_COMMANDS / restaurer)');
 
   fs.rmSync(stage, { recursive: true, force: true });

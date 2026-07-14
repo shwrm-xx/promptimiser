@@ -1,6 +1,6 @@
 'use strict';
 // Bootstrap PRUDENT du socle projet — logique partagée entre le script CLI
-// (scripts/bootstrap-project.js, appelé par /pmz-init) et les hooks (auto-scaffold
+// (scripts/bootstrap-project.js, appelé par /init) et les hooks (auto-scaffold
 // d'un projet neuf, cf. session-start.js / user-prompt-submit.js).
 // Gardes : repo git requis, jamais $HOME/dossiers système, jamais d'écrasement —
 // ne touche QUE .vibe-agent/ + CLAUDE.md + AGENTS.md + CHANGELOG.md.
@@ -65,7 +65,7 @@ function runBootstrap(root) {
 const PMZ_RULES_START = '<!-- pmz:rules:start -->';
 
 // Ajoute la section PMZ taguée (templates/pmz-rules.md) à la FIN d'un fichier
-// existant. Réservé au flux /pmz-init explicite (« projet en cours ») — jamais
+// existant. Réservé au flux /init explicite (« projet en cours ») — jamais
 // appelé par les hooks : l'auto-scaffold ne modifie jamais un fichier présent.
 // Append-only, idempotent (marqueur), réversible (bloc pmz:rules:start/end à
 // supprimer pour revenir en arrière).

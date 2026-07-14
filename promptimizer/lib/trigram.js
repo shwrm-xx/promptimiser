@@ -52,7 +52,7 @@ function writeTrigram(root, code) {
   }
 }
 
-// 3 propositions distinctes pour /pmz-init sur un NOUVEAU projet : la dérivation par défaut,
+// 3 propositions distinctes pour /init sur un NOUVEAU projet : la dérivation par défaut,
 // puis deux variantes (squelette consonantique, lettres réparties) — dernier recours pour
 // éviter les doublons si le nom du projet est court/répétitif.
 function suggestTrigrams(root) {

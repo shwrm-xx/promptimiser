@@ -178,7 +178,7 @@ log('');
 log('── Installé. ──');
 log('• Hooks globaux fusionnés dans : ' + SETTINGS + ' (sauvegarde horodatée créée)');
 log('• Skill : ' + path.join(DEST, 'skills', 'promptimizer', 'SKILL.md'));
-log('• Commands : /pmz-init /budget /check-context /close-batch /fresh-session');
+log('• Commands : /init /budget /check-context /close-batch /fresh-session');
 log('• Redémarre Claude Code pour activer les hooks.');
 log('• Désinstaller : promptimizer/install/uninstall' + (IS_WIN ? '.ps1' : '.command'));
 pause();

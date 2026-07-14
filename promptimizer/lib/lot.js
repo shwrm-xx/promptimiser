@@ -31,7 +31,7 @@ function readEpic(root) {
   return path.basename(root);
 }
 
-// Écrit le label d'epic global (.vibe-agent/epic), utilisé par /pmz-scope au découpage
+// Écrit le label d'epic global (.vibe-agent/epic), utilisé par /scope au découpage
 // d'une demande. Label = simple chaîne (cf. ARCHITECTURE.md « Epic = label, pas conteneur »).
 function writeEpic(root, name) {
   const trimmed = String(name == null ? '' : name).trim().slice(0, MAX_EPIC);

@@ -64,7 +64,7 @@ log('Hooks PMZ legacy retirés de ' + SETTINGS + ' (sauvegarde créée).');
 if (PURGE) {
   try { fs.rmSync(PMZ_DIR, { recursive: true, force: true }); } catch (_) { /* ignore */ }
   try { fs.rmSync(path.join(DEST, 'skills', 'promptimizer'), { recursive: true, force: true }); } catch (_) { /* ignore */ }
-  for (const c of ['budget', 'check-context', 'close-batch', 'fresh-session', 'pmz-init', 'pmz-about', 'pmz-scope']) {
+  for (const c of ['budget', 'check-context', 'close-batch', 'fresh-session', 'init', 'about', 'scope']) {
     try { fs.rmSync(path.join(DEST, 'commands', c + '.md'), { force: true }); } catch (_) { /* ignore */ }
   }
   log('Fichiers PMZ legacy supprimés (' + PMZ_DIR + ', skill, commands).');

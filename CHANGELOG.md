@@ -2,6 +2,28 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-14 (lot #39 — publication réelle + harmonisation des commandes)
+
+Dépôt `shwrm-xx/promptimiser` passé en public ; `publish-plugin.js --push` exécuté (premier push
+de la branche orpheline `plugin-release`) ; parcours utilisateur final vérifié en bac à sable
+isolé : `claude plugin marketplace add shwrm-xx/promptimiser@plugin-release` puis
+`claude plugin install pmz@pmz-marketplace` — 7 commandes + 6 hooks installés, `plugin details`
+conforme. `node test/run-tests.js` : 536 OK, 0 échec.
+
+En cours de route : incohérence relevée (3 commandes préfixées `pmz-` sur 7, héritée du besoin
+d'éviter les collisions en install manuelle à plat — cf. `commands/pmz-about.md` en 2026-07-11).
+Sous le canal plugin, le namespace `/pmz:*` rend ce préfixe redondant (`/pmz:pmz-init` bégaie) et
+contredit l'exemple déjà documenté dans le README (`/pmz:about`). Retrait du préfixe pour les 3 :
+
+- `promptimizer/commands/pmz-{init,scope,about}.md` → `{init,scope,about}.md`.
+- `install/build-plugin.js` (`REQUIRED_COMMANDS`), `install/migrate-to-plugin.js`,
+  `install/uninstall.js`, `install/install.js`, `test/run-tests.js` : listes/chemins alignés.
+- `README.md`, `ARCHITECTURE.md`, `skills/promptimizer/SKILL.md`, `codex/NOTES.md`,
+  `codex/install-codex.command`, `lib/bootstrap.js`, `lib/lot.js`, `lib/messages.js`,
+  `lib/trigram.js`, `scripts/backlog.js`, `scripts/bootstrap-project.js`,
+  `hooks/session-start.js` : mentions `/pmz-init`/`/pmz-scope`/`/pmz-about` → `/init`/`/scope`/
+  `/about`. Citations historiques (post-mortems, `.vibe-agent/backlog.json`) laissées intactes.
+
 ## 2026-07-14 (lot #38 — doc du canal GitHub public)
 
 Documentation seule (aucun code touché) : le canal de diffusion GitHub public, jusqu'ici

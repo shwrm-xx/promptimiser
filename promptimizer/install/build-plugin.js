@@ -45,7 +45,7 @@ const EXCLUDE = new Set(['install', '.DS_Store']);
 // commande. Une disparition non voulue la fait diverger → build refusé, jamais propagé au cache.
 const REQUIRED_COMMANDS = [
   'budget.md', 'check-context.md', 'close-batch.md', 'fresh-session.md',
-  'pmz-about.md', 'pmz-init.md', 'pmz-scope.md',
+  'about.md', 'init.md', 'scope.md',
 ];
 
 function log(s) { process.stdout.write(s + '\n'); }

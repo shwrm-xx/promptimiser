@@ -10,7 +10,7 @@ Le dépôt en est la source (miroir plat → `~/.claude/`, cf. [CLAUDE.md](CLAUD
 
 ```
 Promptimizer
-├─ Project Initializer      (session-start + bootstrap-project/lib/bootstrap.js + /pmz-init ;
+├─ Project Initializer      (session-start + bootstrap-project/lib/bootstrap.js + /init ;
 │                             auto-scaffold sans confirmation sur un projet neuf, 0 commit)
 ├─ Context Budget Controller (occupancy.js : paliers fixes + flottant, hygiène de lecture)
 └─ Batch Quality Controller  (stop + audit-batch + close-batch + ledgers + lib/lot.js)
@@ -46,15 +46,15 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
    - le **ledger** (`.vibe-agent/`) est de la plomberie interne invisible : auto-créé dès qu'un
      repo git existe (`ensureLedger`), **sans confirmation** ;
    - le **socle visible** (`CLAUDE.md`/`AGENTS.md`/`CHANGELOG.md`) reste derrière confirmation
-     (`/pmz-init`) sur un projet **mature** (au moins un commit) ; il est posé automatiquement,
+     (`/init`) sur un projet **mature** (au moins un commit) ; il est posé automatiquement,
      sans confirmation, uniquement sur un projet **neuf** (0 commit, voire aucun `.git` — PMZ fait
      alors `git init` lui-même) où il n'y a par construction rien à écraser.
-   - Sur un projet **en cours** dont `CLAUDE.md`/`AGENTS.md` existent déjà, `/pmz-init`
+   - Sur un projet **en cours** dont `CLAUDE.md`/`AGENTS.md` existent déjà, `/init`
      (`bootstrap-project.js --augment`) **ajoute en fin de fichier** la section « Règles
      Promptimizer » taguée (`pmz:rules:start/end`, `templates/pmz-rules.md`) : append-only,
      idempotent (les templates portent le même marqueur, donc un fichier issu du scaffold n'est
      jamais ré-augmenté), réversible en supprimant le bloc. Les hooks n'augmentent **jamais** —
-     ce mode est réservé au flux `/pmz-init` explicite, derrière confirmation.
+     ce mode est réservé au flux `/init` explicite, derrière confirmation.
 4. **PreToolUse étroit** : `deny`/`ask` sur denylist destructive ancrée + whitelist large ;
    aucun `ask` sur Read/Edit (respect `acceptEdits`).
 5. **systemMessage** = canal des rappels : visible utilisateur, **non réinjecté** dans le contexte
@@ -237,7 +237,7 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   un seul mainteneur, aucune distinction major/minor/patch utile) versionné avec le package,
   copié tel quel à l'install. Bumpé **manuellement** par le mainteneur (`bumpVersion()`) à chaque
   évolution notable, tracé dans `CHANGELOG.md` — jamais incrémenté par les hooks installés dans
-  un projet cible (ce n'est pas leur version à eux). `scripts/about.js` (commande `/pmz-about`)
+  un projet cible (ce n'est pas leur version à eux). `scripts/about.js` (commande `/about`)
   l'affiche avec l'epic (`readEpic`) et l'état du backlog (`currentLot`/`nextLot`/`progress`) du
   projet courant — deux informations distinctes : la version est celle du **package**, l'epic/lot
   est celui du **projet**.
@@ -409,13 +409,13 @@ plusieurs sessions réelles (capture fournie par l'utilisateur, 2026-07-12).
   identifié par son panneau. Dérivé par défaut (3 premières lettres alpha du nom de dossier,
   ex. `japlan-app` → `JAP`) ; un projet **déjà initialisé** garde cette dérivation sans
   interruption (pas de prompt forcé rétroactif — décision utilisateur, 2026-07-12) ; à la
-  création d'un **nouveau** projet, `/pmz-init` propose 3 trigrammes (`backlog.js trigram
+  création d'un **nouveau** projet, `/init` propose 3 trigrammes (`backlog.js trigram
   --suggest`) + saisie libre. Modifiable à la main : `backlog.js trigram --set XXX`.
 - **Le focus du lot backlog prime, plus de double numérotation** : l'ancien format
   (`${epic} — Lot ${id} : ${titre}`) affichait DEUX numéros de sens différent — l'ID backlog
   (`Lot 32`) et la numérotation métier embarquée dans le titre du lot lui-même par convention de
   rédaction (`Lot D3 — …`). Le nouveau format (`titleForLot`) ne garde que `[XXX] ${titre du
-  lot}` — le titre du lot (déjà rédigé par `/pmz-scope`, avec sa propre numérotation métier
+  lot}` — le titre du lot (déjà rédigé par `/scope`, avec sa propre numérotation métier
   quand pertinent) est la seule source de vérité affichée ; l'ID backlog reste un identifiant
   interne (CLI `backlog.js show`/`start`/`done`), jamais dans le titre de session. Le champ
   `epic` (label de groupement/filtrage, `backlog.js show --epic`) n'apparaît plus non plus dans
@@ -452,13 +452,13 @@ plusieurs sessions réelles (capture fournie par l'utilisateur, 2026-07-12).
   est introuvable, le hook dégrade en fail-open (la session continue sans PMZ).
 - **Ledger auto-créé sans confirmation, socle visible non (sauf projet neuf)** : un audit d'usage
   réel (projet assistHealth, un mois) a montré que toute la couche ledgers/clôture assistée reste
-  inerte dès que `/pmz-init` n'est jamais lancé, alors que les mécanismes qui ne dépendent QUE du
+  inerte dès que `/init` n'est jamais lancé, alors que les mécanismes qui ne dépendent QUE du
   transcript (occupation, hygiène de lecture) tournaient déjà et avaient mesurablement changé les
   pratiques. Découpler « plomberie invisible » (ledger, auto-créée) de « scaffolding visible »
   (CLAUDE.md/AGENTS.md, toujours confirmé sur un projet mature) fait tourner la couche la plus
   utile sans toucher au consentement sur ce qui affecte réellement le repo de l'utilisateur.
 - **Init d'un projet en cours par augmentation taguée, pas par templates** : sur un projet qui
-  a déjà son `CLAUDE.md`, `copyIfAbsent` sautait tout — `/pmz-init` ne produisait rien de
+  a déjà son `CLAUDE.md`, `copyIfAbsent` sautait tout — `/init` ne produisait rien de
   visible et les règles PMZ n'entraient jamais dans les fichiers existants (vécu comme
   « pmz-init ne marche pas »). Fusionner intelligemment serait fragile ; on applique la même
   philosophie que `merge-settings` : bloc append-only, tagué, idempotent, réversible.
@@ -489,7 +489,7 @@ plusieurs sessions réelles (capture fournie par l'utilisateur, 2026-07-12).
   reste les todos volatiles (`todo-snapshot.json`). Pas de hiérarchie epic→feature→lot : une
   « feature » = un epic court (2-5 lots).
 - **Epic = label, pas conteneur** : pas de table `epics[]` ni de cycle de vie d'epic — un label
-  (fichier `.vibe-agent/epic`, écrit par `/pmz-scope` via `backlog.js epic --set`, + champ
+  (fichier `.vibe-agent/epic`, écrit par `/scope` via `backlog.js epic --set`, + champ
   optionnel `epic` du lot backlog, cap 60c, lot #28) suffit pour le filtrage (`backlog.js show
   --epic`) et l'affichage `about.js` (lot en cours, sinon prochain, sinon label global). Le champ
   du lot prime sur le label global dans `about.js` — permet un backlog multi-epics sans

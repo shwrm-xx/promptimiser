@@ -134,7 +134,7 @@ function main() {
 
   // Projet NEUF (repo git existant mais 0 commit) : scaffold posé automatiquement,
   // sans confirmation — rien à écraser par construction (copyIfAbsent). Un projet
-  // mature (des commits déjà) continue de nécessiter /pmz-init explicite.
+  // mature (des commits déjà) continue de nécessiter /init explicite.
   if (!hasAnyCommit(root)) {
     try {
       const result = runBootstrap(root);
