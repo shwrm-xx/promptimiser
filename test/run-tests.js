@@ -2541,6 +2541,16 @@ section('migrate-to-plugin.js — retire les hooks legacy, restaure le sidecar (
   ok(!fs.existsSync(path.join(fakeClaude, 'skills', 'promptimizer')),
     'migrate-to-plugin.js --purge : skill supprimée');
 
+  // Purge dérivée dynamiquement du mirror réellement installé (PMZ_DIR/commands), pas d'une
+  // liste figée : toute commande présente dans promptimizer/commands/ au moment de l'install
+  // doit disparaître, y compris celles absentes d'une éventuelle vieille liste en dur
+  // (ex. help.md/statusline.md, ajoutées après coup — fix 2026-07-14, régression vécue avec
+  // /about renommé /pmz-about puis reverti, qu'une liste figée avait laissé orphelin).
+  const realCommands = fs.readdirSync(path.join(PKG, 'commands')).filter((f) => f.endsWith('.md'));
+  ok(realCommands.length > 0, 'précondition : au moins une commande source à vérifier');
+  ok(realCommands.every((f) => !fs.existsSync(path.join(fakeClaude, 'commands', f))),
+    'migrate-to-plugin.js --purge : TOUTES les commandes du mirror installé sont purgées (pas de liste figée)');
+
   fs.rmSync(stage, { recursive: true, force: true });
 }
 

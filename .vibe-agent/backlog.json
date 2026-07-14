@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "next_id": 46,
+  "next_id": 47,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-14T12:32:27.623Z",
+  "updated_at": "2026-07-14T20:08:24.901Z",
   "lots": [
     {
       "id": 1,
@@ -856,6 +856,25 @@
       "cost_tokens": 0,
       "started_at": null,
       "lot_number": 53,
+      "note": null,
+      "session_touches": 0
+    },
+    {
+      "id": 46,
+      "title": "Fix — purge dynamique des commandes legacy (migrate-to-plugin.js)",
+      "scope": "fait quand : --purge dérive la liste des commandes à supprimer du mirror réellement installé (PMZ_DIR/commands), pas d'une liste figée qui dérive ; test de non-régression ; node test/run-tests.js vert",
+      "status": "in_progress",
+      "model_hint": "sonnet",
+      "effort_hint": null,
+      "epic": null,
+      "verify": null,
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "cost_tokens": 0,
+      "started_at": "2026-07-14T20:08:24.900Z",
+      "lot_number": null,
       "note": null,
       "session_touches": 0
     }

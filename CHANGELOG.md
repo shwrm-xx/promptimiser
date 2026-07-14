@@ -2,6 +2,22 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-14 (lot 46 — fix : purge dynamique des commandes legacy)
+
+Constat en migrant un poste réel du canal manuel vers le plugin : `migrate-to-plugin.js
+--purge` visait une liste de commandes **figée en dur**, qui avait dérivé de la source
+(commandes ajoutées depuis — `help`, `statusline` — jamais incluses ; un poste avec des
+noms de commandes hérités d'un renommage antérieur non repurgé aurait laissé des fichiers
+orphelins dans `~/.claude/commands/`).
+
+- `promptimizer/install/migrate-to-plugin.js` : `--purge` lit désormais la liste des
+  commandes à supprimer depuis le mirror **réellement installé**
+  (`fs.readdirSync(PMZ_DIR/commands)`, lu avant sa suppression) au lieu d'un tableau figé —
+  purge exactement ce qui a été copié sur ce poste, quelle que soit la dérive avec la source.
+- `test/run-tests.js` : assertion de non-régression — toutes les commandes du mirror
+  installé (dérivées dynamiquement de `promptimizer/commands/`, pas d'une liste en dur dans
+  le test) disparaissent après `--purge`. `node test/run-tests.js` : 636 OK, 0 échec.
+
 ## 2026-07-14 (commande /help) — v1.1.8
 
 Nouvelle commande **`/help`** (`/pmz:help` côté plugin) : liste toutes les commandes

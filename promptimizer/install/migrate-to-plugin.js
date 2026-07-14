@@ -62,10 +62,18 @@ log('Hooks PMZ legacy retirés de ' + SETTINGS + ' (sauvegarde créée).');
 
 // 3. Purge optionnelle des fichiers legacy (défaut : conservés, comme uninstall.js).
 if (PURGE) {
+  // Liste des commandes à purger dérivée du mirror RÉELLEMENT installé (PMZ_DIR/commands),
+  // jamais d'une liste figée en dur : une liste en dur dérive dès qu'une commande est
+  // ajoutée/renommée côté source (vécu : /about renommé /pmz-about puis reverti à /about,
+  // la liste en dur ne suivait plus et laissait des fichiers orphelins). Lue AVANT la
+  // suppression de PMZ_DIR, sinon plus rien à énumérer.
+  let legacyCommands = [];
+  try { legacyCommands = fs.readdirSync(path.join(PMZ_DIR, 'commands')).filter((f) => f.endsWith('.md')); }
+  catch (_) { /* PMZ_DIR/commands absent -> rien à énumérer, purge des dossiers seulement */ }
   try { fs.rmSync(PMZ_DIR, { recursive: true, force: true }); } catch (_) { /* ignore */ }
   try { fs.rmSync(path.join(DEST, 'skills', 'promptimizer'), { recursive: true, force: true }); } catch (_) { /* ignore */ }
-  for (const c of ['budget', 'check-context', 'close-batch', 'fresh-session', 'init', 'about', 'scope']) {
-    try { fs.rmSync(path.join(DEST, 'commands', c + '.md'), { force: true }); } catch (_) { /* ignore */ }
+  for (const f of legacyCommands) {
+    try { fs.rmSync(path.join(DEST, 'commands', f), { force: true }); } catch (_) { /* ignore */ }
   }
   log('Fichiers PMZ legacy supprimés (' + PMZ_DIR + ', skill, commands).');
 } else {
