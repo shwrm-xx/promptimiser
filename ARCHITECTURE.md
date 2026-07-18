@@ -475,6 +475,27 @@ dupliquée ici. Ce qui est structurant :
   filet actif (gap v1 assumé, voir NOTES).
 - **Ledgers** (`tool.execute.after`) : réutilise `promptimizer/lib/{project,ledger,backlog}.js`
   tels quels, avec `root = input.directory` fourni par OpenCode (pas de dérivation git).
+- **Occupation RELATIVE à la fenêtre du modèle** (lot OC3, `pmz/impl/occupancy-oc.js`) : le
+  transcript `.jsonl` de Claude Code n'existe pas ici — la source est l'événement
+  `message.updated` (tokens du dernier message assistant : occ = input + cache.read +
+  cache.write), avec repli `client.session.messages` à l'idle. L'occ est comparée à la
+  **fenêtre utile** (`limit.context − limit.output`, lue dans le catalogue
+  `client.config.providers`) en paliers **relatifs 50/70/85/95 %** ; franchissement → toast
+  (pas de statusline). Palier persisté monotone par session (état hors-projet, clé sha1),
+  réarmé par une nouvelle session_id ou un resync post-compaction.
+- **Équivalent Stop = `event: session.idle`** (lot OC3) : idempotent multi-idle (l'anti-spam
+  monotone du palier + le drapeau de clôture par lot évitent tout doublon). Y sont branchés :
+  franchissement d'occupation (toast), rappel/auto-clôture de lot (miroir de `hooks/stop.js`,
+  canal toast au lieu de `systemMessage`, sans preuve verify — OC4), handoff auto
+  (`writeAutoHandoff` réutilisé tel quel), et **renommage de session** (`client.session.update`,
+  1× par session). Renommage : contrairement à Claude Code où PMZ ne fait que suggérer un titre
+  (validation utilisateur), OpenCode n'offre aucun canal de confirmation à un plugin — le titre
+  est donc appliqué directement mais **jamais réécrit** ensuite (drapeau `renamed` par session).
+- **Injection différée** (lot OC3) : pas d'équivalent au `additionalContext` de SessionStart —
+  le contexte de (re)démarrage est mis en file par `session.created` (gouvernance + handoff +
+  plan de lots) et `session.compacted` (réinjection minimale du lot en cours), puis flushé au
+  **1er `chat.message`** en part texte synthétique (`out.parts`). `session.compacted` sert aussi
+  de resync du palier d'occupation (l'occ chute après compaction).
 - **Pas de merge de settings** : l'installer ne pose que `plugin/pmz.js`, `command/pmz/` et
   `pmz/` — il ne touche jamais `opencode.json` ni un plugin/commande tiers.
 - **État projet `.vibe-agent/` partagé** avec Claude Code (backlog/handoff cross-outil).

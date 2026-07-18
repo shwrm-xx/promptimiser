@@ -39,16 +39,16 @@ sur le même projet. Un `model_hint` non résoluble par un côté (« sonnet » 
 
 | PMZ Claude Code | OpenCode | Lot |
 |---|---|---|
-| session-start (startup/clear) | `event: session.created` → injection différée au 1er `chat.message` + toast | OC3 |
-| session-start (compact) | `event: session.compacted` → resync palier + réinjection minimale du lot | OC3 |
-| user-prompt-submit | `"chat.message"` (mutation des parts ; nudges init/broad/occupation/model-mismatch) | OC3/OC4 |
+| session-start (startup/clear) | `event: session.created` → injection différée au 1er `chat.message` + toast | OC3 ✅ |
+| session-start (compact) | `event: session.compacted` → resync palier + réinjection minimale du lot | OC3 ✅ |
+| user-prompt-submit | `"chat.message"` (flush injection différée OC3 ✅ ; nudges init/broad/model-mismatch → OC4) | OC3/OC4 |
 | pre-tool-use (garde `rm`) | `"tool.execute.before"` (throw = deny) + `"permission.ask"` pour le tiers destructif | OC2 |
 | post-tool-use (ledgers, todo) | `"tool.execute.after"` (read/edit/write/todowrite) | OC2 |
-| stop (métrologie, auto-clôture, handoff) | `event: session.idle` (idempotence multi-idle à verrouiller) | OC3 |
-| pre-compact | `"experimental.session.compacting"` (+ **filet** `session.compacted` : API experimental) | OC3 |
-| renommage session (suggéré seulement) | `client.session.update({ title })` — automatisable | OC3 |
-| occupation (transcript `.jsonl`) | event `message.updated` (tokens) + fallback `client.session.messages` à l'idle ; occ = input + cache.read + cache.write | OC3 |
-| paliers fixes 150k/300k/500k/750k | paliers **relatifs** 50/70/85/95 % de la fenêtre utile (ctx − output réservé − `reserved` compaction), fenêtres lues dans `opencode.json` | OC3 |
+| stop (métrologie, auto-clôture, handoff) | `event: session.idle` (idempotent : palier monotone + drapeau clôture par lot) | OC3 ✅ |
+| pre-compact | `"experimental.session.compacting"` (+ **filet** `session.compacted` : API experimental) | OC3 ✅ |
+| renommage session (suggéré → validation utilisateur) | `client.session.update({ title })` appliqué **directement**, 1×/session (pas de canal de confirmation à un plugin OpenCode) — jamais réécrit ensuite | OC3 ✅ |
+| occupation (transcript `.jsonl`) | event `message.updated` (tokens) + fallback `client.session.messages` à l'idle ; occ = input + cache.read + cache.write | OC3 ✅ |
+| paliers fixes 150k/300k/500k/750k | paliers **relatifs** 50/70/85/95 % de la fenêtre utile (`limit.context − limit.output`), fenêtres lues dans le catalogue `client.config.providers` (pas `opencode.json`) | OC3 ✅ |
 | statusline | **GAP v1 assumé** (pas d'API statusline OpenCode) → toasts aux franchissements + `/pmz/budget` | — |
 | merge-settings.json | **inutile** : dépôt de fichiers, rien à fusionner | — |
 
@@ -142,6 +142,49 @@ foi. Pour voir le toast, lancer `opencode` (TUI) avec les mêmes variables d'env
 - Tests : `test/run-tests-opencode.js` 34 → 64 assertions (matrice deny/ask/allow, ledgers
   read/edit/todowrite, fail-open sur payloads malformés, arbo + contenu des 4 commandes,
   `help.js` sous layout OpenCode).
+
+## Lot OC3 — occupation relative, session.idle (Stop), injection différée, renommage
+
+- **Occupation relative** (`opencode/plugin/impl/occupancy-oc.js`, module OC-natif — le
+  transcript `.jsonl` de Claude Code n'existe pas côté OpenCode) : `recordFromMessage` capte
+  l'occ du dernier message **assistant** sur l'event `message.updated` (silencieux, sans log :
+  streaming très bavard) — occ = `tokens.input + tokens.cache.read + tokens.cache.write`. À
+  l'idle, la fenêtre **utile** du modèle (`limit.context − limit.output`) est résolue via le
+  catalogue `client.config.providers` (mis en cache 1×/vie du plugin) ; `evaluate` compare
+  l'occ à la fenêtre en paliers **relatifs 50/70/85/95 %**, palier persisté MONOTONE par
+  session (clé sha1, état hors-projet). Fenêtre inconnue (modèle local sans `limit.context`)
+  → pas d'alerte relative (fail-open). Repli `client.session.messages` à l'idle si aucun
+  `message.updated` n'a été capté (ex. plugin chargé en cours de session).
+- **`session.idle` = équivalent Stop** (miroir de `hooks/stop.js`) : franchissement
+  d'occupation → toast (`bridge.toast`, variant `warning` dès le palier 85 %) ; rappel de
+  clôture + auto-clôture mécanique du lot sur tree propre (`incrementLot` + `doneLot` si UN
+  seul `in_progress`) ; `writeAutoHandoff` réutilisé tel quel. Canal = **toast** au lieu de
+  `systemMessage` (pas de statusline OpenCode). Idempotent multi-idle : le palier monotone et
+  le drapeau `closure_reminded_for_batch` évitent tout doublon. **Preuve de clôture (verify)
+  hors périmètre OC3** — elle vient avec la commande `/close-batch` (OC4).
+- **Renommage de session** (`client.session.update`) : appliqué **directement**, 1×/session
+  (drapeau `renamed` par session, clé sha1), au 1er idle. Choix assumé : contrairement à
+  Claude Code où PMZ ne fait que **suggérer** un titre (l'utilisateur valide via question à
+  choix), OpenCode n'offre aucun canal de confirmation interactif à un plugin — appliquer le
+  titre PMZ directement est le seul port praticable. Garde-fou : jamais réécrit ensuite (un
+  renommage ultérieur, utilisateur ou OpenCode, est préservé). `suggestedTitle` a un effet de
+  bord (`touchLot` : compteur « (partie N) ») → appelé une seule fois, ici.
+- **Injection différée** : OpenCode n'a pas d'équivalent au `additionalContext` de
+  SessionStart. `session.created` met en file (fichier d'état par session) la gouvernance
+  (`MSG_ACTIF`) + le handoff de la session précédente (ou le plan de lots à défaut) ;
+  `session.compacted` met en file la réinjection minimale du lot en cours ET resync le palier
+  (l'occ chute après compaction : `clearUsage` + `resyncBucket(0)`). Le flush se fait au 1er
+  `chat.message` en **part texte synthétique** (`out.parts.push({ type:'text', synthetic:true })`).
+  L'état de file est PAR session (la closure du plugin est partagée entre sessions du serveur).
+- **Non vérifié ce lot** : l'efficacité **réelle** de l'injection `out.parts` et du renommage
+  `client.session.update` en TUI live n'a pas été rejouée (seule la sandbox automatisée a
+  tourné, avec client mocké). À confirmer si un doute surgit — la structure de la part
+  (`TextPart` complet : id/sessionID/messageID/type/text) est conforme au SDK 1.18, et tout
+  est enveloppé fail-open (une injection/renommage en échec ne casse jamais la session).
+- Tests : `test/run-tests-opencode.js` 64 → 81 assertions (paliers relatifs 50/70/85/95 %,
+  idle idempotent multi-idle, handoff écrit à l'idle, renommage 1×/session, fallback via
+  `session.messages`, resync post-compaction, injection created→chat.message, fail-open
+  catalogue indisponible).
 
 ## Hors périmètre / constats d'audit (2026-07-18)
 

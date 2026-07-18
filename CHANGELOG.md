@@ -2,6 +2,29 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-18 (lot #49 / OC3 — portage OpenCode : occupation relative + session.idle + injection + renommage)
+
+- `opencode/plugin/impl/occupancy-oc.js` (nouveau, OC-natif) : occupation contexte **relative
+  à la fenêtre du modèle** — le transcript `.jsonl` de Claude Code n'existe pas côté OpenCode.
+  Source = event `message.updated` (occ = `input + cache.read + cache.write` du dernier message
+  assistant), fenêtre utile = `limit.context − limit.output` lue dans `client.config.providers`,
+  paliers **relatifs 50/70/85/95 %**, palier persisté monotone par session, resync
+  post-compaction. Repli `client.session.messages` à l'idle.
+- `opencode/plugin/impl/index.js` : `event: session.idle` = équivalent Stop (miroir de
+  `hooks/stop.js`, canal **toast** au lieu de `systemMessage`) — franchissement d'occupation,
+  rappel + auto-clôture mécanique de lot sur tree propre (`incrementLot` + `doneLot`), handoff
+  auto (`writeAutoHandoff` réutilisé). Idempotent multi-idle. `session.created`/
+  `session.compacted` → **injection différée** (gouvernance + handoff / réinjection minimale du
+  lot) flushée au 1er `chat.message` en part texte synthétique. **Renommage de session**
+  (`client.session.update`, 1×/session) : appliqué directement faute de canal de confirmation
+  interactif côté plugin OpenCode, jamais réécrit ensuite.
+- `test/run-tests-opencode.js` : 64 → 81 assertions (paliers relatifs, idle idempotent, handoff
+  à l'idle, renommage 1×/session, fallback `session.messages`, resync post-compaction, injection
+  created→chat.message, fail-open catalogue indisponible). Suite complète 637 OK.
+- Doc : [`opencode/NOTES.md`](opencode/NOTES.md) § Lot OC3 (décisions/limites, non-vérifié en TUI
+  live), mapping hooks (lignes OC3 marquées ✅), [`ARCHITECTURE.md`](ARCHITECTURE.md) § Canal
+  OpenCode, [`README.md`](README.md).
+
 ## 2026-07-18 (lot #48 / OC2 — portage OpenCode : sûreté Bash + ledgers + commandes socle)
 
 - `promptimizer/lib/bash-guard.js` : détection rm/destructif extraite en lib partagée

@@ -244,6 +244,124 @@ function sameSnapshot(a, b) {
     ok(!threwGuard, 'garde Bash : payloads vides/malformés -> aucun throw hors deny volontaire');
   }
 
+  // ============ B3. OC3 — occupation relative + idle + injection ============
+  if (mod) {
+    // Projet git dédié (writeAutoHandoff a besoin d'un repo + d'un commit).
+    const PROJ3 = path.join(SANDBOX, 'proj3');
+    fs.mkdirSync(PROJ3, { recursive: true });
+    const gitEnv = { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
+    function git3(args) {
+      try { execFileSync('git', args, { cwd: PROJ3, stdio: 'pipe', env: Object.assign({}, process.env, gitEnv) }); return true; } catch (_) { return false; }
+    }
+    git3(['init']); git3(['config', 'user.email', 't@t']); git3(['config', 'user.name', 't']);
+    fs.writeFileSync(path.join(PROJ3, 'README.md'), '# proj3\n');
+    git3(['add', '-A']); git3(['commit', '-m', 'init']);
+
+    // Client enrichi : catalogue de modèles (fenêtre utile = 120k − 20k = 100k) + API messages.
+    const toasts3 = [];
+    const renames = [];
+    const LIMIT = { context: 120000, output: 20000 }; // useful = 100000
+    const client3 = {
+      tui: { showToast: async (o) => { toasts3.push(o); return true; } },
+      config: { providers: async () => ({ data: { providers: [{ id: 'test', models: { m1: { limit: LIMIT } } }], default: {} } }) },
+      session: {
+        messages: async ({ path: p }) => {
+          const sid = p && p.id;
+          if (sid === 'sF') return { data: [{ info: { role: 'assistant', sessionID: 'sF', providerID: 'test', modelID: 'm1', tokens: { input: 60000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } } } }] };
+          return { data: [] };
+        },
+        update: async ({ path: p, body }) => { renames.push({ id: p && p.id, title: body && body.title }); return { data: {} }; },
+      },
+    };
+    const input3 = { client: client3, project: {}, directory: PROJ3, worktree: PROJ3, serverUrl: null, $: null };
+    const hooks3 = await mod.PmzPlugin(input3);
+    const occMod = require(path.join(TARGET, 'pmz', 'impl', 'occupancy-oc.js'));
+
+    function occToasts() { return toasts3.filter((t) => t.body && /% de la fenêtre utile/.test(t.body.message)); }
+    async function feed(sid, occTokens) {
+      await hooks3.event({ event: { type: 'message.updated', properties: { info: { role: 'assistant', sessionID: sid, providerID: 'test', modelID: 'm1', tokens: { input: occTokens, output: 0, reasoning: 0, cache: { read: 0, write: 0 } } } } } });
+    }
+    async function idle3(sid) { await hooks3.event({ event: { type: 'session.idle', properties: { sessionID: sid } } }); }
+
+    section('OC3 — occupation relative : paliers 50/70/85/95 % de la fenêtre utile');
+    const before = occToasts().length;
+    await feed('sB', 40000); await idle3('sB');
+    ok(occToasts().length - before === 0, 'palier : 40 % (< 50 %) -> aucun toast');
+    await feed('sB', 55000); await idle3('sB');
+    ok(occToasts().length - before === 1, 'palier : franchissement 50 % -> 1 toast');
+    await feed('sB', 72000); await idle3('sB');
+    await feed('sB', 88000); await idle3('sB');
+    await feed('sB', 96000); await idle3('sB');
+    ok(occToasts().length - before === 4, 'paliers : 50/70/85/95 % franchis -> 4 toasts au total');
+    const lastMsg = occToasts()[occToasts().length - 1].body.message;
+    ok(/≈ 96 %/.test(lastMsg), 'palier : le toast rapporte le % relatif (≈ 96 %)');
+
+    section('OC3 — session.idle idempotent (multi-idle sans nouveau message)');
+    const n1 = occToasts().length;
+    await idle3('sB'); await idle3('sB');
+    ok(occToasts().length === n1, 'idle idempotent : re-idle sans nouveau message -> pas de re-toast');
+
+    section('OC3 — handoff écrit à l\'idle (.vibe-agent/handoff.md)');
+    const handoffFile = path.join(PROJ3, '.vibe-agent', 'handoff.md');
+    ok(fs.existsSync(handoffFile), 'handoff : session.idle écrit .vibe-agent/handoff.md');
+    let handoffTxt = '';
+    try { handoffTxt = fs.readFileSync(handoffFile, 'utf8'); } catch (_) {}
+    ok(/pmz:handoff:auto/.test(handoffTxt), 'handoff : marqueur pmz:handoff:auto présent');
+
+    section('OC3 — renommage de session (client.session.update, 1× par session)');
+    const sbRenames = renames.filter((r) => r.id === 'sB');
+    ok(sbRenames.length === 1, 'renommage : client.session.update appelé exactement 1× malgré N idles');
+    ok(sbRenames.length === 1 && typeof sbRenames[0].title === 'string' && sbRenames[0].title.length > 0,
+      'renommage : un titre non vide est passé à session.update');
+
+    section('OC3 — fallback occupation via client.session.messages (pas de message.updated)');
+    const nF = occToasts().length;
+    await idle3('sF'); // aucun message.updated préalable pour sF -> fallback API
+    ok(occToasts().length - nF === 1, 'fallback : 60 % via session.messages -> 1 toast');
+
+    section('OC3 — resync post-compaction réarme les paliers');
+    await feed('sC', 96000); await idle3('sC');
+    const nC = occToasts().length;
+    await hooks3.event({ event: { type: 'session.compacted', properties: { sessionID: 'sC' } } });
+    ok(occMod.readRecord('sC') === null, 'compaction : occ enregistrée effacée');
+    await feed('sC', 55000); await idle3('sC');
+    ok(occToasts().length - nC === 1, 'compaction : palier réarmé -> 55 % re-franchi après compaction');
+
+    section('OC3 — rappel de clôture à l\'idle (tree modifié) + anti-spam par lot');
+    const nCl = toasts3.length;
+    fs.writeFileSync(path.join(PROJ3, 'work.txt'), 'wip'); // tree devient « meaningful »
+    await idle3('sCL');
+    const cl1 = toasts3.slice(nCl).filter((t) => t.body && /sans clôture/.test(t.body.message));
+    ok(cl1.length === 1, 'clôture : tree modifié -> 1 toast de rappel');
+    await idle3('sCL');
+    const cl2 = toasts3.slice(nCl).filter((t) => t.body && /sans clôture/.test(t.body.message));
+    ok(cl2.length === 1, 'clôture : anti-spam -> pas de 2e rappel pour le même lot');
+
+    section('OC3 — injection différée (session.created -> 1er chat.message)');
+    await hooks3.event({ event: { type: 'session.created', properties: { info: { id: 'sI2', title: '' } } } });
+    ok(occMod.takePending('sI2') !== null, 'created : injection mise en file');
+    // takePending ci-dessus a consommé la file : on re-crée pour tester le flush via chat.message.
+    await hooks3.event({ event: { type: 'session.created', properties: { info: { id: 'sI2', title: '' } } } });
+    const out1 = { message: { id: 'um1', sessionID: 'sI2' }, parts: [] };
+    await hooks3['chat.message']({ sessionID: 'sI2', model: { providerID: 'test', modelID: 'm1' } }, out1);
+    ok(out1.parts.length === 1 && out1.parts[0].type === 'text' && out1.parts[0].synthetic === true,
+      'injection : 1er chat.message reçoit une part texte synthétique');
+    ok(/Promptimizer actif/.test(out1.parts[0].text), 'injection : la gouvernance PMZ est injectée');
+    const out2 = { message: { id: 'um2', sessionID: 'sI2' }, parts: [] };
+    await hooks3['chat.message']({ sessionID: 'sI2' }, out2);
+    ok(out2.parts.length === 0, 'injection : 2e chat.message ne ré-injecte pas (file consommée)');
+
+    section('OC3 — fail-open : catalogue de modèles indisponible');
+    const clientBad = { tui: { showToast: async () => true }, config: { providers: async () => { throw new Error('boom'); } } };
+    const hooksBad = await mod.PmzPlugin(Object.assign({}, input3, { client: clientBad }));
+    let threwOcc = false;
+    try {
+      await hooksBad.event({ event: { type: 'message.updated', properties: { info: { role: 'assistant', sessionID: 'sX', providerID: 'test', modelID: 'm1', tokens: { input: 96000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } } } } } });
+      await hooksBad.event({ event: { type: 'session.idle', properties: { sessionID: 'sX' } } });
+    } catch (_) { threwOcc = true; }
+    ok(!threwOcc, 'fail-open : providers() en échec -> aucun throw, pas d\'alerte relative');
+  }
+
   section('Kill-switch PMZ_DISABLE=1');
   process.env.PMZ_DISABLE = '1';
   const disabled = mod ? await mod.PmzPlugin(input) : null;
