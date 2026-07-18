@@ -76,16 +76,31 @@ function sameSnapshot(a, b) {
     ['pmz', 'scripts', 'backlog.js'], ['pmz', 'templates', 'rules.yaml'],
     ['command', 'pmz', 'about.md'], ['command', 'pmz', 'help.md'],
     ['command', 'pmz', 'init.md'], ['command', 'pmz', 'check-context.md'],
+    ['command', 'pmz', 'budget.md'], ['command', 'pmz', 'scope.md'],
+    ['command', 'pmz', 'close-batch.md'], ['command', 'pmz', 'fresh-session.md'],
   ]) {
     ok(fs.existsSync(path.join(TARGET, ...f)), 'arbo : ' + f.join('/'));
   }
   ok(!fs.existsSync(path.join(TARGET, 'opencode.json')), 'install : ne crée jamais opencode.json');
-  ok(summary && summary.commands === 4, 'install : résumé JSON — 4 commandes /pmz vendorées');
+  ok(summary && summary.commands === 8, 'install : résumé JSON — 8 commandes /pmz vendorées');
+
+  section('Commandes /pmz — chemins réécrits vers le layout OpenCode (pas de ~/.claude)');
+  for (const name of ['budget', 'scope', 'close-batch', 'fresh-session']) {
+    const md = fs.readFileSync(path.join(TARGET, 'command', 'pmz', name + '.md'), 'utf8');
+    ok(!/~\/\.claude/.test(md), 'commande ' + name + ' : aucun chemin ~/.claude résiduel');
+    ok(!/allowed-tools/.test(md), 'commande ' + name + ' : frontmatter allowed-tools (Claude Code) retiré');
+  }
+  ok(/~\/\.config\/opencode\/pmz\/scripts\/audit-context\.js/.test(
+    fs.readFileSync(path.join(TARGET, 'command', 'pmz', 'budget.md'), 'utf8')),
+    'commande budget : pointe vers pmz/scripts/audit-context.js (layout OpenCode)');
+  ok(/~\/\.config\/opencode\/pmz\/templates\/handoff-template\.md/.test(
+    fs.readFileSync(path.join(TARGET, 'command', 'pmz', 'fresh-session.md'), 'utf8')),
+    'commande fresh-session : pointe vers pmz/templates/handoff-template.md');
 
   section('Commande /pmz help — dérivée des commandes réellement installées (layout OpenCode)');
   const helpOut = runNode(path.join(TARGET, 'pmz', 'scripts', 'help.js'), []);
   ok(helpOut.code === 0, 'help.js : exit 0 sous le layout OpenCode');
-  for (const name of ['about', 'help', 'init', 'check-context']) {
+  for (const name of ['about', 'help', 'init', 'check-context', 'budget', 'scope', 'close-batch', 'fresh-session']) {
     ok(helpOut.out.includes(`**${name}**`), 'help.js : liste la commande ' + name);
   }
 
@@ -360,6 +375,68 @@ function sameSnapshot(a, b) {
       await hooksBad.event({ event: { type: 'session.idle', properties: { sessionID: 'sX' } } });
     } catch (_) { threwOcc = true; }
     ok(!threwOcc, 'fail-open : providers() en échec -> aucun throw, pas d\'alerte relative');
+
+    // ============ B4. NUDGES chat.message — lot OC4 ============
+    section('OC4 — nudges init/broad/model-mismatch (chat.message)');
+    const backlog4 = require(path.join(TARGET, 'pmz', 'lib', 'backlog.js'));
+    const PROJ4 = path.join(SANDBOX, 'proj4');
+    fs.mkdirSync(PROJ4, { recursive: true });
+    function git4(args) {
+      try { execFileSync('git', args, { cwd: PROJ4, stdio: 'pipe', env: Object.assign({}, process.env, gitEnv) }); return true; } catch (_) { return false; }
+    }
+    git4(['init']); git4(['config', 'user.email', 't@t']); git4(['config', 'user.name', 't']);
+    fs.writeFileSync(path.join(PROJ4, 'README.md'), '# proj4\n'); // pas de CLAUDE.md -> non « fully initialized »
+    git4(['add', '-A']); git4(['commit', '-m', 'init']);
+    // Catalogue à 2 modèles anthropic (opus + sonnet) : permet de distinguer un hint résoluble
+    // qui diffère du réel (nudge) d'un hint absent du catalogue (ignoré en silence).
+    const client4 = {
+      tui: { showToast: async () => true },
+      config: { providers: async () => ({ data: { providers: [{ id: 'anthropic', models: { 'claude-opus-4-8': { limit: LIMIT }, 'claude-sonnet-5': { limit: LIMIT } } }] } }) },
+    };
+    const input4 = { client: client4, project: {}, directory: PROJ4, worktree: PROJ4, serverUrl: null, $: null };
+    const hooks4 = await mod.PmzPlugin(input4);
+    async function feed4(sid, modelID) {
+      await hooks4.event({ event: { type: 'message.updated', properties: { info: { role: 'assistant', sessionID: sid, providerID: 'anthropic', modelID, tokens: { input: 5000, output: 0, reasoning: 0, cache: { read: 0, write: 0 } } } } } });
+    }
+    async function chat4(sid, text) {
+      const out = { message: { id: 'm-' + sid, sessionID: sid }, parts: text ? [{ type: 'text', text }] : [] };
+      await hooks4['chat.message']({ sessionID: sid }, out);
+      const inj = out.parts.filter((p) => p && p.synthetic);
+      return inj.length ? inj[0].text : '';
+    }
+
+    // Nudge « demande trop large » (aucun plan encore) + anti-spam 1×/session.
+    const tBroad = await chat4('n1', 'refactor complet du projet partout, et aussi le reste');
+    ok(/Demande potentiellement large/.test(tBroad), 'broad : nudge de découpage injecté');
+    const tBroad2 = await chat4('n1', 'encore un refactor global partout tant qu\'on y est');
+    ok(tBroad2 === '', 'broad : anti-spam 1×/session (pas de 2e nudge)');
+
+    // Nudge « init avant code » sur projet non initialisé (pas de CLAUDE.md).
+    const tInit = await chat4('n2', 'initialise un nouveau projet from scratch');
+    ok(tInit !== '', 'init : nudge injecté sur projet non initialisé + prompt d\'init');
+
+    // Model-mismatch : hint « opus » résoluble (catalogue), réel « sonnet » -> nudge.
+    backlog4.addLot(PROJ4, 'Lot mismatch', 'fait quand : ok', 'opus', null, null, 'medium');
+    backlog4.startLot(PROJ4, backlog4.loadBacklog(PROJ4).lots[0].id);
+    await feed4('n3', 'claude-sonnet-5');
+    const tMis = await chat4('n3', 'continue le travail');
+    ok(/≠ modèle préconisé/.test(tMis), 'model-mismatch : hint opus résoluble ≠ réel sonnet -> nudge');
+    const tMis2 = await chat4('n3', 'toujours');
+    ok(!/≠ modèle préconisé/.test(tMis2), 'model-mismatch : anti-spam 1×/session');
+
+    // Réel == préconisé (hint opus, réel opus) -> aucun nudge.
+    await feed4('n3b', 'claude-opus-4-8');
+    const tMatch = await chat4('n3b', 'continue');
+    ok(!/≠ modèle préconisé/.test(tMatch), 'model-mismatch : réel == préconisé -> pas de nudge');
+
+    // Hint non résoluble par le catalogue courant (« gpt-4o » absent) -> ignoré en silence.
+    const bfile4 = path.join(PROJ4, '.vibe-agent', 'backlog.json');
+    const bj4 = JSON.parse(fs.readFileSync(bfile4, 'utf8'));
+    bj4.lots[0].model_hint = 'gpt-4o';
+    fs.writeFileSync(bfile4, JSON.stringify(bj4));
+    await feed4('n4', 'claude-sonnet-5');
+    const tUnres = await chat4('n4', 'continue');
+    ok(!/≠ modèle préconisé/.test(tUnres), 'model-mismatch : hint non résoluble (gpt-4o) -> ignoré en silence');
   }
 
   section('Kill-switch PMZ_DISABLE=1');

@@ -193,18 +193,20 @@ Lance `promptimizer/install/uninstall.command` (macOS) / `uninstall.sh` (Linux) 
 `uninstall.ps1` (Windows) — retire **uniquement** les hooks PMZ, propose de restaurer l'ancien
 hook, ne touche jamais à tes projets.
 
-## Déclinaison OpenCode (en cours — epic « PMZ OpenCode »)
+## Déclinaison OpenCode (epic « PMZ OpenCode » — complet)
 
-PMZ se décline pour [OpenCode](https://opencode.ai) : plugin + commandes `/pmz`, libs cœur
+PMZ se décline pour [OpenCode](https://opencode.ai) : plugin + **8 commandes `/pmz`**, libs cœur
 partagées (backlog, handoff, ledgers), état projet `.vibe-agent/` **commun** aux deux outils.
 Install : `node opencode/install/install-opencode.js` (cible `~/.config/opencode`, option
 `--target` pour un bac à sable) ; diagnostic : `doctor-opencode.js` ; retrait :
 `uninstall-opencode.js`. Doctrine, mapping des hooks et gaps assumés (statusline) :
-[`opencode/NOTES.md`](opencode/NOTES.md). État : lot OC3 — sûreté Bash + ledgers (OC2) ;
-occupation **relative à la fenêtre du modèle** (paliers 50/70/85/95 %, toasts aux
-franchissements), équivalent Stop à `session.idle` (auto-clôture + handoff), injection
-différée au (re)démarrage et renommage de session. Restent au lot OC4 : commandes
-`budget`/`scope`/`close-batch`, `model_hint` locaux et bump de version.
+[`opencode/NOTES.md`](opencode/NOTES.md). Portage complet (lots OC1–OC4) : sûreté Bash +
+ledgers ; occupation **relative à la fenêtre du modèle** (paliers 50/70/85/95 %, toasts aux
+franchissements) ; équivalent Stop à `session.idle` (auto-clôture + handoff) ; injection
+différée au (re)démarrage + renommage de session ; les 8 commandes `/pmz`
+(`about`/`help`/`init`/`check-context`/`budget`/`scope`/`close-batch`/`fresh-session`) ; nudges
+init/broad/model-mismatch au `chat.message` avec résolution locale du `model_hint`. Gaps v1
+assumés : statusline (aucune API OpenCode), filet `ask` sans contrôle de permission actif.
 
 ## Pour les contributeurs
 

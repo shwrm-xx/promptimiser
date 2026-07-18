@@ -486,7 +486,9 @@ dupliquée ici. Ce qui est structurant :
 - **Équivalent Stop = `event: session.idle`** (lot OC3) : idempotent multi-idle (l'anti-spam
   monotone du palier + le drapeau de clôture par lot évitent tout doublon). Y sont branchés :
   franchissement d'occupation (toast), rappel/auto-clôture de lot (miroir de `hooks/stop.js`,
-  canal toast au lieu de `systemMessage`, sans preuve verify — OC4), handoff auto
+  canal toast au lieu de `systemMessage`) — la clôture *mécanique* à l'idle reste sans preuve
+  verify ; la clôture *disciplinée* (résumé demande, map fait/non fait, verify du changé) passe
+  par la commande `/pmz close-batch` (OC4). Puis handoff auto
   (`writeAutoHandoff` réutilisé tel quel), et **renommage de session** (`client.session.update`,
   1× par session). Renommage : contrairement à Claude Code où PMZ ne fait que suggérer un titre
   (validation utilisateur), OpenCode n'offre aucun canal de confirmation à un plugin — le titre
@@ -496,11 +498,30 @@ dupliquée ici. Ce qui est structurant :
   plan de lots) et `session.compacted` (réinjection minimale du lot en cours), puis flushé au
   **1er `chat.message`** en part texte synthétique (`out.parts`). `session.compacted` sert aussi
   de resync du palier d'occupation (l'occ chute après compaction).
+- **Nudges de gouvernance = `chat.message`** (lot OC4, miroir de `hooks/user-prompt-submit.js`) :
+  au même point que le flush d'injection, `computeNudges` détecte **init avant code** (projet
+  non `isFullyInitialized` + prompt de démarrage), **demande trop large** (regex/bullets), et
+  **model-mismatch**. Anti-spam 1×/session via `prompt_reminders` (lib/state, remis à zéro sur
+  nouvelle session_id). Le nudge d'occupation haute n'existe PAS ici : côté OpenCode il passe par
+  le toast à `session.idle`. Nudges et injection différée sont fusionnés en une seule part
+  synthétique. Le prompt utilisateur est lu dans `out.parts` (parts texte), pas dans `input`.
+- **Vigie model-mismatch avec résolution locale** (lot OC4) : le modèle réel est lu dans l'occ
+  record (`providerID/modelID` du dernier `message.updated`) — pas `inp.model`, qui arrive `null`
+  au `chat.message` en 1.18.3. Le `model_hint` du lot (alias libre « sonnet »/« opus ») n'est
+  comparé que s'il est **résoluble** par le catalogue `client.config.providers` du côté courant
+  (`hintResolvable` : au moins un modèle dont l'id contient l'alias) ; un hint absent du catalogue
+  (ex. « sonnet » sur une install 100 % locale) ou un catalogue indisponible → **ignoré en
+  silence**, jamais de faux nudge. Comparaison réutilise `lib/modelwatch.js: modelsDiffer` (pure).
+- **Toutes les commandes `/pmz`** (lot OC4) : `budget`, `scope`, `close-batch`, `fresh-session`
+  rejoignent `about`/`help`/`init`/`check-context` — 8 au total, chemins réécrits vers
+  `~/.config/opencode/pmz/{scripts,templates}/`, frontmatter `allowed-tools` (Claude Code) retiré.
+  Les scripts sous-jacents (`audit-context.js`, `backlog.js`, `close-batch.js`) sont les mêmes
+  libs vendorées, aucun code métier dupliqué.
 - **Pas de merge de settings** : l'installer ne pose que `plugin/pmz.js`, `command/pmz/` et
   `pmz/` — il ne touche jamais `opencode.json` ni un plugin/commande tiers.
 - **État projet `.vibe-agent/` partagé** avec Claude Code (backlog/handoff cross-outil).
   Règle : pas deux sessions simultanées sur un même projet ; un `model_hint` non résoluble
-  par un côté est ignoré silencieusement.
+  par un côté est ignoré silencieusement (cf. vigie model-mismatch OC4 ci-dessus).
 - **Tests** : `test/run-tests-opencode.js` (bac à sable auto), invoqué par `run-tests.js` —
   la cible réelle `~/.config/opencode` n'est jamais touchée par les tests.
 

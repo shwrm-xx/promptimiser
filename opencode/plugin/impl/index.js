@@ -5,7 +5,10 @@
 //         fallback client.session.messages), franchissements en toast ; session.idle
 //         (occupation + clôture + handoff, idempotent multi-idle) ; injection différée au
 //         (re)démarrage (session.created / session.compacted -> 1er chat.message) ; suggestion
-//         de renommage de session. Contrat, mapping des hooks et gaps assumés : opencode/NOTES.md.
+//         de renommage de session.
+//   OC4 : nudges de gouvernance au chat.message (init avant code / demande trop large /
+//         model-mismatch, avec résolution locale du model_hint). Contrat, mapping des hooks
+//         et gaps assumés : opencode/NOTES.md.
 const path = require('path');
 const fs = require('fs');
 const bridge = require('./bridge');
@@ -20,9 +23,36 @@ const {
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { readHandoff, markConsumed, parseSkipPaths, writeAutoHandoff } = require('../lib/handoff');
 const { incrementLot, suggestedTitle } = require('../lib/lot');
+const { modelsDiffer } = require('../lib/modelwatch');
 const {
-  MSG_ACTIF, MSG_HANDOFF, MSG_CLOTURE, backlogResumeMessage, compactResumeMessage,
+  MSG_ACTIF, MSG_HANDOFF, MSG_CLOTURE, MSG_LARGE, MSG_INIT_BEFORE_CODE,
+  backlogResumeMessage, compactResumeMessage, largeWithPlanMessage, modelMismatchMessage,
 } = require('../lib/messages');
+
+// Détection init/scaffold et demandes trop larges (miroir de hooks/user-prompt-submit.js).
+const INIT_RE = /(nouveau projet|initialise|initialiser|scaffold|setup|from scratch|cr[ée]er? un projet|bootstrap)/i;
+const BROAD_RE = /(refactor (complet|global|tout)|partout|tout le (projet|code|repo)|et aussi|pendant que tu y es|tant qu'on y est|toutes les|tous les fichiers)/i;
+
+function isBroad(prompt) {
+  if (!prompt) return false;
+  if (BROAD_RE.test(prompt)) return true;
+  const bullets = (prompt.match(/(^|\n)\s*([-*]|\d+\.)/g) || []).length;
+  return prompt.length > 1500 || bullets >= 6;
+}
+
+// Texte du prompt utilisateur porté par un chat.message : concat des parts texte de out.parts
+// (le message en cours de construction). Défensif : jamais de throw, chaîne vide au pire.
+function promptFromParts(out) {
+  try {
+    if (!out || !Array.isArray(out.parts)) return '';
+    return out.parts
+      .filter((p) => p && p.type === 'text' && typeof p.text === 'string')
+      .map((p) => p.text)
+      .join('\n');
+  } catch (_) {
+    return '';
+  }
+}
 
 // Événements du bus retenus dans le journal (message.updated & part.updated sont trop bavards
 // pour être journalisés ligne à ligne — ils sont traités hors log).
@@ -68,11 +98,10 @@ async function createHooks(input) {
   const version = ocdir.readVersion();
   bridge.log('plugin.loaded', { version, directory: (input && input.directory) || null });
 
-  // Catalogue des modèles (fenêtres context/output) — récupéré paresseusement une fois par
-  // vie du plugin. `undefined` = pas encore tenté ; `null` = échec (on ne réessaie pas).
+  // Catalogue des modèles (fenêtres context/output + ids) — récupéré paresseusement une fois
+  // par vie du plugin. `undefined` = pas encore tenté ; `null` = échec (on ne réessaie pas).
   let providersCache;
-  async function getLimit(providerID, modelID) {
-    if (!providerID || !modelID) return null;
+  async function loadProviders() {
     if (!client || !client.config || typeof client.config.providers !== 'function') return null;
     if (providersCache === undefined) {
       try {
@@ -82,11 +111,35 @@ async function createHooks(input) {
         providersCache = null;
       }
     }
-    const list = providersCache && Array.isArray(providersCache.providers) ? providersCache.providers : null;
+    return providersCache && Array.isArray(providersCache.providers) ? providersCache.providers : null;
+  }
+
+  async function getLimit(providerID, modelID) {
+    if (!providerID || !modelID) return null;
+    const list = await loadProviders();
     if (!list) return null;
     const prov = list.find((p) => p && p.id === providerID);
     const model = prov && prov.models ? prov.models[modelID] : null;
     return model && model.limit ? model.limit : null;
+  }
+
+  // Le model_hint d'un lot (« sonnet », « opus »…) est-il RÉSOLUBLE par le côté courant ?
+  // Un alias inconnu du catalogue OpenCode (ex. « sonnet » sur une install 100 % locale) est
+  // ignoré en silence : pas de nudge model-mismatch pour un modèle qui n'existe pas ici.
+  // Catalogue indisponible -> non résoluble (fail-open : jamais de faux nudge).
+  async function hintResolvable(hint) {
+    if (!hint) return false;
+    const list = await loadProviders();
+    if (!list) return false;
+    const h = String(hint).toLowerCase();
+    for (const p of list) {
+      if (!p || !p.models) continue;
+      for (const mid of Object.keys(p.models)) {
+        const full = (p.id ? p.id + '/' : '') + mid;
+        if (full.toLowerCase().includes(h) || String(mid).toLowerCase().includes(h)) return true;
+      }
+    }
+    return false;
   }
 
   // Repli d'occupation à l'idle : dernier message assistant via l'API messages, quand aucun
@@ -212,6 +265,64 @@ async function createHooks(input) {
     }
   }
 
+  // Nudges de gouvernance au chat.message (miroir de hooks/user-prompt-submit.js) : init avant
+  // code, demande trop large, model-mismatch. Anti-spam 1×/session (prompt_reminders, remis à
+  // zéro sur nouvelle session_id par lib/state.js). L'occupation haute n'est PAS un nudge ici :
+  // côté OpenCode elle passe par le toast à session.idle (cf. mapping NOTES.md). Fail-open :
+  // toute erreur -> aucun nudge, jamais de mutation du prompt.
+  async function computeNudges(dir, sid, out) {
+    const root = repoRoot(dir);
+    if (!root) return null;
+    const st = loadSessionState(root, sid);
+    st.prompt_reminders = st.prompt_reminders || {};
+    const prompt = promptFromParts(out);
+    const parts = [];
+
+    // init / broad — mutuellement exclusifs (comme Claude Code).
+    let key = null;
+    let msg = null;
+    if (!project.isFullyInitialized(root) && INIT_RE.test(prompt)) {
+      key = 'init_before_code';
+      msg = MSG_INIT_BEFORE_CODE;
+    } else if (isBroad(prompt)) {
+      key = 'broad';
+      try {
+        const b = loadBacklog(root);
+        msg = b.lots.length ? largeWithPlanMessage(progress(b), currentLot(b)) : MSG_LARGE;
+      } catch (_) {
+        msg = MSG_LARGE;
+      }
+    }
+    if (msg && key && !st.prompt_reminders[key]) {
+      st.prompt_reminders[key] = true;
+      parts.push(msg);
+    }
+
+    // Vigie model-mismatch : le modèle réel (dernier assistant capté via message.updated) vs
+    // le model_hint du lot en cours. Le modèle arrive `null` sur chat.message en 1.18.3 — on
+    // lit donc l'occ record (providerID/modelID), pas inp.model. Hint non résoluble par ce
+    // côté -> ignoré en silence.
+    try {
+      if (!st.prompt_reminders.model_mismatch) {
+        const b = loadBacklog(root);
+        const cur = currentLot(b);
+        if (cur && cur.model_hint) {
+          const rec = occ.readRecord(sid);
+          const actual = rec && rec.modelID
+            ? (rec.providerID ? rec.providerID + '/' + rec.modelID : rec.modelID)
+            : null;
+          if (actual && (await hintResolvable(cur.model_hint)) && modelsDiffer(cur.model_hint, actual)) {
+            st.prompt_reminders.model_mismatch = true;
+            parts.push(modelMismatchMessage(cur, actual));
+          }
+        }
+      }
+    } catch (_) { /* fail-open : pas de nudge modèle ce tour */ }
+
+    saveSessionState(root, st);
+    return parts.length ? parts.join('\n\n') : null;
+  }
+
   return {
     // ≈ SessionStart / Stop / PreCompact / occupation — bus d'événements catch-all.
     event: bridge.guard('event', async ({ event }) => {
@@ -251,8 +362,8 @@ async function createHooks(input) {
         }
       }
     }),
-    // ≈ UserPromptSubmit — flush de l'injection différée (created/compacted). Futurs nudges
-    // init/broad/model-mismatch : OC4.
+    // ≈ UserPromptSubmit — flush de l'injection différée (created/compacted) + nudges de
+    // gouvernance (init/broad/model-mismatch, OC4), fusionnés en une seule part synthétique.
     'chat.message': bridge.guard('chat.message', async (inp, out) => {
       const sid = (inp && inp.sessionID) || null;
       bridge.log('chat.message', {
@@ -260,15 +371,22 @@ async function createHooks(input) {
         model: inp && inp.model ? inp.model.providerID + '/' + inp.model.modelID : null,
       });
       if (!sid || !out || !Array.isArray(out.parts)) return;
+      const injections = [];
       const pending = occ.takePending(sid);
-      if (!pending) return;
+      if (pending) injections.push(pending);
+      const dir = input && input.directory;
+      if (dir) {
+        const nudges = await computeNudges(dir, sid, out);
+        if (nudges) injections.push(nudges);
+      }
+      if (!injections.length) return;
       const msg = out.message || {};
       out.parts.push({
         id: (msg.id || 'pmz') + '-pmz-inject',
         sessionID: msg.sessionID || sid,
         messageID: msg.id || '',
         type: 'text',
-        text: pending,
+        text: injections.join('\n\n'),
         synthetic: true,
       });
     }),

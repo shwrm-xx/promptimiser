@@ -41,7 +41,7 @@ sur le même projet. Un `model_hint` non résoluble par un côté (« sonnet » 
 |---|---|---|
 | session-start (startup/clear) | `event: session.created` → injection différée au 1er `chat.message` + toast | OC3 ✅ |
 | session-start (compact) | `event: session.compacted` → resync palier + réinjection minimale du lot | OC3 ✅ |
-| user-prompt-submit | `"chat.message"` (flush injection différée OC3 ✅ ; nudges init/broad/model-mismatch → OC4) | OC3/OC4 |
+| user-prompt-submit | `"chat.message"` (flush injection différée OC3 ✅ ; nudges init/broad/model-mismatch OC4 ✅) | OC3/OC4 ✅ |
 | pre-tool-use (garde `rm`) | `"tool.execute.before"` (throw = deny) + `"permission.ask"` pour le tiers destructif | OC2 |
 | post-tool-use (ledgers, todo) | `"tool.execute.after"` (read/edit/write/todowrite) | OC2 |
 | stop (métrologie, auto-clôture, handoff) | `event: session.idle` (idempotent : palier monotone + drapeau clôture par lot) | OC3 ✅ |
@@ -185,6 +185,42 @@ foi. Pour voir le toast, lancer `opencode` (TUI) avec les mêmes variables d'env
   idle idempotent multi-idle, handoff écrit à l'idle, renommage 1×/session, fallback via
   `session.messages`, resync post-compaction, injection created→chat.message, fail-open
   catalogue indisponible).
+
+## Lot OC4 — commandes `/pmz` restantes, model_hint local, vigie model-mismatch
+
+- **Commandes `/pmz`** : `budget`, `scope`, `close-batch`, `fresh-session` portées dans
+  `opencode/command/pmz/*.md` (8 commandes au total avec OC2). Contenu = miroir des
+  `promptimizer/commands/*.md`, chemins réécrits (`~/.claude/promptimizer/{scripts,templates}`
+  → `~/.config/opencode/pmz/{scripts,templates}`), frontmatter `allowed-tools` (Claude Code)
+  retiré (les commandes OpenCode ne connaissent que `description`). Aucun script nouveau : ils
+  s'appuient sur les libs déjà vendorées (`audit-context.js`, `backlog.js`, `close-batch.js`,
+  template `handoff-template.md`). L'installer les copie déjà génériquement (`command/pmz/*.md`).
+- **Nudges au `chat.message`** (`index.js: computeNudges`, miroir de `user-prompt-submit.js`) :
+  init-avant-code (`project.isFullyInitialized` + `INIT_RE`), demande trop large (`isBroad` :
+  regex + longueur/bullets), model-mismatch. Anti-spam 1×/session via `prompt_reminders`
+  (`lib/state`). Le prompt utilisateur est lu dans `out.parts` (parts texte du message en cours),
+  pas dans `input`. Nudges + injection différée fusionnés en **une** part synthétique.
+- **Occupation NON re-nudgée ici** : côté Claude Code `user-prompt-submit.js` re-nudge à ≥ 500k ;
+  côté OpenCode l'occupation passe déjà par le toast à `session.idle` (OC3) — pas de doublon.
+- **Vigie model-mismatch, résolution LOCALE** : le modèle réel est lu dans l'occ record
+  (`providerID/modelID` du dernier `message.updated`), **pas** `inp.model` (arrive `null` au
+  `chat.message` en 1.18.3, cf. § OC1). Le `model_hint` (alias libre « sonnet »/« opus ») n'est
+  comparé que s'il est **résoluble** par le catalogue `client.config.providers` du côté courant
+  (`hintResolvable` : un modèle dont l'id contient l'alias). Hint absent du catalogue (ex.
+  « sonnet » sur install 100 % locale) OU catalogue indisponible → **ignoré en silence** (jamais
+  de faux nudge). `modelsDiffer` (`lib/modelwatch`, pure) fait la comparaison finale.
+- **Décision assumée (écart scope)** : le nudge init côté OpenCode ne fait que **pointer vers
+  `/pmz init`** — il ne rejoue PAS l'auto-`git init`+bootstrap de `user-prompt-submit.js` (Claude
+  Code, cas « aucun `.git` »). Un plugin OpenCode tourne toujours dans un projet déjà ouvert ; la
+  création de repo reste une action explicite (`/pmz init`), pas un effet de bord d'un prompt.
+- **Non vérifié** : rendu réel des nudges en TUI live (comme OC3, sandbox à client mocké
+  seulement). Fail-open partout : une erreur (backlog absent, catalogue KO) → aucun nudge.
+- **VERSION** bumpée `1.1.8 → 1.2.0` (epic « PMZ OpenCode » complet : canal OpenCode à parité
+  fonctionnelle avec Claude Code, aux gaps v1 près — statusline, filet `ask` sans permission
+  active).
+- Tests : `test/run-tests-opencode.js` 83 → 108 assertions (arbo + chemins réécrits des 4
+  commandes, `help.js` sur 8 commandes, nudges broad/init + anti-spam, model-mismatch
+  résoluble≠réel / réel==préconisé / non résoluble ignoré). Suite complète `run-tests.js` verte.
 
 ## Hors périmètre / constats d'audit (2026-07-18)
 

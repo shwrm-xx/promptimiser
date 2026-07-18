@@ -1,0 +1,46 @@
+---
+description: Découpe une grosse demande en 2-5 lots persistés (.vibe-agent/backlog.json)
+---
+
+Découpe la demande courante en un plan de lots persistant.
+
+Rappel de découpe : **1 lot = 1 session sous ~300k tokens, 1 commit, un critère « fait
+quand : … » vérifiable** — au-delà, redécouper plutôt que grossir un lot.
+
+Étapes :
+1. Reformuler la demande en **2 à 5 lots** : un titre court + un critère « fait quand : … »
+   par lot. Un lot = une **unité livrable** (1 commit cohérent), pas une étape d'exécution
+   (les étapes fines restent dans la todo-list, capturée automatiquement).
+   Pour **chaque** lot, préconiser un **modèle** (ex. `sonnet` pour du mécanique/CRUD,
+   `opus` pour du raisonnement lourd/archi) **et un effort de raisonnement**
+   (`low` | `medium` | `high` | `xhigh`) — les deux sont obligatoires, jamais omis.
+   Côté OpenCode, `model` est un **alias libre** (« sonnet », « opus »…) : la vigie
+   model-mismatch ne l'utilise que s'il correspond à un modèle réellement présent dans le
+   catalogue du provider courant ; un alias non résoluble par ce côté est ignoré en silence.
+   Si ce découpage porte une **feature/epic** identifiable, proposer aussi un **nom de plan
+   court (≤ 3 mots, cap 60 caractères)** — c'est lui qui nomme le plan dans le titre de
+   session (`[XXX · #Y] NomDePlan · Lot #X · résumé` — `#Y` = id backlog global, `Lot #X` = rang
+   du lot dans le plan) ; sinon l'omettre (epic = label optionnel, la session s'affichera
+   `[XXX · #Y] Session Libre · résumé`).
+2. Faire valider le découpage, les modèles préconisés **et l'epic éventuel** par
+   l'utilisateur en **UNE** question (pas dix).
+3. Si un epic a été validé, l'enregistrer une fois pour la session/le titre :
+   `node ~/.config/opencode/pmz/scripts/backlog.js epic --set "Nom de l'epic"`
+   (écrit `.vibe-agent/epic`, cap 60 caractères).
+4. Persister chaque lot validé (un appel par lot), avec sa préconisation de modèle, son
+   effort et, si présent, l'epic :
+   `node ~/.config/opencode/pmz/scripts/backlog.js add --title "…" --scope "fait quand : …" --model sonnet --effort medium --epic "Nom de l'epic"`
+   (`--model` est **obligatoire** — l'ajout est refusé sans lui ; `--effort` doit valoir
+   `low`/`medium`/`high`/`xhigh` sinon l'ajout est refusé ; `--epic` reste optionnel)
+   puis démarrer le premier :
+   `node ~/.config/opencode/pmz/scripts/backlog.js start --id <id>`.
+5. Afficher le plan (`node ~/.config/opencode/pmz/scripts/backlog.js show`, ou
+   `show --epic "Nom de l'epic"` pour filtrer) et traiter **UNIQUEMENT le premier lot**.
+
+Le suivi est ensuite automatique : l'event `session.idle` clôt le lot au commit et annonce le
+suivant, le handoff porte l'avancement (x/y faits), le plan est réinjecté au démarrage suivant
+et après compaction. `/pmz close-batch` marque le lot fait si l'idle ne l'a pas déjà fait.
+
+La préconisation de modèle et l'effort sont **réaffichés** à chaque `show`/`start`/`next`
+et dans le handoff auto (`[modèle : … · effort …]`) — pense à basculer de modèle/effort
+avant d'attaquer un lot.

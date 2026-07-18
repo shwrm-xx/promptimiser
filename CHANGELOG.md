@@ -2,6 +2,35 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-18 (lot #50 / OC4 — portage OpenCode : commandes `/pmz` complètes + vigie model-mismatch + VERSION)
+
+- `opencode/command/pmz/{budget,scope,close-batch,fresh-session}.md` (nouveaux) : les 4
+  commandes `/pmz` restantes portées (8 au total avec OC2). Contenu miroir des
+  `promptimizer/commands/*.md`, chemins réécrits vers `~/.config/opencode/pmz/{scripts,
+  templates}/`, frontmatter `allowed-tools` (Claude Code) retiré. Aucun script nouveau : elles
+  réutilisent les libs vendorées (`audit-context.js`, `backlog.js`, `close-batch.js`, template
+  `handoff-template.md`) ; l'installer les copie déjà génériquement.
+- `opencode/plugin/impl/index.js` : nudges de gouvernance au `chat.message` (`computeNudges`,
+  miroir de `hooks/user-prompt-submit.js`) — **init avant code**, **demande trop large**,
+  **model-mismatch**. Anti-spam 1×/session (`prompt_reminders`), prompt lu dans `out.parts`,
+  fusionnés avec l'injection différée en une part synthétique. L'occupation n'est pas re-nudgée
+  ici (déjà couverte par le toast à `session.idle`, OC3).
+- **Vigie model-mismatch à résolution locale** : modèle réel lu dans l'occ record
+  (`providerID/modelID`, `message.updated`) — pas `inp.model` (`null` au `chat.message` en
+  1.18.3). Le `model_hint` (alias « sonnet »/« opus ») n'est comparé que s'il est **résoluble**
+  par le catalogue `client.config.providers` courant ; un alias absent du catalogue (install
+  locale) ou un catalogue indisponible → ignoré en silence, jamais de faux nudge.
+- **Écart de scope assumé** : le nudge init OpenCode pointe vers `/pmz init` sans rejouer
+  l'auto-`git init`+bootstrap de Claude Code (un plugin OpenCode tourne dans un projet déjà
+  ouvert ; créer le repo reste une action explicite).
+- **VERSION** `1.1.8 → 1.2.0` : epic « PMZ OpenCode » complet (canal OpenCode à parité
+  fonctionnelle avec Claude Code, aux gaps v1 près : statusline, filet `ask` sans permission active).
+- `test/run-tests-opencode.js` : 83 → 108 assertions (arbo + chemins réécrits des 4 commandes,
+  `help.js` sur 8 commandes, nudges broad/init + anti-spam, model-mismatch résoluble≠réel /
+  réel==préconisé / non résoluble ignoré). Suite complète `run-tests.js` verte.
+- Doc : [`opencode/NOTES.md`](opencode/NOTES.md) § Lot OC4, mapping hooks (ligne user-prompt-submit
+  → OC4 ✅), [`ARCHITECTURE.md`](ARCHITECTURE.md) § Canal OpenCode, [`README.md`](README.md).
+
 ## 2026-07-18 (lot #49 / OC3 — portage OpenCode : occupation relative + session.idle + injection + renommage)
 
 - `opencode/plugin/impl/occupancy-oc.js` (nouveau, OC-natif) : occupation contexte **relative
