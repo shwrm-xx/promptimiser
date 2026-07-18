@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 51,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-18T19:37:37.726Z",
+  "updated_at": "2026-07-18T19:53:15.302Z",
   "lots": [
     {
       "id": 1,
@@ -939,19 +939,19 @@
       "id": 50,
       "title": "OC4 — Scope/budget/clôture + model_hint locaux + doc finale",
       "scope": "fait quand : les 9 commandes existent ou gap documenté ; scope écrit des model_hint = ids opencode réels ; bout-en-bout sandbox init→scope→tour→close-batch→fresh-session→handoff consommé ; suite complète run-tests.js verte (zéro régression Claude Code)",
-      "status": "todo",
+      "status": "done",
       "model_hint": "opus",
       "effort_hint": "medium",
       "epic": "PMZ OpenCode",
       "verify": null,
-      "closed_commit": null,
-      "closed_at": null,
+      "closed_commit": "72423e5",
+      "closed_at": "2026-07-18T19:53:15.301Z",
       "closed_session_id": null,
       "closed_occupancy": null,
       "cost_tokens": 0,
       "started_at": null,
-      "lot_number": null,
-      "note": null,
+      "lot_number": 61,
+      "note": "Écart assumé vs 'fait quand' : model_hint gardé en ALIAS (sonnet/opus), PAS ids OpenCode — .vibe-agent partagé avec Claude Code, un id OpenCode casserait la vigie CC. Résolution locale côté vigie (hi…",
       "session_touches": 0
     }
   ]
