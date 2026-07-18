@@ -451,6 +451,29 @@ manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string r
   (`claude-dir.js`) restent donc vérifiés seulement par lecture de code + tests unitaires
   (bac à sable macOS), pas par exécution réelle sous Windows.
 
+### Canal OpenCode (epic « PMZ OpenCode », lots OC1–OC4)
+
+Troisième canal, pour [OpenCode](https://opencode.ai) (≥ 1.18) : la source vit dans
+`opencode/` (frère de `codex/`), la **doctrine détaillée** (layout installé, table de mapping
+hooks Claude Code → OpenCode, stratégie d'occupation relative à la fenêtre du modèle, gaps
+assumés) dans [`opencode/NOTES.md`](opencode/NOTES.md) — source de vérité du portage, non
+dupliquée ici. Ce qui est structurant :
+
+- **Libs cœur partagées, vendorées par copie** : `install-opencode.js` copie
+  `promptimizer/{lib,scripts,templates,VERSION}` vers `<config opencode>/pmz/` — source
+  unique, aucun require inter-dossiers au runtime. `pmz/state/` est préservé aux réinstalls.
+- **Plugin in-process** : loader ESM fin (`plugin/pmz.js`) → cœur CJS (`pmz/impl/`) via
+  `createRequire`, compatible avec le runtime Bun embarqué d'OpenCode (prouvé au lot OC1).
+  Mêmes invariants que les hooks Claude Code : fail-open absolu (`bridge.guard()`),
+  kill-switch `PMZ_DISABLE=1`, jamais de throw (hors futur deny volontaire, lot OC2).
+- **Pas de merge de settings** : l'installer ne pose que `plugin/pmz.js`, `command/pmz/` et
+  `pmz/` — il ne touche jamais `opencode.json` ni un plugin/commande tiers.
+- **État projet `.vibe-agent/` partagé** avec Claude Code (backlog/handoff cross-outil).
+  Règle : pas deux sessions simultanées sur un même projet ; un `model_hint` non résoluble
+  par un côté est ignoré silencieusement.
+- **Tests** : `test/run-tests-opencode.js` (bac à sable auto), invoqué par `run-tests.js` —
+  la cible réelle `~/.config/opencode` n'est jamais touchée par les tests.
+
 ### Namespace plugin `pmz` (lot E1)
 
 Voir section « Canal plugin Claude Code » ci-dessus (§ Identifiant plugin = `pmz`).

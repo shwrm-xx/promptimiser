@@ -2,6 +2,30 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-18 (lot #47 / OC1 — portage OpenCode : squelette plugin + install sandbox + preuve de vie)
+
+Ouverture de l'epic « PMZ OpenCode » (lots OC1–OC4, backlog #47–#50) : déclinaison complète
+de PMZ pour OpenCode (1.18+), optimisée pour les modèles locaux de la machine (fenêtres
+8–64k → future occupation **relative** à la fenêtre du modèle, lot OC3). Doctrine et mapping
+des hooks : `opencode/NOTES.md`.
+
+- `opencode/plugin/pmz.js` : loader ESM fin (fail-open absolu, kill-switch `PMZ_DISABLE=1`)
+  → cœur CJS `opencode/plugin/impl/` (`index.js`, `oc-dir.js`, `bridge.js`) via
+  `createRequire`. Les 6 points d'accroche cibles branchés en no-op journalisé
+  (`pmz/state/plugin.log`) + toast à `session.created`.
+- `opencode/install/{install,uninstall,doctor}-opencode.js` : déploiement vers
+  `~/.config/opencode` (`--target` pour bac à sable), libs `promptimizer/{lib,scripts,templates}`
+  vendorées par copie, `pmz/state/` préservé aux réinstalls, plugins/commandes tiers et
+  `opencode.json` jamais touchés.
+- `test/run-tests-opencode.js` (34 assertions : arbo, idempotence 2× sans diff, état préservé,
+  hooks sans throw sur payloads vides/malformés/valides, instrumentation, kill-switch,
+  doctor, uninstall), invoqué par `run-tests.js` → **637 OK, 0 échec**.
+- Preuve de vie réelle (OpenCode 1.18.3, sandbox XDG, modèle `ollama/qwen3.5:9b`) :
+  `plugin.loaded` sous le runtime Bun, `session.created`, `chat.message`, `session.idle` —
+  compat Bun/CJS prouvée. Pièges consignés dans NOTES : `opencode run` scripté exige
+  `</dev/null` ; `chat.message.model` est `null` en 1.18.3 (vigie modèle → `chat.params`).
+- Doc : README (section « Déclinaison OpenCode »), ARCHITECTURE (section « Canal OpenCode »).
+
 ## 2026-07-14 (lot 46 — fix : purge dynamique des commandes legacy)
 
 Constat en migrant un poste réel du canal manuel vers le plugin : `migrate-to-plugin.js

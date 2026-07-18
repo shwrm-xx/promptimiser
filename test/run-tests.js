@@ -2992,6 +2992,14 @@ section('Statusline opt-in : rendu + merge-settings (préserve tierce, retrait p
   ok(s.statusLine && s.statusLine.command === 'keep.sh', '--remove : statusLine tierce préservée');
 }
 
+// ============================ OC. OPENCODE ============================
+section('OpenCode — squelette plugin + install sandbox (test/run-tests-opencode.js)');
+{
+  const r = runNode(path.join(__dirname, 'run-tests-opencode.js'), []);
+  ok(r.code === 0, 'run-tests-opencode : suite verte (exit 0)');
+  if (r.code !== 0) console.log(r.out + r.err);
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

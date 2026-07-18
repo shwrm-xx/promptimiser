@@ -193,6 +193,16 @@ Lance `promptimizer/install/uninstall.command` (macOS) / `uninstall.sh` (Linux) 
 `uninstall.ps1` (Windows) — retire **uniquement** les hooks PMZ, propose de restaurer l'ancien
 hook, ne touche jamais à tes projets.
 
+## Déclinaison OpenCode (en cours — epic « PMZ OpenCode »)
+
+PMZ se décline pour [OpenCode](https://opencode.ai) : plugin + commandes `/pmz`, libs cœur
+partagées (backlog, handoff, ledgers), état projet `.vibe-agent/` **commun** aux deux outils.
+Install : `node opencode/install/install-opencode.js` (cible `~/.config/opencode`, option
+`--target` pour un bac à sable) ; diagnostic : `doctor-opencode.js` ; retrait :
+`uninstall-opencode.js`. Doctrine, mapping des hooks et gaps assumés (statusline) :
+[`opencode/NOTES.md`](opencode/NOTES.md). État : lot OC1 (squelette instrumenté) — la
+logique métier arrive aux lots OC2–OC4.
+
 ## Pour les contributeurs
 
 Ce dépôt est la **source** du package. Voir [CLAUDE.md](CLAUDE.md) (règles) et
