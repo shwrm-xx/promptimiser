@@ -465,7 +465,16 @@ dupliquée ici. Ce qui est structurant :
 - **Plugin in-process** : loader ESM fin (`plugin/pmz.js`) → cœur CJS (`pmz/impl/`) via
   `createRequire`, compatible avec le runtime Bun embarqué d'OpenCode (prouvé au lot OC1).
   Mêmes invariants que les hooks Claude Code : fail-open absolu (`bridge.guard()`),
-  kill-switch `PMZ_DISABLE=1`, jamais de throw (hors futur deny volontaire, lot OC2).
+  kill-switch `PMZ_DISABLE=1` — sauf `tool.execute.before`, seul hook hors `bridge.guard()`
+  car son deny volontaire (commande Bash catastrophique) EST un throw délibéré (lot OC2).
+- **Sûreté Bash partagée** : `promptimizer/lib/bash-guard.js` (`classify`, pure) sert à la
+  fois `pre-tool-use.js` (Claude Code) et `pmz/impl/index.js` (OpenCode, vendoré). Deny
+  catastrophique bloqué par throw dans `tool.execute.before` ; tiers destructif resserré en
+  `ask` via `permission.ask` **seulement si** OpenCode a déjà un contrôle de permission actif
+  pour l'appel — sans ce contrôle (bash `"allow"` global), le tiers destructif n'a pas de
+  filet actif (gap v1 assumé, voir NOTES).
+- **Ledgers** (`tool.execute.after`) : réutilise `promptimizer/lib/{project,ledger,backlog}.js`
+  tels quels, avec `root = input.directory` fourni par OpenCode (pas de dérivation git).
 - **Pas de merge de settings** : l'installer ne pose que `plugin/pmz.js`, `command/pmz/` et
   `pmz/` — il ne touche jamais `opencode.json` ni un plugin/commande tiers.
 - **État projet `.vibe-agent/` partagé** avec Claude Code (backlog/handoff cross-outil).

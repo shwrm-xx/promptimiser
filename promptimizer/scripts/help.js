@@ -1,13 +1,20 @@
 #!/usr/bin/env node
 'use strict';
-// Liste les commandes Promptimizer réellement installées à côté de ce script (dossier
-// `commands/` frère de `scripts/`, identique dans les deux canaux manuel/plugin) — jamais
-// de liste codée en dur qui périmerait si une commande est ajoutée/retirée (build-plugin.js
-// EXCLUDE en retire déjà côté plugin, ex. statusline.md réservée au canal manuel).
+// Liste les commandes Promptimizer réellement installées à côté de ce script — jamais de
+// liste codée en dur qui périmerait si une commande est ajoutée/retirée (build-plugin.js
+// EXCLUDE en retire déjà côté plugin, ex. statusline.md réservée au canal manuel). Deux
+// layouts candidats : `commands/` frère de `scripts/` (Claude Code, manuel + plugin) ou
+// `command/pmz/` frère de `pmz/` (OpenCode — scripts vendorés dans pmz/scripts/).
 const fs = require('fs');
 const path = require('path');
 
-const CMD_DIR = path.join(__dirname, '..', 'commands');
+const CMD_DIR_CANDIDATES = [
+  path.join(__dirname, '..', 'commands'),
+  path.join(__dirname, '..', '..', 'command', 'pmz'),
+];
+const CMD_DIR = CMD_DIR_CANDIDATES.find((d) => {
+  try { return fs.statSync(d).isDirectory(); } catch (_) { return false; }
+}) || CMD_DIR_CANDIDATES[0];
 
 function parseDescription(content) {
   const m = /^---\s*\n([\s\S]*?)\n---/.exec(content);

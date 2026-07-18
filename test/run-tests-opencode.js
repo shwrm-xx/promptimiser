@@ -72,11 +72,22 @@ function sameSnapshot(a, b) {
   for (const f of [
     ['plugin', 'pmz.js'], ['pmz', 'VERSION'], ['pmz', 'impl', 'index.js'],
     ['pmz', 'impl', 'oc-dir.js'], ['pmz', 'impl', 'bridge.js'],
-    ['pmz', 'lib', 'backlog.js'], ['pmz', 'scripts', 'backlog.js'], ['pmz', 'templates', 'rules.yaml'],
+    ['pmz', 'lib', 'backlog.js'], ['pmz', 'lib', 'bash-guard.js'], ['pmz', 'lib', 'ledger.js'],
+    ['pmz', 'scripts', 'backlog.js'], ['pmz', 'templates', 'rules.yaml'],
+    ['command', 'pmz', 'about.md'], ['command', 'pmz', 'help.md'],
+    ['command', 'pmz', 'init.md'], ['command', 'pmz', 'check-context.md'],
   ]) {
     ok(fs.existsSync(path.join(TARGET, ...f)), 'arbo : ' + f.join('/'));
   }
   ok(!fs.existsSync(path.join(TARGET, 'opencode.json')), 'install : ne crée jamais opencode.json');
+  ok(summary && summary.commands === 4, 'install : résumé JSON — 4 commandes /pmz vendorées');
+
+  section('Commande /pmz help — dérivée des commandes réellement installées (layout OpenCode)');
+  const helpOut = runNode(path.join(TARGET, 'pmz', 'scripts', 'help.js'), []);
+  ok(helpOut.code === 0, 'help.js : exit 0 sous le layout OpenCode');
+  for (const name of ['about', 'help', 'init', 'check-context']) {
+    ok(helpOut.out.includes(`**${name}**`), 'help.js : liste la commande ' + name);
+  }
 
   section('Install — idempotence (2× sans diff) + état préservé + tiers intouchés');
   const snap1 = treeSnapshot(TARGET);
@@ -157,6 +168,80 @@ function sameSnapshot(a, b) {
     try { await hooks.event({ event: { type: 'session.idle' } }); } catch (_) { threwLog = true; }
     ok(!threwLog, 'journal inutilisable : avalé, pas de throw');
     fs.rmSync(logFile, { recursive: true, force: true });
+  }
+
+  // ============ B2. GARDE BASH — lot OC2 ============
+  if (hooks) {
+    section('Garde Bash — matrice deny/ask/allow (tool.execute.before + permission.ask)');
+    async function before(cmd) {
+      let threw = null;
+      try { await hooks['tool.execute.before']({ tool: 'bash', sessionID: 's1', callID: 'c1' }, { args: { command: cmd } }); }
+      catch (e) { threw = e; }
+      return threw;
+    }
+    async function ask(cmd, initialStatus) {
+      const out = { status: initialStatus || 'allow' };
+      await hooks['permission.ask']({ type: 'bash', metadata: { command: cmd }, sessionID: 's1' }, out);
+      return out.status;
+    }
+    // DENY — catastrophique : bloqué en amont, jamais exécuté.
+    ok(await before('rm -rf /') !== null, 'deny : rm -rf / -> throw (tool.execute.before)');
+    ok(await before('rm -rf ~') !== null, 'deny : rm -rf ~ -> throw (tool.execute.before)');
+    ok(await before('mkfs.ext4 /dev/sda1') !== null, 'deny : mkfs -> throw (tool.execute.before)');
+    ok(await ask('rm -rf /', 'allow') === 'deny', 'deny : rm -rf / -> status deny (permission.ask)');
+    // ASK — destructif non catastrophique : jamais bloqué en amont (pas de canal synchrone),
+    // mais resserré en ask côté permission.ask si un contrôle de permission se déclenche.
+    ok(await before('rm -rf ./build') === null, 'ask : rm -rf ./build -> pas de throw (tool.execute.before)');
+    ok(await before('git reset --hard HEAD~1') === null, 'ask : git reset --hard -> pas de throw (tool.execute.before)');
+    ok(await ask('rm -rf ./build', 'allow') === 'ask', 'ask : rm -rf ./build -> status ask (permission.ask)');
+    ok(await ask('git reset --hard', 'allow') === 'ask', 'ask : git reset --hard -> status ask (permission.ask)');
+    ok(await ask('git reset --hard', 'ask') === 'ask', 'ask : ne dégrade jamais un statut déjà strict');
+    // ALLOW — commande anodine : jamais touchée.
+    ok(await before('ls -la') === null, 'allow : ls -la -> pas de throw');
+    ok(await before('npm test') === null, 'allow : npm test -> pas de throw');
+    ok(await ask('ls -la', 'allow') === 'allow', 'allow : ls -la -> status inchangé (permission.ask)');
+
+    section('Ledgers — lecture/édition simulées (tool.execute.after)');
+    const vibeDir = path.join(PROJ, '.vibe-agent');
+    fs.rmSync(vibeDir, { recursive: true, force: true });
+    const sample = path.join(PROJ, 'sample.txt');
+    fs.writeFileSync(sample, 'contenu');
+    ok(!fs.existsSync(vibeDir), 'préalable : .vibe-agent absent avant lecture');
+    await hooks['tool.execute.after'](
+      { tool: 'read', sessionID: 's1', callID: 'c1', args: { filePath: sample } },
+      { title: '', output: 'contenu', metadata: {} }
+    );
+    ok(fs.existsSync(vibeDir), 'ledger : une lecture crée .vibe-agent/');
+    let readLedger = null;
+    try { readLedger = JSON.parse(fs.readFileSync(path.join(vibeDir, 'read-ledger.json'), 'utf8')); } catch (_) {}
+    ok(readLedger && readLedger.reads.some((r) => r.path === 'sample.txt'), 'ledger : read-ledger.json référence sample.txt');
+    await hooks['tool.execute.after'](
+      { tool: 'edit', sessionID: 's1', callID: 'c2', args: { filePath: sample } },
+      { title: '', output: '', metadata: {} }
+    );
+    let ctxLedger = null;
+    try { ctxLedger = JSON.parse(fs.readFileSync(path.join(vibeDir, 'context-ledger.json'), 'utf8')); } catch (_) {}
+    ok(ctxLedger && Object.prototype.hasOwnProperty.call(ctxLedger.files_modified, 'sample.txt'),
+      'ledger : context-ledger.json référence sample.txt modifié');
+    await hooks['tool.execute.after'](
+      { tool: 'todowrite', sessionID: 's1', callID: 'c3', args: { todos: [{ content: 'x', status: 'pending' }] } },
+      { title: '', output: '', metadata: {} }
+    );
+    let snap = null;
+    try { snap = JSON.parse(fs.readFileSync(path.join(vibeDir, 'todo-snapshot.json'), 'utf8')); } catch (_) {}
+    ok(snap && Array.isArray(snap.todos) && snap.todos.length === 1, 'ledger : todowrite -> todo-snapshot.json');
+    fs.rmSync(vibeDir, { recursive: true, force: true });
+    fs.rmSync(sample, { force: true });
+
+    section('Fail-open — garde Bash sur payloads vides/malformés');
+    let threwGuard = null;
+    try {
+      await hooks['tool.execute.before']({}, {});
+      await hooks['tool.execute.before'](null, null);
+      await hooks['tool.execute.after']({}, {});
+      await hooks['permission.ask']({}, {});
+    } catch (e) { threwGuard = e; }
+    ok(!threwGuard, 'garde Bash : payloads vides/malformés -> aucun throw hors deny volontaire');
   }
 
   section('Kill-switch PMZ_DISABLE=1');

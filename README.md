@@ -200,8 +200,9 @@ partagées (backlog, handoff, ledgers), état projet `.vibe-agent/` **commun** a
 Install : `node opencode/install/install-opencode.js` (cible `~/.config/opencode`, option
 `--target` pour un bac à sable) ; diagnostic : `doctor-opencode.js` ; retrait :
 `uninstall-opencode.js`. Doctrine, mapping des hooks et gaps assumés (statusline) :
-[`opencode/NOTES.md`](opencode/NOTES.md). État : lot OC1 (squelette instrumenté) — la
-logique métier arrive aux lots OC2–OC4.
+[`opencode/NOTES.md`](opencode/NOTES.md). État : lot OC2 — sûreté Bash (deny catastrophique,
+ask destructif best-effort), ledgers projet, commandes socle (`about`/`help`/`init`/
+`check-context`). Occupation, handoff et clôture arrivent aux lots OC3–OC4.
 
 ## Pour les contributeurs
 

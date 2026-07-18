@@ -2,6 +2,27 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-18 (lot #48 / OC2 — portage OpenCode : sûreté Bash + ledgers + commandes socle)
+
+- `promptimizer/lib/bash-guard.js` : détection rm/destructif extraite en lib partagée
+  (`classify(cmd)`, pure) — réutilisée par `pre-tool-use.js` (Claude Code) ET le plugin
+  OpenCode, un seul jeu de règles pour les deux outils.
+- `opencode/plugin/impl/index.js` : `tool.execute.before` throw un deny volontaire sur
+  commande catastrophique (rm -rf /, mkfs, fork bomb…) — hors `bridge.guard()` par
+  construction (le throw EST le verdict). `permission.ask` resserre `allow -> ask/deny`
+  quand OpenCode a déjà un contrôle de permission actif pour l'appel (limite connue : sans
+  contrôle actif — bash `"allow"` global — le tiers destructif n'a pas de filet ; consigné
+  comme gap v1 dans NOTES). `tool.execute.after` alimente les ledgers projet
+  (`.vibe-agent/{read,context}-ledger.json`, `todo-snapshot.json`) via les libs vendorées,
+  `root = input.directory` (fourni par OpenCode, pas de `git rev-parse` à refaire).
+- `opencode/command/pmz/{about,help,init,check-context}.md` : commandes socle, chemins
+  réécrits vers `~/.config/opencode/pmz/scripts/*.js`. `promptimizer/scripts/help.js`
+  généralisé à deux layouts candidats (Claude Code / OpenCode) — un seul script.
+- `test/run-tests-opencode.js` : 34 → 64 assertions (matrice deny/ask/allow, ledgers
+  read/edit/todowrite simulés, fail-open sur payloads malformés, arbo + contenu des 4
+  commandes, `help.js` sous layout OpenCode) → **637 OK, 0 échec** (suite complète).
+- Doc : `opencode/NOTES.md` (section « Lot OC2 »).
+
 ## 2026-07-18 (lot #47 / OC1 — portage OpenCode : squelette plugin + install sandbox + preuve de vie)
 
 Ouverture de l'epic « PMZ OpenCode » (lots OC1–OC4, backlog #47–#50) : déclinaison complète

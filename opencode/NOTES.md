@@ -104,6 +104,45 @@ foi. Pour voir le toast, lancer `opencode` (TUI) avec les mêmes variables d'env
 - `chat.message` arrive avec `model: null` en 1.18.3 → la vigie model-mismatch (OC3/OC4)
   devra lire le modèle dans `chat.params` (input.model) ou `message.updated`, pas ici.
 
+## Lot OC2 — sûreté Bash, ledgers, commandes socle
+
+- **Détection rm/destructif** extraite en lib partagée `promptimizer/lib/bash-guard.js`
+  (`classify(cmd) -> 'deny' | 'ask' | null`, pure, sans I/O) — requise par
+  `promptimizer/hooks/pre-tool-use.js` (Claude Code) ET `opencode/plugin/impl/index.js`
+  (OpenCode, via `pmz/lib/` vendoré à l'install). Un seul jeu de règles, deux exécuteurs.
+- **`tool.execute.before`** (bash uniquement) : le tiers **catastrophique** (`deny`) throw un
+  `Error` délibéré — SEUL canal de blocage synchrone qu'offre ce hook. Contrainte : ce hook
+  n'est PAS enveloppé par `bridge.guard()` (qui avale les throws) ; sa propre logique interne
+  reste défensive (try/catch), seul le throw de deny doit atteindre l'appelant. Le tiers
+  **destructif** (`ask`) n'est PAS bloqué ici : pas de canal de confirmation synchrone
+  disponible depuis `tool.execute.before` côté SDK OpenCode (`output` ne porte qu'`args`).
+- **`permission.ask`** (`input: Permission`, `output: {status}`) : seul point où PMZ peut
+  RESSERRER un statut déjà résolu par OpenCode — `allow -> ask` pour le tiers destructif,
+  `-> deny` pour le tiers catastrophique (filet, en plus du throw de `tool.execute.before`).
+  Ne dégrade jamais un statut déjà strict (`ask`/`deny` restent tels quels). Limite connue,
+  non résolue par ce lot : `permission.ask` ne se déclenche que si OpenCode a déjà un contrôle
+  de permission actif pour l'appel (config `permission.bash` de l'agent) — avec un bash
+  `"allow"` global (cas par défaut constaté sur la machine cible), ce hook ne se déclenche
+  jamais pour du bash, et le tiers `ask` n'a donc, en pratique, **aucun filet actif** tant que
+  `tool.execute.before` reste le seul filet garanti (catastrophique uniquement). Assumé comme
+  gap v1, au même titre que la statusline — à traiter si l'usage réel expose des commandes
+  destructives non bloquées.
+- **Ledgers** (`tool.execute.after`, tools `read`/`edit`/`write`/`todowrite`) : réutilise tel
+  quel `promptimizer/lib/{project,ledger,backlog}.js` — `root = input.directory` fourni par
+  OpenCode (pas de `git rev-parse` à refaire, contrairement à Claude Code qui doit dériver son
+  `cwd`). Extraction du chemin de fichier **défensive** (`args.filePath || args.path ||
+  args.file`) : les noms de champs exacts des tools `read`/`edit`/`write` d'OpenCode ne sont
+  pas garantis par le SDK — fail-open pur si le champ attendu est absent (le ledger ne
+  s'alimente pas, aucun throw).
+- **Commandes `/pmz`** (`opencode/command/pmz/*.md`) : about, help, init, check-context —
+  même contenu que `promptimizer/commands/*.md`, chemins réécrits vers
+  `~/.config/opencode/pmz/scripts/*.js`. `help.js` généralisé (2 layouts candidats pour
+  `CMD_DIR` : `commands/` frère de `scripts/` en Claude Code, `command/pmz/` frère de `pmz/`
+  en OpenCode) — un seul script, portable sur les deux canaux.
+- Tests : `test/run-tests-opencode.js` 34 → 64 assertions (matrice deny/ask/allow, ledgers
+  read/edit/todowrite, fail-open sur payloads malformés, arbo + contenu des 4 commandes,
+  `help.js` sous layout OpenCode).
+
 ## Hors périmètre / constats d'audit (2026-07-18)
 
 - Statusline : gap v1 (voir mapping). Piste future : binaire externe abonné au flux SSE
