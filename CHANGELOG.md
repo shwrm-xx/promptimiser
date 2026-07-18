@@ -2,6 +2,15 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-18 (fix — id de part d'injection compatible OpenCode ≥ 1.18.3)
+
+- `opencode/plugin/impl/index.js` : la part synthétique d'injection de contexte (`chat.message`)
+  recevait un id dérivé de `msg.id` (`msg_…-pmz-inject`). OpenCode 1.18.3 a durci son schéma —
+  l'id d'une part doit commencer par `prt` — et rejetait donc la requête (`SchemaError`) **avant
+  l'inférence**, cassant toute session sous OpenCode récent. Ajout de `newPartId()` : génère un
+  id au format Identifier (`prt_` + 12 hex de temps + 14 base62). Vérifié en réel via
+  `opencode serve` (v1.18.3) : requête pmz-actif réussie, plus de `SchemaError`, injection acceptée.
+
 ## 2026-07-18 (lot #50 / OC4 — portage OpenCode : commandes `/pmz` complètes + vigie model-mismatch + VERSION)
 
 - `opencode/command/pmz/{budget,scope,close-batch,fresh-session}.md` (nouveaux) : les 4

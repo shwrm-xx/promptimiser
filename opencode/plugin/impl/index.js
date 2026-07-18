@@ -54,6 +54,16 @@ function promptFromParts(out) {
   }
 }
 
+// Génère un id de part au format OpenCode Identifier (préfixe 'prt_' + 12 hex de temps +
+// 14 base62). OpenCode ≥ 1.18.3 valide que l'id d'une part commence par 'prt' : l'ancien id
+// dérivé de msg.id (préfixe 'msg') était rejeté (SchemaError → requête plantée avant l'inférence).
+const B62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+function newPartId() {
+  let s = Date.now().toString(16).padStart(12, '0').slice(-12);
+  for (let i = 0; i < 14; i++) s += B62[Math.floor(Math.random() * 62)];
+  return 'prt_' + s;
+}
+
 // Événements du bus retenus dans le journal (message.updated & part.updated sont trop bavards
 // pour être journalisés ligne à ligne — ils sont traités hors log).
 const LOGGED_EVENTS = /^(session\.|permission\.|file\.edited|command\.executed)/;
@@ -382,7 +392,7 @@ async function createHooks(input) {
       if (!injections.length) return;
       const msg = out.message || {};
       out.parts.push({
-        id: (msg.id || 'pmz') + '-pmz-inject',
+        id: newPartId(),
         sessionID: msg.sessionID || sid,
         messageID: msg.id || '',
         type: 'text',
