@@ -74,6 +74,15 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   croissant** (une seule alerte par palier ; pas de redescente intra-session — un vrai reset =
   nouvelle `session_id`). Aucune dépendance aux ledgers projet. → Méthode reprise de l'ancien
   `context-guard.py`.
+- **Fenêtre de modèle & seuil zone-rouge relatif** (`lib/occupancy.js: MODEL_WINDOWS`,
+  `windowForModel`, `redZoneThreshold`, `isRedZone`, lot #70) : les paliers `BUCKETS` ci-dessus
+  sont **absolus**, pensés pour une fenêtre ~1M (Sonnet/Opus/Fable) — ils sur-estiment la marge
+  réelle sur un modèle à fenêtre plus étroite (Haiku, 200k) et sous-estiment sur une fenêtre
+  large. `windowForModel(model)` résout la fenêtre par sous-chaîne (même méthode que
+  `modelwatch.js: modelsDiffer`), repli `DEFAULT_WINDOW` (200k) si modèle inconnu/absent.
+  `redZoneThreshold(model)` = fenêtre × `RED_ZONE_RATIO` (0,85) — marge avant l'auto-compact du
+  modèle. Lib pure, **aucun branchement hooks** dans ce lot (prescription au fil de la session :
+  lot #71).
 - **Nudges haute occupation avant/à la reprise du tour** (`user-prompt-submit.js` /
   `session-start.js`, lot B5) : distincts de l'alerte de fin de tour (`stop.js`) ci-dessus,
   volontairement **découplés** de son fichier d'état palier (`occupancy.evaluate`/

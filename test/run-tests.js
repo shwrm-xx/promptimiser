@@ -3680,6 +3680,31 @@ section('Estimation prédictive du coût d\'un lot : famille modèle+effort > mo
   ok(!/Estimation/.test(noEst.out), 'CLI add : aucune famille comparable -> pas de mention "Estimation"');
 }
 
+// ============================ V70. FENÊTRE DE MODÈLE & SEUIL ZONE-ROUGE (lot #70) ============================
+section('Fenêtre de contexte par modèle + seuil zone-rouge relatif (lot #70)');
+{
+  ok(occupancy.windowForModel('claude-sonnet-5') === 1000000, 'windowForModel : sonnet -> 1M');
+  ok(occupancy.windowForModel('claude-opus-4-8') === 1000000, 'windowForModel : opus -> 1M');
+  ok(occupancy.windowForModel('claude-haiku-4-5-20251001') === 200000, 'windowForModel : haiku -> 200k (fenêtre plus étroite)');
+  ok(occupancy.windowForModel('claude-fable-5') === 1000000, 'windowForModel : fable -> 1M');
+  ok(occupancy.windowForModel('SONNET') === 1000000, 'windowForModel : insensible à la casse');
+  ok(occupancy.windowForModel('mistral-large') === occupancy.DEFAULT_WINDOW, 'windowForModel : modèle inconnu -> repli défaut');
+  ok(occupancy.windowForModel(null) === occupancy.DEFAULT_WINDOW, 'windowForModel : modèle absent -> repli défaut');
+  ok(occupancy.DEFAULT_WINDOW === 200000, 'DEFAULT_WINDOW = 200k (fenêtre standard prudente)');
+
+  // Seuil zone-rouge RELATIF à la fenêtre propre au modèle (pas un palier absolu commun).
+  ok(occupancy.redZoneThreshold('claude-sonnet-5') === 850000, 'redZoneThreshold : sonnet (1M × 0,85) = 850k');
+  ok(occupancy.redZoneThreshold('claude-haiku-4-5') === 170000, 'redZoneThreshold : haiku (200k × 0,85) = 170k — pas le même seuil absolu que sonnet');
+  ok(occupancy.redZoneThreshold('inconnu') === Math.floor(occupancy.DEFAULT_WINDOW * occupancy.RED_ZONE_RATIO),
+    'redZoneThreshold : modèle inconnu -> ratio appliqué au repli défaut');
+
+  ok(occupancy.isRedZone(860000, 'claude-sonnet-5') === true, 'isRedZone : au-dessus du seuil sonnet -> true');
+  ok(occupancy.isRedZone(840000, 'claude-sonnet-5') === false, 'isRedZone : sous le seuil sonnet -> false');
+  ok(occupancy.isRedZone(180000, 'claude-haiku-4-5') === true, 'isRedZone : 180k sur haiku (fenêtre 200k) -> true (au-dessus de son propre seuil)');
+  ok(occupancy.isRedZone(180000, 'claude-sonnet-5') === false, 'isRedZone : 180k sur sonnet (fenêtre 1M) -> false (même occ, modèle différent)');
+  ok(occupancy.isRedZone(0, 'claude-sonnet-5') === false, 'isRedZone : occupation nulle -> false');
+}
+
 // ============================ OC. OPENCODE ============================
 section('OpenCode — squelette plugin + install sandbox (test/run-tests-opencode.js)');
 {

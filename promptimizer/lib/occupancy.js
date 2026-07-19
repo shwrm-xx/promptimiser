@@ -15,6 +15,44 @@ const BUCKETS = [150000, 300000, 500000, 750000];
 const FLOATING_STEP = 250000;
 const STATE_DIR = process.env.PMZ_STATE_DIR || cdir.stateDir();
 
+// Fenêtre de contexte par modèle + seuil « zone rouge » RELATIF à cette fenêtre (lot #70).
+// BUCKETS ci-dessus est un palier ABSOLU pensé pour une fenêtre ~1M (Sonnet/Opus/Fable) ; il
+// sur-estime la marge réelle pour un modèle à fenêtre plus étroite (Haiku). Correspondance
+// par sous-chaîne insensible à la casse (même méthode que modelwatch.js: modelsDiffer) — pas
+// d'énum à maintenir en synchro avec les futurs noms de modèles. Pas de branchement hooks
+// dans ce lot (lib pure) : la prescription au fil de la session est le lot #71.
+const MODEL_WINDOWS = [
+  { match: 'haiku', window: 200000 },
+  { match: 'opus', window: 1000000 },
+  { match: 'sonnet', window: 1000000 },
+  { match: 'fable', window: 1000000 },
+];
+const DEFAULT_WINDOW = 200000; // repli : modèle inconnu -> fenêtre standard prudente
+
+function windowForModel(model) {
+  if (!model) return DEFAULT_WINDOW;
+  const m = String(model).toLowerCase();
+  for (const entry of MODEL_WINDOWS) {
+    if (m.includes(entry.match)) return entry.window;
+  }
+  return DEFAULT_WINDOW;
+}
+
+// Marge avant auto-compact : au-delà de ce ratio de la fenêtre, Claude Code s'apprête à
+// résumer le contexte de lui-même (perte d'info) — dernier moment utile pour clôturer/déléguer
+// de propos délibéré plutôt que de le subir. Seuil unique appliqué à la fenêtre PROPRE au
+// modèle (et non à un palier absolu) : un même seuil absolu sous-alerterait sur Sonnet/Opus
+// (fenêtre large) et sur-alerterait sur Haiku (fenêtre étroite).
+const RED_ZONE_RATIO = 0.85;
+
+function redZoneThreshold(model) {
+  return Math.floor(windowForModel(model) * RED_ZONE_RATIO);
+}
+
+function isRedZone(occupancy, model) {
+  return occupancy > 0 && occupancy >= redZoneThreshold(model);
+}
+
 const MAX_TAIL = 8 * 1024 * 1024; // plafond dur de lecture du transcript
 
 function scanTailForOccupancy(transcriptPath, size, tail) {
@@ -236,4 +274,5 @@ module.exports = {
   readLastOccupancy, bucketIndex, evaluate, scanTailForReadMix, evaluateReadMix,
   evaluateSubagentNudge, resyncBucket, stateFileFor,
   BUCKETS, FLOATING_STEP, STATE_DIR,
+  MODEL_WINDOWS, DEFAULT_WINDOW, RED_ZONE_RATIO, windowForModel, redZoneThreshold, isRedZone,
 };

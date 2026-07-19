@@ -2,6 +2,24 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #70 — epic « Atterrissages » : fenêtre de modèle & seuil zone-rouge, lib)
+
+- `promptimizer/lib/occupancy.js` : nouvelle table `MODEL_WINDOWS` (modèle → fenêtre de
+  contexte, correspondance par sous-chaîne insensible à la casse — même méthode que
+  `modelwatch.js: modelsDiffer`) + repli `DEFAULT_WINDOW` (200k) pour un modèle inconnu.
+  `windowForModel(model)` résout la fenêtre. `redZoneThreshold(model)` calcule le seuil
+  « zone rouge » (marge avant auto-compact) **relatif** à cette fenêtre (`RED_ZONE_RATIO` =
+  0,85), et non plus à un palier absolu commun : `BUCKETS` (150k/300k/500k/750k) sur-estime la
+  marge réelle sur un modèle à fenêtre étroite (Haiku, 200k) et sous-estime la marge sur une
+  fenêtre large (Sonnet/Opus/Fable, 1M). `isRedZone(occupancy, model)` compare une occupation
+  au seuil propre au modèle.
+- Lib pure, **aucun branchement hooks** dans ce lot (prévu au lot #71 « Prescription
+  zone-rouge dans les hooks »).
+- Tests : nouveaux cas (`test/run-tests.js`) — `windowForModel` (fenêtres connues, casse, repli
+  défaut, modèle absent), `redZoneThreshold` (ratio appliqué par modèle, repli), `isRedZone`
+  (au-dessus/en-dessous du seuil, occupation nulle, même occ → verdict différent selon le
+  modèle). Suite complète verte : 804 OK · 0 échec.
+
 ## 2026-07-19 (lot #63 — epic « Coût par livrable » : estimation prédictive du coût d'un lot)
 
 - `promptimizer/lib/backlog.js` : nouveau `estimateCost(b, lot)` — moyenne des `cost_tokens`
