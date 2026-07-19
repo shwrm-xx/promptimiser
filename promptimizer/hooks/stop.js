@@ -28,7 +28,7 @@ const {
   MSG_CLOTURE, occupancyMessage, redZonePrescriptionMessage, lotClosedMessage, epicBilanMessage,
   costlyTurnMessage, driftMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
-  lotClosureCardMessage,
+  closureWithDraftMessage, lotClosureCardMessage,
 } = require('../lib/messages');
 
 function main() {
@@ -123,9 +123,18 @@ function main() {
 
     // gitStatusMeaningful : le churn .vibe-agent/ (ledgers, handoff réécrit à
     // chaque tour) ne doit pas compter comme lot ouvert ni bloquer sa clôture.
-    const open = gitStatusMeaningful(root).length > 0;
+    const dirty = gitStatusMeaningful(root);
+    const open = dirty.length > 0;
     if (open && !st.closure_reminded_for_batch) {
-      parts.push(MSG_CLOTURE);
+      // Brouillon CHANGELOG servi (lot #68) : le rappel de clôture embarque une entrée
+      // pré-mâchée (titre/scope du lot en cours, fichiers modifiés, verify). Fail-open :
+      // toute erreur retombe sur le rappel nu.
+      let closure = MSG_CLOTURE;
+      try {
+        const files = dirty.map((l) => l.slice(3).replace(/^"/, '').replace(/"$/, ''));
+        closure = closureWithDraftMessage(currentLot(loadBacklog(root)), files, new Date().toISOString().slice(0, 10));
+      } catch (_) { /* rappel de clôture sans brouillon ce tour */ }
+      parts.push(closure);
       // Relectures évitables du lot (ledger context) -> note concrète (spirit de MSG_LECTURE).
       const cl = loadContextLedger(root);
       const rereads = Array.from(new Set((cl.repeated_reads || []).map((r) => r && r.path).filter(Boolean))).slice(0, 5);

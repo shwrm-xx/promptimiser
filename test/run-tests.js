@@ -3714,6 +3714,54 @@ section('Résumés servis au lieu de la relecture (read-ledger.summaries, lot #5
   ok(Object.keys(rlCap.summaries).length === 200, 'T53 : summaries plafonné à 200 entrées (capObject)');
 }
 
+// ============================ V68. BROUILLON CHANGELOG SERVI (lot #68) ============================
+section('Brouillon CHANGELOG servi à la proposition de clôture (lot #68)');
+{
+  // -- Unitaire : composition du nudge (MSG_CLOTURE + brouillon atomiques) --
+  const lot68 = {
+    id: 7, title: 'Titre du lot', epic: 'Mon Epic',
+    scope: 'fait quand : la chose est faite et prouvée', verify: 'node test/run.js',
+  };
+  const m = messages.closureWithDraftMessage(lot68, ['a.js', 'lib/b.js'], '2026-07-19');
+  ok(m.startsWith(messages.MSG_CLOTURE), 'V68 : le brouillon est soudé au rappel de clôture (nudge atomique)');
+  ok(/## 2026-07-19 \(lot #7 — epic « Mon Epic » : Titre du lot\)/.test(m),
+    'V68 : en-tête daté au format CHANGELOG (lot + epic + titre)');
+  ok(/- la chose est faite et prouvée/.test(m) && !/fait quand/.test(m),
+    'V68 : scope servi SANS le préfixe « fait quand : » (se lit comme du changelog)');
+  ok(/- Fichiers : `a\.js`, `lib\/b\.js`/.test(m), 'V68 : fichiers modifiés listés');
+  ok(/- Vérif : `node test\/run\.js`/.test(m), 'V68 : commande verify reprise dans le brouillon');
+  ok(/à ajuster, pas à recopier/.test(m), 'V68 : le brouillon s\'annonce comme brouillon, pas comme vérité');
+
+  // -- Bornes : fichiers plafonnés ; sans lot ni fichier -> rappel nu --
+  const many = Array.from({ length: 9 }, (_, i) => `f${i}.js`);
+  const mMany = messages.closureWithDraftMessage(null, many, '2026-07-19');
+  ok(/\(\+3 autres\)/.test(mMany) && /## 2026-07-19\n/.test(mMany),
+    'V68 : > 6 fichiers -> liste plafonnée (+N autres) ; sans lot, en-tête daté nu');
+  ok(messages.closureWithDraftMessage(null, [], '2026-07-19') === messages.MSG_CLOTURE,
+    'V68 : sans lot ni fichier, retombe sur MSG_CLOTURE nu (fail-open)');
+  ok(messages.closureWithDraftMessage({ id: 1, title: 'T' }, null, '2026-07-19').startsWith(messages.MSG_CLOTURE),
+    'V68 : files non-tableau toléré (défensif)');
+
+  // -- Intégration stop.js : lot en cours + tree sale -> le systemMessage embarque le brouillon --
+  const repo = path.join(SANDBOX, 'repo-v68');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot de test', '--scope', 'fait quand : x marche', '--epic', 'E', '--model', 'sonnet']);
+  runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
+  runNode(BKLG, ['verify', '--cwd', repo, '--set', 'true', '--id', '1']);
+  fs.writeFileSync(path.join(repo, 'touche.js'), 'x');
+  const empT = path.join(SANDBOX, 'empty.jsonl');
+  const rStop = runHook('stop.js', { session_id: 'sess-v68', cwd: repo, transcript_path: empT });
+  ok(rStop.code === 0, 'V68 : stop.js exit 0 avec brouillon');
+  ok(/Brouillon d'entrée CHANGELOG/.test(rStop.out) && /lot #1 — epic « E » : Lot de test/.test(rStop.out),
+    'V68 : la proposition de clôture sert l\'entrée pré-mâchée (titre/epic du lot en cours)');
+  ok(/`touche\.js`/.test(rStop.out) && /- x marche/.test(rStop.out),
+    'V68 : le brouillon reprend les fichiers modifiés et le scope nettoyé');
+}
+
 // ============================ V66. HANDOFF À ROI MESURÉ (lot #66) ============================
 section('Handoff à ROI mesuré : résumés scorés (octets × fréquence) + budget + gain (lot #66)');
 {

@@ -2,6 +2,23 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #68 — epic « Atterrissages » : brouillon CHANGELOG servi)
+
+- `promptimizer/lib/messages.js` : `closureWithDraftMessage(lot, files, dateStr)` — le rappel
+  de clôture embarque désormais un **brouillon d'entrée CHANGELOG pré-mâché** depuis ce que le
+  backlog et git savent déjà : en-tête daté au format du dépôt (`## date (lot #N — epic « X » :
+  titre)`), scope du lot **sans** son préfixe « fait quand : » (se lit comme du changelog),
+  fichiers modifiés (plafonnés à 6, `+N autres`), commande verify. Soudé à `MSG_CLOTURE` en un
+  seul nudge atomique (séparés, l'arbitre de tour #57 pourrait garder le rappel sans son
+  brouillon). Sans lot ni fichier détectable → `MSG_CLOTURE` nu (fail-open).
+- `promptimizer/hooks/stop.js` : la branche « lot ouvert » sert ce brouillon (lot en cours du
+  backlog + fichiers de `gitStatusMeaningful`) ; try/catch dédié — toute erreur retombe sur le
+  rappel nu, jamais de casse de session.
+- Doc : ligne `stop.js` du tableau des hooks d'ARCHITECTURE.md complétée.
+- Tests : `node test/run-tests.js` → **867 OK · 0 échec** (+12 assertions V68 : composition
+  unitaire — en-tête, scope nettoyé, fichiers, verify, plafond +N autres, fail-open sans
+  lot/fichier — et intégration stop.js en bac à sable, brouillon présent dans le systemMessage).
+
 ## 2026-07-19 (lot #67 — epic « Atterrissages » : preuve déportée, verify lourde en subagent isolé)
 
 - `promptimizer/scripts/close-batch.js` : la branche **timeout** de la ligne Verify ne prescrit

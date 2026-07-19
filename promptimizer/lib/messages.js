@@ -409,6 +409,35 @@ function avoidableRereadsMessage(rereads) {
   return MSG_LECTURE + '\nRelectures évitables ce lot : ' + rereads.join(', ') + '.';
 }
 
+// Brouillon CHANGELOG servi (lot #68) : au moment où la clôture est proposée, l'entrée
+// CHANGELOG est pré-mâchée depuis ce que le backlog et git savent DÉJÀ (titre/scope du lot,
+// fichiers modifiés, verify) — l'assistant ajuste au lieu de rédiger de zéro. Composé AVEC
+// MSG_CLOTURE en un seul nudge atomique : séparés, l'arbitre de tour (#57) pourrait garder
+// le rappel sans son brouillon. Sans lot NI fichier détectable, retombe sur MSG_CLOTURE nu.
+const DRAFT_FILES_MAX = 6;
+
+function closureWithDraftMessage(lot, files, dateStr) {
+  const list = Array.isArray(files) ? files.filter(Boolean) : [];
+  if (!lot && !list.length) return MSG_CLOTURE;
+  const head = lot
+    ? `## ${dateStr} (lot #${lot.id}${lot.epic ? ` — epic « ${lot.epic} »` : ''} : ${lot.title})`
+    : `## ${dateStr}`;
+  const bullets = [];
+  // Le scope backlog est un critère d'acceptation (« fait quand : … ») : on retire ce
+  // préfixe pour qu'il se lise comme une ligne de changelog (ce qui a été fait).
+  const scope = lot && lot.scope ? String(lot.scope).replace(/^fait quand\s*:\s*/i, '').slice(0, 140) : '';
+  if (scope) bullets.push(`- ${scope}`);
+  if (list.length) {
+    const shown = list.slice(0, DRAFT_FILES_MAX).map((f) => `\`${f}\``).join(', ');
+    bullets.push(`- Fichiers : ${shown}${list.length > DRAFT_FILES_MAX ? ` (+${list.length - DRAFT_FILES_MAX} autres)` : ''}`);
+  }
+  if (lot && lot.verify) bullets.push(`- Vérif : \`${lot.verify}\``);
+  return MSG_CLOTURE + '\n' + [
+    'Brouillon d\'entrée CHANGELOG (pré-mâché depuis le lot et git — à ajuster, pas à recopier aveuglément) :',
+    head,
+  ].concat(bullets).join('\n');
+}
+
 // Durée approximative jours/heures (bilan d'epic) — pas de dépendance date-fns, juste ce
 // qu'il faut pour un ordre de grandeur lisible.
 function fmtDurationApprox(ms) {
@@ -463,6 +492,6 @@ module.exports = {
   compactResumeMessage, COMPACT_RESUME_CAP, backlogResumeMessage, largeWithPlanMessage,
   costlyTurnMessage, driftMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
-  epicBilanMessage, lotClosureCardMessage,
+  closureWithDraftMessage, epicBilanMessage, lotClosureCardMessage,
   fmtK, statusLineText,
 };
