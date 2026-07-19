@@ -18,7 +18,12 @@ const VERIFY_AUTOCLOSE_MS = 2500;
 // tests aller au bout (les nôtres tournent ~35 s). Assez généreux pour ne pas tuer une suite
 // réelle à mi-course (un kill par timeout n'est PAS un échec : status null, à distinguer d'un
 // exit ≠ 0), mais borné pour que /close-batch ne pende jamais indéfiniment.
-const VERIFY_CLOSE_MS = 120000;
+// Override d'env réservé aux TESTS (déclencher la branche timeout sans attendre 120 s) ;
+// borne > 0 sinon repli sur le défaut — jamais utilisé en usage réel.
+const VERIFY_CLOSE_MS = (() => {
+  const env = parseInt(process.env.PMZ_VERIFY_CLOSE_MS || '', 10);
+  return Number.isFinite(env) && env > 0 ? env : 120000;
+})();
 
 function watchdogMs(timeoutS) {
   return Math.max(0, timeoutS * 1000 - WATCHDOG_MARGIN_MS);

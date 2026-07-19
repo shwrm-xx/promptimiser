@@ -323,7 +323,12 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   prononcé que sur un **exit ≠ 0 réel** (`ok:false && !timedOut`), jamais sur un grep de la sortie : un
   dépassement de délai tue l'enfant (`status` null) et son stdout bufferisé peut contenir des motifs
   trompeurs (p.ex. la ligne `ABORT` d'un test négatif volontaire) — il est affiché « non terminée »,
-  pas « ÉCHEC » (bug lot #57bis). Refus doux **jamais bloquant** — même en échec la checklist reste
+  pas « ÉCHEC » (bug lot #57bis). **Preuve déportée** (lot #67) : une verify qui expire est une
+  verify *lourde* — la checklist prescrit son exécution en **subagent isolé** (outil Agent/Task,
+  seul le verdict OK/ÉCHEC + dernières lignes remonte), jamais une relance à la main : **zéro
+  sortie de tests dans le contexte principal**. Même prescription après correction d'un ÉCHEC.
+  `VERIFY_CLOSE_MS` est surchargeable par l'env `PMZ_VERIFY_CLOSE_MS` (test-only, pour couvrir la
+  branche timeout sans attendre 120 s). Refus doux **jamais bloquant** — même en échec la checklist reste
   exit 0, la décision de clore reste humaine/assistant. À
   l'**auto-clôture** (lot #44), `stop.js` l'exécute aussi mais avec un timeout **court**
   (`VERIFY_AUTOCLOSE_MS` = 2500 ms, borné bien en deçà du watchdog Stop 4,5 s) : lancé **après** que

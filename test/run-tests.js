@@ -1268,7 +1268,33 @@ section('backlog — verify + closed_occupancy (lot #29)');
   const rCloseFail = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', repo]);
   ok(rCloseFail.code === 0, 'close-batch : exit 0 même si verify échoue (jamais bloquant)');
   ok(/Verify \(`exit 1`\) : ÉCHEC — refus doux/.test(rCloseFail.out), 'close-batch : verify en échec → ÉCHEC, refus doux');
+  // V67a. échec → prescription de re-vérification en subagent isolé (preuve déportée, lot #67)
+  ok(/re-vérifie en subagent isolé/.test(rCloseFail.out) && /jamais la sortie des tests/.test(rCloseFail.out),
+    'V67 : verify en échec → prescrit la re-vérification en subagent isolé, zéro sortie de tests');
   backlogLib.dropLot(repo, lotFail.id);
+
+  // V67b. timeout (verify lourde) → prescription subagent, jamais « relance-la à la main » ;
+  // délai raccourci via l'override d'env PMZ_VERIFY_CLOSE_MS (réservé aux tests)
+  const lotSlow = backlogLib.addLot(repo, 'Lot verify lourde', null, 'sonnet', null,
+    `${JSON.stringify(process.execPath)} -e "setTimeout(function(){}, 5000)"`);
+  backlogLib.startLot(repo, lotSlow.id);
+  const rCloseSlow = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', repo],
+    { PMZ_VERIFY_CLOSE_MS: '500' });
+  ok(rCloseSlow.code === 0, 'V67 : exit 0 même quand la verify expire');
+  ok(/non terminée dans le délai \(1 s\)/.test(rCloseSlow.out),
+    'V67 : timeout → délai affiché depuis PMZ_VERIFY_CLOSE_MS (500 ms arrondi à 1 s)');
+  ok(/subagent isolé \(outil Agent\/Task\)/.test(rCloseSlow.out) && /Zéro sortie de tests ici/.test(rCloseSlow.out),
+    'V67 : timeout → prescrit le subagent isolé, zéro sortie de tests dans le contexte principal');
+  ok(!/relance-la à la main/.test(rCloseSlow.out),
+    'V67 : timeout → plus aucune prescription de relance à la main dans le contexte principal');
+  ok(/n'est PAS un échec/.test(rCloseSlow.out) && !/ÉCHEC —/.test(rCloseSlow.out),
+    'V67 : timeout → toujours distingué d\'un échec réel');
+  backlogLib.dropLot(repo, lotSlow.id);
+
+  // V67c. sans override d'env, le délai par défaut reste 120 s (l'override est test-only)
+  const rTimeouts = runNode('-e', ['console.log(require(' +
+    JSON.stringify(path.join(PKG, 'lib', 'timeouts.js')) + ').VERIFY_CLOSE_MS)']);
+  ok(/^120000\s*$/.test(rTimeouts.out), 'V67 : VERIFY_CLOSE_MS par défaut inchangé (120000 ms)');
 
   // V8. close-batch : pas de verify posée → pas de ligne Verify, comportement inchangé
   const lotNone = backlogLib.addLot(repo, 'Lot sans verify posee', null, 'sonnet');

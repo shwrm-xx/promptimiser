@@ -40,8 +40,8 @@ function main() {
     verifyLine = v.ok
       ? `\n- Verify (\`${bl.current.verify}\`) : OK`
       : v.timedOut
-        ? `\n- Verify (\`${bl.current.verify}\`) : non terminée dans le délai (${Math.round(VERIFY_CLOSE_MS / 1000)} s) — relance-la à la main pour la preuve complète (ce n'est PAS un échec)`
-        : `\n- Verify (\`${bl.current.verify}\`) : ÉCHEC — refus doux, corriger avant de marquer fait (clôture non bloquée automatiquement) :\n  ${v.tail}`;
+        ? `\n- Verify (\`${bl.current.verify}\`) : non terminée dans le délai (${Math.round(VERIFY_CLOSE_MS / 1000)} s) — verify LOURDE, ne la relance PAS dans ce contexte : délègue-la à un subagent isolé (outil Agent/Task) qui l'exécute au complet et ne renvoie QUE le verdict (OK / ÉCHEC + 5 dernières lignes). Zéro sortie de tests ici (un timeout n'est PAS un échec)`
+        : `\n- Verify (\`${bl.current.verify}\`) : ÉCHEC — refus doux, corriger avant de marquer fait (clôture non bloquée automatiquement) :\n  ${v.tail}\n  Après correction, re-vérifie en subagent isolé (outil Agent/Task) : seul le verdict revient ici, jamais la sortie des tests`;
   }
   const backlogBlock = bl ? `
 ## Plan de lots

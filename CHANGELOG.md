@@ -2,6 +2,24 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #67 — epic « Atterrissages » : preuve déportée, verify lourde en subagent isolé)
+
+- `promptimizer/scripts/close-batch.js` : la branche **timeout** de la ligne Verify ne prescrit
+  plus « relance-la à la main » (qui déversait toute la sortie de tests dans le contexte
+  principal) mais la délégation à un **subagent isolé** (outil Agent/Task) qui exécute la
+  commande au complet et ne renvoie **que le verdict** (OK / ÉCHEC + 5 dernières lignes) —
+  zéro sortie de tests dans le contexte principal. La branche **ÉCHEC** prescrit de même la
+  re-vérification en subagent après correction. Un timeout reste distingué d'un échec réel.
+- `promptimizer/commands/close-batch.md` : étape 3 enrichie — verify lourde (suite complète,
+  build long) → subagent isolé, jamais de sortie de tests dans le contexte principal.
+- `promptimizer/lib/timeouts.js` : `VERIFY_CLOSE_MS` surchargeable via l'env
+  `PMZ_VERIFY_CLOSE_MS` (**test-only** : couvre la branche timeout sans attendre 120 s ;
+  valeur invalide ou ≤ 0 → repli sur le défaut 120 000 ms, inchangé).
+- Doc : bloc « preuve de clôture » d'ARCHITECTURE.md complété (preuve déportée, lot #67).
+- Tests : `node test/run-tests.js` → **855 OK · 0 échec** (+7 assertions V67 : échec →
+  prescription subagent, timeout → subagent + zéro sortie + plus de relance à la main +
+  toujours pas un échec, défaut 120 s inchangé sans env).
+
 ## 2026-07-19 (lot #66 — epic « Atterrissages » : handoff à ROI mesuré, résumés scorés + budget + gain)
 
 - `promptimizer/lib/ledger.js` : `scoredSummaries(root, budgetChars, maxLines)` — sélectionne les

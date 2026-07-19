@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 73,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-19T20:14:55.789Z",
+  "updated_at": "2026-07-19T20:22:02.598Z",
   "lots": [
     {
       "id": 1,
@@ -1262,7 +1262,7 @@
       "id": 67,
       "title": "Preuve déportée (verify en subagent)",
       "scope": "fait quand : /close-batch prescrit l'exécution du verify lourd en subagent isolé ; zéro sortie de tests dans le contexte principal ; tests verts",
-      "status": "todo",
+      "status": "in_progress",
       "model_hint": "opus",
       "effort_hint": "medium",
       "epic": "Atterrissages",
@@ -1272,7 +1272,7 @@
       "closed_session_id": null,
       "closed_occupancy": null,
       "cost_tokens": 0,
-      "started_at": null,
+      "started_at": "2026-07-19T20:22:02.594Z",
       "lot_number": null,
       "note": null,
       "session_touches": 0
