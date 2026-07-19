@@ -146,7 +146,10 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   (une seule fois par palier, sur toute la vie du projet). À haute occupation avec beaucoup de
   lectures, un nudge invite à **déléguer l'exploration à un subagent** (les lectures restent hors du
   contexte principal). Une commande qui **échoue en rafale** (≥ 3 fois d'affilée, relancée telle
-  quelle) déclenche un nudge « change d'approche plutôt que de relancer » (1×/session par commande). Ces rappels visibles portent un **glyphe de sévérité** (ℹ info / ⚠ warn /
+  quelle) déclenche un nudge « change d'approche plutôt que de relancer » (1×/session par commande).
+  Un **diff non commité qui grossit** sur plusieurs tours sans commit déclenche un rappel « commit
+  (ou clôture) maintenant » — le travail non versionné est exposé à la perte et finit en commit
+  monstre (anti-spam par palier ; réarmé au commit). Ces rappels visibles portent un **glyphe de sévérité** (ℹ info / ⚠ warn /
   ⛔ alert) pour lire d'un coup d'œil ce qui est normal, ce qui mérite attention et ce qui est
   anormal. Quand un tour en déclenche trop, un **arbitre** n'en garde que les 3 plus sévères
   (ordre de lecture préservé) — pas de pavé qui noie le signal important.

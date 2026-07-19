@@ -24,10 +24,11 @@ const occupancy = require('../lib/occupancy');
 const { readLastModel } = require('../lib/modelwatch');
 const turnstats = require('../lib/turnstats');
 const loopwatch = require('../lib/loopwatch');
+const gitdebt = require('../lib/gitdebt');
 const { arbitrate } = require('../lib/arbiter');
 const {
   MSG_CLOTURE, occupancyMessage, redZonePrescriptionMessage, lotClosedMessage, epicBilanMessage,
-  costlyTurnMessage, driftMessage, loopingCommandMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
+  costlyTurnMessage, driftMessage, loopingCommandMessage, gitDebtMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
   closureWithDraftMessage, lotClosureCardMessage,
 } = require('../lib/messages');
@@ -133,6 +134,14 @@ function main() {
     // chaque tour) ne doit pas compter comme lot ouvert ni bloquer sa clôture.
     const dirty = gitStatusMeaningful(root);
     const open = dirty.length > 0;
+
+    // (b0) vigie de dette git non commitée (#73) — signal de TENDANCE distinct du rappel de
+    // clôture one-shot ci-dessous : nudge quand un diff significatif GROSSIT sur >= 3 tours
+    // sans commit (travail non versionné exposé à la perte + commit monstre à venir). Réutilise
+    // `dirty` (pas de 2e git status). Anti-spam par palier + fail-open dédiés dans evaluate.
+    const debt = gitdebt.evaluate(root, sid, dirty);
+    if (debt) parts.push(gitDebtMessage(debt));
+
     if (open && !st.closure_reminded_for_batch) {
       // Brouillon CHANGELOG servi (lot #68) : le rappel de clôture embarque une entrée
       // pré-mâchée (titre/scope du lot en cours, fichiers modifiés, verify). Fail-open :

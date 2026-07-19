@@ -4077,6 +4077,114 @@ section('Vigie des tours en boucle : commande Bash qui échoue en rafale -> nudg
   ok(!/Commande en boucle/.test(s2), 'V69 : stop.js anti-spam -> pas de 2e nudge même session/commande');
 }
 
+// ============================ V73. VIGIE DE DETTE GIT NON COMMITÉE (lot #73) ============================
+section('Vigie de dette git non commitée : diff significatif qui grossit sans commit -> nudge (lot #73)');
+{
+  const gitdebt = require(path.join(PKG, 'lib', 'gitdebt'));
+  const mkRepo = (name) => {
+    const repo = path.join(SANDBOX, name);
+    fs.mkdirSync(repo, { recursive: true });
+    execFileSync('git', ['init', '-q', repo]);
+    execFileSync('git', ['-C', repo, 'config', 'user.email', 't@t']);
+    execFileSync('git', ['-C', repo, 'config', 'user.name', 't']);
+    return repo;
+  };
+  const commit = (repo, msg) => {
+    execFileSync('git', ['-C', repo, 'add', '-A']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', msg]);
+  };
+
+  // -- Croissance sur fichier TRACKED : churn mesuré par numstat, nudge au 3e tour --
+  const repo = mkRepo('repo-v73');
+  fs.writeFileSync(path.join(repo, 'big.js'), 'x\n');
+  commit(repo, 'init');
+  const sid = 'sess-v73';
+  const setLines = (n) => fs.writeFileSync(path.join(repo, 'big.js'),
+    Array.from({ length: n }, (_, i) => 'line' + i).join('\n') + '\n');
+
+  setLines(300);
+  ok(gitdebt.evaluate(repo, sid, null) === null, 'V73 : dette significative mais < 3 tours -> pas encore de nudge');
+  setLines(400);
+  ok(gitdebt.evaluate(repo, sid, null) === null, 'V73 : 2e tour, toujours sous la fenêtre de 3');
+  setLines(500);
+  const d3 = gitdebt.evaluate(repo, sid, null);
+  ok(d3 && d3.turns === 3 && d3.files === 1 && d3.churn >= 400,
+    'V73 : 3e tour, dette qui grossit -> nudge {turns:3, files:1, churn}');
+
+  // -- Dette STABLE (ne grossit plus) : pas de re-nudge --
+  const d4 = gitdebt.evaluate(repo, sid, null);
+  ok(d4 === null, 'V73 : dette stable (diff inchangé) -> pas de re-nudge (grew=false)');
+
+  // -- Anti-spam PALIER : légère hausse sous 1,5× le dernier nudge -> silence --
+  setLines(560);
+  ok(gitdebt.evaluate(repo, sid, null) === null, 'V73 : hausse sous 1,5× du palier nudgé -> pas de re-nudge');
+  // -- Franchissement d'un nouveau palier (> 1,5×) -> re-nudge --
+  setLines(900);
+  const d6 = gitdebt.evaluate(repo, sid, null);
+  ok(d6 && d6.turns === 6, 'V73 : nouveau palier (> 1,5×) -> re-nudge');
+
+  // -- Commit -> HEAD change -> reset : la dette repart de zéro (3 tours à refaire) --
+  commit(repo, 'wip');
+  ok(gitdebt.evaluate(repo, sid, null) === null, 'V73 : tree propre après commit -> null');
+  setLines(1200);
+  ok(gitdebt.evaluate(repo, sid, null) === null, 'V73 : après commit, 1er tour de dette < fenêtre -> null (compteur remis à zéro)');
+
+  // -- Fichiers UNTRACKED : invisibles à numstat (churn 0) mais comptés via le forfait/fichier --
+  const repo2 = mkRepo('repo-v73-untracked');
+  fs.writeFileSync(path.join(repo2, 'seed'), '1');
+  commit(repo2, 'init');
+  const sid2 = 'sess-v73-untracked';
+  const addFiles = (n) => { for (let i = 0; i < n; i++) fs.writeFileSync(path.join(repo2, `new${i}.js`), 'a\n'); };
+  addFiles(6); ok(gitdebt.evaluate(repo2, sid2, null) === null, 'V73 : 6 fichiers untracked, tour 1 -> null');
+  addFiles(7); ok(gitdebt.evaluate(repo2, sid2, null) === null, 'V73 : 7 fichiers untracked, tour 2 -> null');
+  addFiles(8);
+  const du = gitdebt.evaluate(repo2, sid2, null);
+  ok(du && du.churn === 0 && du.files === 8,
+    'V73 : dette faite de fichiers untracked (churn=0) -> nudge via le forfait par fichier');
+
+  // -- measureChurn exclut .vibe-agent (churn de ledgers/handoff n'est pas de la dette) --
+  const repo3 = mkRepo('repo-v73-vibe');
+  fs.mkdirSync(path.join(repo3, '.vibe-agent'), { recursive: true });
+  fs.writeFileSync(path.join(repo3, '.vibe-agent', 'ledger.json'), 'a\n');
+  fs.writeFileSync(path.join(repo3, 'app.js'), 'a\nb\nc\n');
+  commit(repo3, 'init');
+  fs.writeFileSync(path.join(repo3, '.vibe-agent', 'ledger.json'),
+    Array.from({ length: 400 }, (_, i) => 'x' + i).join('\n') + '\n');
+  fs.writeFileSync(path.join(repo3, 'app.js'), 'a\nb\nc\nd\ne\n');
+  const churn3 = gitdebt.measureChurn(repo3);
+  ok(churn3 > 0 && churn3 < 50, 'V73 : measureChurn compte app.js (~quelques lignes) et EXCLUT .vibe-agent (400 lignes ignorées)');
+
+  // -- Fail-open : hors repo / root null -> null, jamais d'exception --
+  ok(gitdebt.evaluate(path.join(SANDBOX, 'pas-un-repo'), 'sid-nr', null) === null, 'V73 : hors repo -> null (fail-open)');
+  ok(gitdebt.evaluate(null, 'sid-null', null) === null, 'V73 : root null -> null (fail-open)');
+
+  // -- Message : ⚠ WARN, compte de fichiers + tours (+ lignes si churn connu), sans lignes si churn=0 --
+  const m = messages.gitDebtMessage({ churn: 520, files: 8, turns: 4, level: 840 });
+  ok(m.startsWith('⚠'), 'V73 : message = sévérité WARN (⚠)');
+  ok(/8 fichiers modifiés sans commit depuis 4 tours/.test(m) && /520 lignes/.test(m),
+    'V73 : message cite fichiers, tours et lignes');
+  ok(/commit monstre/.test(m) && /exposé à la perte/.test(m), 'V73 : message prescrit le commit et nomme le risque');
+  const m0 = messages.gitDebtMessage({ churn: 0, files: 6, turns: 3 });
+  ok(!/lignes/.test(m0), 'V73 : churn=0 -> pas de mention trompeuse de lignes');
+  ok(/1 fichier modifié /.test(messages.gitDebtMessage({ churn: 0, files: 1, turns: 3 })),
+    'V73 : singulier accordé (1 fichier modifié)');
+
+  // -- Câblage stop.js : nudge de dette au 3e Stop (repo git, transcript vide) --
+  const repoS = mkRepo('repo-v73-stop');
+  fs.writeFileSync(path.join(repoS, 'big.js'), 'x\n');
+  commit(repoS, 'init');
+  const empT = path.join(SANDBOX, 'empty-v73.jsonl');
+  fs.writeFileSync(empT, '');
+  const setS = (n) => fs.writeFileSync(path.join(repoS, 'big.js'),
+    Array.from({ length: n }, (_, i) => 'l' + i).join('\n') + '\n');
+  const sysMsg73 = (r) => { try { return JSON.parse(r.out).systemMessage || ''; } catch (_) { return ''; } };
+  setS(300); runHook('stop.js', { session_id: 'v73-stop', cwd: repoS, transcript_path: empT });
+  setS(450); runHook('stop.js', { session_id: 'v73-stop', cwd: repoS, transcript_path: empT });
+  setS(600);
+  const s3 = sysMsg73(runHook('stop.js', { session_id: 'v73-stop', cwd: repoS, transcript_path: empT }));
+  ok(/Dette git/.test(s3), 'V73 : stop.js émet le nudge de dette au 3e tour sans commit');
+}
+
 // ============================ OC. OPENCODE ============================
 section('OpenCode — squelette plugin + install sandbox (test/run-tests-opencode.js)');
 {

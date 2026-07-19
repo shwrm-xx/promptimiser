@@ -207,6 +207,19 @@ function loopingCommandMessage(loop) {
   ]);
 }
 
+// Dette git non commitée (#73) : un diff significatif grossit depuis plusieurs tours sans
+// commit — travail non versionné exposé à la perte + futur commit monstre illisible.
+function gitDebtMessage(debt) {
+  const files = (debt && debt.files) || 0;
+  const turns = (debt && debt.turns) || 0;
+  const churn = (debt && debt.churn) || 0;
+  const vol = churn > 0 ? ` (~${fmtK(churn)} lignes)` : '';
+  return withSeverity(SEV.WARN, [
+    `Dette git : ${files} fichier${files > 1 ? 's' : ''} modifié${files > 1 ? 's' : ''} sans commit depuis ${turns} tours${vol}, et le diff grossit encore.`,
+    'Committe maintenant (ou clôture le lot) : un diff qui enfle sans commit, c\'est du travail exposé à la perte (compaction, /clear, incident) et un commit monstre difficile à relire.',
+  ]);
+}
+
 // Cache invalidé EN PLEIN tour (anormal) : un fichier lu par le cache a changé en session.
 function bustIntraMessage(turn) {
   const b = turn.busts.filter((x) => !x.first).slice(-1)[0] || {};
@@ -503,7 +516,7 @@ module.exports = {
   MSG_ACTIF, MSG_ACTIF_SLIM, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, redZonePrescriptionMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
   compactResumeMessage, COMPACT_RESUME_CAP, backlogResumeMessage, largeWithPlanMessage,
-  costlyTurnMessage, driftMessage, loopingCommandMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
+  costlyTurnMessage, driftMessage, loopingCommandMessage, gitDebtMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
   closureWithDraftMessage, epicBilanMessage, lotClosureCardMessage,
   fmtK, statusLineText,

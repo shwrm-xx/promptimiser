@@ -2,6 +2,24 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #73 — epic « Vigies & signal » : vigie de dette git non commitée)
+
+- `promptimizer/lib/gitdebt.js` (nouveau) : signal de **tendance** distinct du rappel de clôture
+  one-shot (#68). Nudge quand un **diff significatif grossit sur ≥ 3 tours sans commit**. Niveau de
+  dette scalaire = lignes du `git diff HEAD` (hors `.vibe-agent`, binaires écartés) **+ forfait de
+  40/fichier** — les fichiers **untracked**, invisibles à `numstat`, sont ainsi capturés. Seuil 200,
+  fenêtre 3 tours, condition « grossit » requise (pas de re-nudge d'une dette figée déjà signalée).
+  Anti-spam par **palier** (`× 1,5`) ; reset au commit (HEAD change) ou quand le tree redevient propre.
+- `promptimizer/lib/messages.js` : `gitDebtMessage` — nudge ⚠ WARN (fichiers + tours + lignes,
+  singulier/pluriel accordés), nomme le risque (perte de travail, commit monstre).
+- `promptimizer/hooks/stop.js` : branche (b0) dans `if (root)`, **réutilise** le `git status` déjà
+  calculé (`dirtyFiles`) — pas de 2e appel git ; fail-open dédié.
+- Doc : ARCHITECTURE.md (tableau hooks + section vigie dédiée) et README.md (comportement en fin de tour).
+- Tests : `node test/run-tests.js` → **901 OK · 0 échec** (+20 assertions V73 : croissance sur fichier
+  tracked, dette stable, anti-spam palier, reset au commit, fichiers untracked via forfait, exclusion
+  `.vibe-agent`, fail-open hors repo, message, câblage stop.js). Smoke réel confirmé en dépôt temporaire
+  (rappel de clôture au tour 1, nudge de dette au tour 3).
+
 ## 2026-07-19 (lot #69 — epic « Atterrissages » : vigie des tours en boucle)
 
 - `promptimizer/lib/loopwatch.js` (nouveau) : détecte une commande **Bash relancée en rafale
