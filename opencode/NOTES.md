@@ -222,6 +222,41 @@ foi. Pour voir le toast, lancer `opencode` (TUI) avec les mêmes variables d'env
   commandes, `help.js` sur 8 commandes, nudges broad/init + anti-spam, model-mismatch
   résoluble≠réel / réel==préconisé / non résoluble ignoré). Suite complète `run-tests.js` verte.
 
+## Lot #54 (Autopilote PMZ II) — parité de clôture : coût réel par lot + preuve à l'idle
+
+- **Coût réel par lot à l'idle** (`index.js: accountCost`, parité `hooks/stop.js` bloc a4) :
+  à `session.idle`, les tokens de **SORTIE** du dernier message assistant sont agrégés sur le
+  lot **in_progress** via `backlog.addCost`. Côté Claude Code, `turnstats` scanne l'offset
+  ajouté au transcript `.jsonl` (pas de double-comptage par construction). OpenCode n'a pas de
+  transcript scannable → **watermark par messageID** : `state.cost_watermark` retient l'id du
+  dernier message déjà compté ; plusieurs `session.idle` successifs pour le **même** message
+  final (fréquent) ne créditent qu'une fois. La source du coût est l'occ record
+  (`occupancy-oc.js: recordFromMessage`, étendu avec `out` + `id`), écrasé à chaque
+  `message.updated` → à l'idle il porte les tokens finaux + l'id du dernier message. Repli sur
+  `client.session.messages` si aucun `message.updated` n'a été capté.
+- **Ordre aligné** : le bloc coût s'exécute **AVANT** le bloc clôture (le lot doit être encore
+  in_progress pour qu'`addCost` accumule — un lot clos ne consomme plus). `st` est muté par
+  `accountCost` (watermark + `cost_reminded_for_batch`) mais **persisté une seule fois** par
+  `closureAndHandoff`, après la logique de clôture (qui peut réarmer `cost_reminded` quand le
+  tree redevient propre). Toasts émis **après** la persistance de l'état.
+- **Toast budget 250k** (`COST_WARN_TOKENS`) : au franchissement, `lotCostMessage` en toast
+  **warning**, plafonné 1×/lot·session (`cost_reminded_for_batch`, réarmé au tree propre).
+- **Preuve à l'auto-clôture idle** (parité `hooks/stop.js` bloc b2) : quand le tree redevient
+  propre et qu'**un seul** lot est in_progress, après `doneLot` (état déjà persisté), le
+  `verify` du lot est rejoué (`project.runVerify`, délai court `VERIFY_AUTOCLOSE_MS` = 2500 ms)
+  + garde-fou CHANGELOG (`project.changelogTouched`). `closureProofMessage` → toast :
+  **échec/timeout du verify → warning distinct**, sinon rappel CHANGELOG en info. **Jamais
+  bloquant** : le lot est marqué done quoi qu'il arrive (try/catch dédié, fail-open local).
+- **Trade-off assumé** : `runVerify` est **synchrone** (`execSync`) — au pire 2,5 s de blocage
+  du process serveur OpenCode, mais uniquement à l'auto-clôture (rare, 1×/lot) et seulement si
+  le lot porte un `verify`. Aligné sur le délai court de Claude Code ; documenté ici comme
+  connu.
+- **Non vérifié** : rendu réel des toasts coût/preuve en TUI live (sandbox à client mocké
+  seulement, comme OC3/OC4).
+- **VERSION** bumpée `1.2.3 → 1.2.4`. Tests : `run-tests-opencode.js` 108 → 119 assertions
+  (crédit + watermark double-idle + re-crédit message distinct, toast 250k + anti-spam, preuve
+  verify échec→warning + garde-fou CHANGELOG + lot done non bloqué, fail-open sans message).
+
 ## Hors périmètre / constats d'audit (2026-07-18)
 
 - Statusline : gap v1 (voir mapping). Piste future : binaire externe abonné au flux SSE

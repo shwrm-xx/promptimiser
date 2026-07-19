@@ -2,6 +2,29 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #54 — epic « Autopilote PMZ II » : OC — parité de clôture, coût réel par lot + preuve à l'idle)
+
+- `opencode/plugin/impl/index.js` : nouvelle `accountCost` — à `session.idle`, agrège les tokens
+  de **SORTIE** du dernier message assistant sur le lot **in_progress** (`backlog.addCost`), en
+  parité avec le bloc coût de `hooks/stop.js`. OpenCode n'ayant pas de transcript scannable,
+  l'anti-double-comptage passe par un **watermark messageID** (`state.cost_watermark`) : plusieurs
+  `session.idle` pour le même message final ne créditent qu'une fois. Bloc coût joué **AVANT** le
+  bloc clôture ; état persisté une seule fois. Toast **warning** au franchissement du budget 250k
+  (`COST_WARN_TOKENS`, `lotCostMessage`), 1×/lot·session.
+- `opencode/plugin/impl/index.js` : à l'**auto-clôture** idle univoque (tree redevenu propre, un
+  seul lot in_progress), la **preuve de clôture** est rejouée après `doneLot` — `verify` court
+  (`project.runVerify`, `VERIFY_AUTOCLOSE_MS`) + garde-fou CHANGELOG (`changelogTouched`) via
+  `closureProofMessage`. Échec/timeout → toast **distinct** (warning) ; clôture **jamais bloquée**
+  (le lot est done quoi qu'il arrive). Parité avec `hooks/stop.js` bloc b2.
+- `opencode/plugin/impl/occupancy-oc.js` : l'occ record porte désormais `out` (tokens de sortie)
+  et `id` (messageID, watermark), en plus de `occ`/`providerID`/`modelID`.
+- `promptimizer/lib/state.js` : champ `cost_watermark` (défaut `null`) — OpenCode uniquement,
+  inerte côté Claude Code.
+- Tests : `run-tests-opencode.js` 108 → 119 assertions (crédit + watermark double-idle + re-crédit
+  sur message distinct, toast 250k + anti-spam, preuve verify échec→warning + garde-fou CHANGELOG
+  + lot done non bloqué, fail-open sans message). `VERSION` 1.2.3 → 1.2.4. `opencode/NOTES.md`
+  amendé (section lot #54).
+
 ## 2026-07-19 (lot #53 — epic « Autopilote PMZ II » : résumés servis au lieu de la relecture, `read-ledger.summaries`)
 
 - `promptimizer/lib/ledger.js` : nouveau champ `read-ledger.summaries` (clé = chemin normalisé

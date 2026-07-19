@@ -19,14 +19,17 @@ const project = require('../lib/project');
 const ledger = require('../lib/ledger');
 const {
   writeTodoSnapshot, loadBacklog, currentLot, nextLot, progress, readTodoSnapshot, doneLot,
+  addCost, COST_WARN_TOKENS,
 } = require('../lib/backlog');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { readHandoff, markConsumed, parseSkipPaths, writeAutoHandoff } = require('../lib/handoff');
 const { incrementLot, suggestedTitle } = require('../lib/lot');
 const { modelsDiffer } = require('../lib/modelwatch');
+const { VERIFY_AUTOCLOSE_MS } = require('../lib/timeouts');
 const {
   MSG_ACTIF, MSG_HANDOFF, MSG_CLOTURE, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   backlogResumeMessage, compactResumeMessage, largeWithPlanMessage, modelMismatchMessage,
+  lotCostMessage, closureProofMessage,
 } = require('../lib/messages');
 
 // Détection init/scaffold et demandes trop larges (miroir de hooks/user-prompt-submit.js).
@@ -185,34 +188,93 @@ async function createHooks(input) {
     }
   }
 
+  // (a4) Coût réel par lot (parité lot #43) : agrège les tokens de SORTIE du dernier message
+  // assistant sur le lot EN COURS, à l'idle et AVANT la clôture (le lot doit être encore
+  // in_progress pour qu'addCost accumule). Anti-double-comptage par watermark messageID :
+  // plusieurs session.idle successifs pour le même message final -> compté une seule fois.
+  // Mute `st` (watermark + cost_reminded) SANS le sauver — l'appelant persiste st une fois.
+  // Renvoie le texte du toast à émettre au franchissement de COST_WARN (250k), sinon null.
+  // Fail-open dédié : une erreur d'agrégation ne casse jamais la clôture qui suit.
+  async function accountCost(root, sid, st) {
+    try {
+      let rec = occ.readRecord(sid);
+      if (!rec) {
+        const info = await fallbackMessage(sid);
+        if (info && occ.recordFromMessage(info)) rec = occ.readRecord(sid);
+      }
+      if (!rec || !rec.id || !(rec.out > 0)) return null;
+      if (st.cost_watermark === rec.id) return null; // déjà compté (double idle sur le même message)
+      st.cost_watermark = rec.id;
+      const cur = currentLot(loadBacklog(root));
+      if (!cur) return null;
+      const updated = addCost(root, cur.id, rec.out); // null si le lot n'est pas in_progress
+      const cost = updated && Number.isFinite(updated.cost_tokens) ? updated.cost_tokens : 0;
+      if (cost >= COST_WARN_TOKENS && !st.cost_reminded_for_batch) {
+        st.cost_reminded_for_batch = true;
+        return lotCostMessage(updated, cost);
+      }
+      return null;
+    } catch (_) {
+      return null; // fail-open : pas d'agrégation ni de toast ce tour
+    }
+  }
+
   // Clôture (rappel anti-spam + auto-clôture mécanique sur tree propre) + handoff auto.
-  // Miroir de hooks/stop.js (Claude Code), canal = toast au lieu de systemMessage. La preuve
-  // de clôture (verify) reste hors périmètre OC3 (commande /close-batch -> OC4).
+  // Miroir de hooks/stop.js (Claude Code), canal = toast au lieu de systemMessage. Ordre
+  // aligné : (a4) coût par lot AVANT le bloc clôture, puis à l'auto-clôture univoque la preuve
+  // (verify court + garde-fou CHANGELOG, parité lot #44) rejouée — jamais bloquante.
   async function closureAndHandoff(dir, sid) {
     const root = repoRoot(dir);
     if (!root) return;
     try {
       project.ensureLedger(root);
       const st = loadSessionState(root, sid);
+
+      // (a4) coût réel par lot — AVANT le bloc clôture (le lot doit être encore in_progress).
+      const costToast = await accountCost(root, sid, st);
+
       const open = project.gitStatusMeaningful(root).length > 0;
+      let closureToast = null;
+      let proof = null; // { text, failed } — preuve de clôture à l'auto-clôture univoque
       if (open && !st.closure_reminded_for_batch) {
         st.closure_reminded_for_batch = true;
-        saveSessionState(root, st);
-        await bridge.toast(client, MSG_CLOTURE.split('\n')[0] + ' Propose /close-batch (commit + changelog + handoff).', 'info');
+        closureToast = MSG_CLOTURE.split('\n')[0] + ' Propose /close-batch (commit + changelog + handoff).';
       } else if (!open && st.closure_reminded_for_batch) {
         // Tree redevenu propre -> lot considéré clos : réarme les rappels et incrémente le
         // compteur de lot. Auto-clôture backlog seulement si UN seul lot in_progress (univoque).
         st.closure_reminded_for_batch = false;
         st.cost_reminded_for_batch = false;
-        saveSessionState(root, st);
         const closedNumber = incrementLot(root);
         const b = loadBacklog(root);
         const inProg = b.lots.filter((l) => l.status === 'in_progress');
         if (inProg.length === 1) {
           const r = occ.readRecord(sid);
-          doneLot(root, inProg[0].id, null, closedNumber, sid, r ? r.occ : null);
+          const done = doneLot(root, inProg[0].id, null, closedNumber, sid, r ? r.occ : null);
+          // (b2) Preuve de clôture (parité lot #44) — APRÈS que doneLot a persisté l'état : un
+          // dépassement du délai court du verify ne peut plus corrompre le backlog. Le lot est
+          // déjà marqué fait quoi qu'il arrive ici. Échec/timeout -> toast distinct (warning),
+          // clôture JAMAIS bloquée. try/catch dédié -> fail-open local.
+          if (done) {
+            try {
+              const verify = done.verify
+                ? Object.assign({ cmd: done.verify }, project.runVerify(root, done.verify, VERIFY_AUTOCLOSE_MS))
+                : null;
+              const changelogMissing = !project.changelogTouched(root);
+              const text = closureProofMessage(verify, changelogMissing);
+              if (text) proof = { text, failed: !!(verify && verify.cmd && !verify.ok) };
+            } catch (_) { /* fail-open : la clôture reste acquise, pas de preuve ce tour */ }
+          }
         }
       }
+
+      // Persistance unique de l'état (avant les toasts : un toast raté ne corrompt rien).
+      saveSessionState(root, st);
+
+      if (costToast) await bridge.toast(client, costToast, 'warning');
+      if (closureToast) await bridge.toast(client, closureToast, 'info');
+      if (proof) await bridge.toast(client, proof.text, proof.failed ? 'warning' : 'info');
+
+      // (c) handoff auto : dernier état connu, écrasé à chaque idle ; injecté au prochain start.
       writeAutoHandoff(root);
     } catch (_) { /* fail-open : l'idle ne casse jamais la session */ }
   }

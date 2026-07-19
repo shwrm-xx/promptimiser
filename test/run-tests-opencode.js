@@ -437,6 +437,75 @@ function sameSnapshot(a, b) {
     await feed4('n4', 'claude-sonnet-5');
     const tUnres = await chat4('n4', 'continue');
     ok(!/≠ modèle préconisé/.test(tUnres), 'model-mismatch : hint non résoluble (gpt-4o) -> ignoré en silence');
+
+    // ============ B5. OC — coût par lot + preuve à l'auto-clôture (lot #54) ============
+    section('OC (#54) — coût réel par lot à l\'idle (watermark anti-double-comptage)');
+    const PROJ54 = path.join(SANDBOX, 'proj54');
+    fs.mkdirSync(PROJ54, { recursive: true });
+    function git54(args) {
+      try { execFileSync('git', args, { cwd: PROJ54, stdio: 'pipe', env: Object.assign({}, process.env, gitEnv) }); return true; } catch (_) { return false; }
+    }
+    git54(['init']); git54(['config', 'user.email', 't@t']); git54(['config', 'user.name', 't']);
+    fs.writeFileSync(path.join(PROJ54, 'README.md'), '# proj54\n');
+    fs.writeFileSync(path.join(PROJ54, 'CHANGELOG.md'), '# Changelog\n');
+    git54(['add', '-A']); git54(['commit', '-m', 'init']);
+
+    const toasts54 = [];
+    const client54 = {
+      tui: { showToast: async (o) => { toasts54.push(o); return true; } },
+      config: { providers: async () => ({ data: { providers: [{ id: 'test', models: { m1: { limit: LIMIT } } }] } }) },
+    };
+    const input54 = { client: client54, project: {}, directory: PROJ54, worktree: PROJ54, serverUrl: null, $: null };
+    const hooks54 = await mod.PmzPlugin(input54);
+    const backlog54 = require(path.join(TARGET, 'pmz', 'lib', 'backlog.js'));
+    // Un lot in_progress à créditer, doté d'un verify (échouant) rejoué à l'auto-clôture.
+    backlog54.addLot(PROJ54, 'Lot coût', 'fait quand : ok', null, null, 'exit 1', 'medium');
+    backlog54.startLot(PROJ54, backlog54.loadBacklog(PROJ54).lots[0].id);
+    function cost54() { return backlog54.loadBacklog(PROJ54).lots[0].cost_tokens; }
+    // Feeder avec tokens de SORTIE + id de message distinct (le watermark anti-double-comptage).
+    async function feedOut(sid, mid, outTokens) {
+      await hooks54.event({ event: { type: 'message.updated', properties: { info: { id: mid, role: 'assistant', sessionID: sid, providerID: 'test', modelID: 'm1', tokens: { input: 5000, output: outTokens, reasoning: 0, cache: { read: 0, write: 0 } } } } } });
+    }
+    async function idle54(sid) { await hooks54.event({ event: { type: 'session.idle', properties: { sessionID: sid } } }); }
+    function costToasts54() { return toasts54.filter((t) => t.body && /tokens de sortie cumulés/.test(t.body.message)); }
+
+    await feedOut('sK', 'msgA', 30000); await idle54('sK');
+    ok(cost54() === 30000, 'coût : 1er idle crédite le lot in_progress de 30k tokens de sortie');
+    await idle54('sK'); // double idle SANS nouveau message -> pas de re-comptage (watermark)
+    ok(cost54() === 30000, 'coût : double idle sur le même message -> pas de double comptage (watermark)');
+    await feedOut('sK', 'msgB', 20000); await idle54('sK');
+    ok(cost54() === 50000, 'coût : un nouveau message (id distinct) crédite à nouveau (50k)');
+
+    section('OC (#54) — toast au franchissement du budget 250k, 1×/lot·session');
+    const nCost = costToasts54().length;
+    await feedOut('sK', 'msgC', 260000); await idle54('sK'); // 50k + 260k = 310k >= 250k
+    ok(costToasts54().length - nCost === 1, 'coût : franchissement 250k -> 1 toast budget');
+    ok(costToasts54()[costToasts54().length - 1].body.variant === 'warning', 'coût : toast budget en variant warning');
+    await feedOut('sK', 'msgD', 10000); await idle54('sK');
+    ok(costToasts54().length - nCost === 1, 'coût : anti-spam 1×/lot·session (pas de 2e toast budget)');
+
+    section('OC (#54) — preuve à l\'auto-clôture idle : verify + garde-fou CHANGELOG (non bloquant)');
+    // Tree sale -> rappel de clôture (arme closure_reminded_for_batch pour la session sV).
+    fs.writeFileSync(path.join(PROJ54, 'work.txt'), 'wip');
+    await idle54('sV');
+    // Tree propre (commit ne touchant PAS le CHANGELOG) -> auto-clôture univoque -> verify rejoué.
+    git54(['add', '-A']); git54(['commit', '-m', 'feat: work']);
+    const nProof = toasts54.length;
+    await idle54('sV');
+    const proofT = toasts54.slice(nProof).filter((t) => t.body && /Verify du lot/.test(t.body.message));
+    ok(proofT.length === 1, 'auto-clôture : verify rejoué -> 1 toast de preuve');
+    ok(proofT.length === 1 && /ÉCHEC/.test(proofT[0].body.message) && proofT[0].body.variant === 'warning',
+      'auto-clôture : verify en échec -> toast distinct (warning)');
+    ok(proofT.length === 1 && /CHANGELOG/.test(proofT[0].body.message),
+      'auto-clôture : commit sans CHANGELOG -> garde-fou CHANGELOG dans la preuve');
+    ok(backlog54.loadBacklog(PROJ54).lots[0].status === 'done',
+      'auto-clôture : le lot est marqué done malgré l\'échec du verify (clôture jamais bloquée)');
+
+    section('OC (#54) — fail-open : aucun record de coût (pas de message) -> pas de crash ni crédit');
+    const before54 = cost54();
+    let threw54 = false;
+    try { await idle54('sZ'); } catch (_) { threw54 = true; }
+    ok(!threw54 && cost54() === before54, 'coût : idle sans message assistant -> aucun throw, aucun crédit');
   }
 
   section('Kill-switch PMZ_DISABLE=1');

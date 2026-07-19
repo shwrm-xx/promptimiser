@@ -527,16 +527,23 @@ dupliquée ici. Ce qui est structurant :
   `client.config.providers`) en paliers **relatifs 50/70/85/95 %** ; franchissement → toast
   (pas de statusline). Palier persisté monotone par session (état hors-projet, clé sha1),
   réarmé par une nouvelle session_id ou un resync post-compaction.
-- **Équivalent Stop = `event: session.idle`** (lot OC3) : idempotent multi-idle (l'anti-spam
-  monotone du palier + le drapeau de clôture par lot évitent tout doublon). Y sont branchés :
-  franchissement d'occupation (toast), rappel/auto-clôture de lot (miroir de `hooks/stop.js`,
-  canal toast au lieu de `systemMessage`) — la clôture *mécanique* à l'idle reste sans preuve
-  verify ; la clôture *disciplinée* (résumé demande, map fait/non fait, verify du changé) passe
-  par la commande `/pmz close-batch` (OC4). Puis handoff auto
-  (`writeAutoHandoff` réutilisé tel quel), et **renommage de session** (`client.session.update`,
-  1× par session). Renommage : contrairement à Claude Code où PMZ ne fait que suggérer un titre
-  (validation utilisateur), OpenCode n'offre aucun canal de confirmation à un plugin — le titre
-  est donc appliqué directement mais **jamais réécrit** ensuite (drapeau `renamed` par session).
+- **Équivalent Stop = `event: session.idle`** (lot OC3, coût+preuve lot #54) : idempotent
+  multi-idle (l'anti-spam monotone du palier + le drapeau de clôture par lot évitent tout
+  doublon). Y sont branchés, dans l'ordre : franchissement d'occupation (toast) ; **coût réel
+  par lot** (`accountCost`, parité `stop.js` bloc a4) — agrège les tokens de SORTIE du dernier
+  message assistant sur le lot in_progress (`addCost`), **AVANT** le bloc clôture ; faute de
+  transcript scannable, l'anti-double-comptage passe par un **watermark messageID**
+  (`state.cost_watermark`), et un toast **warning** est émis au franchissement du budget 250k ;
+  puis rappel/auto-clôture de lot (miroir de `hooks/stop.js`, canal toast au lieu de
+  `systemMessage`). À l'**auto-clôture univoque**, la **preuve de clôture** est désormais rejouée
+  (parité `stop.js` bloc b2) : `verify` court (`runVerify`, `VERIFY_AUTOCLOSE_MS`) + garde-fou
+  `CHANGELOG` (`closureProofMessage`) → échec/timeout en toast distinct, **clôture jamais
+  bloquée**. La clôture *disciplinée* (résumé demande, map fait/non fait) reste la commande
+  `/pmz close-batch`. Puis handoff auto (`writeAutoHandoff` réutilisé tel quel), et **renommage
+  de session** (`client.session.update`, 1× par session). Renommage : contrairement à Claude Code
+  où PMZ ne fait que suggérer un titre (validation utilisateur), OpenCode n'offre aucun canal de
+  confirmation à un plugin — le titre est donc appliqué directement mais **jamais réécrit** ensuite
+  (drapeau `renamed` par session).
 - **Injection différée** (lot OC3) : pas d'équivalent au `additionalContext` de SessionStart —
   le contexte de (re)démarrage est mis en file par `session.created` (gouvernance + handoff +
   plan de lots) et `session.compacted` (réinjection minimale du lot en cours), puis flushé au

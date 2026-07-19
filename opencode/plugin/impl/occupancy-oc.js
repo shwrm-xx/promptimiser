@@ -31,12 +31,21 @@ function occFromTokens(tokens) {
 
 // Enregistre l'occ du dernier message ASSISTANT (message.updated). Silencieux, sans log
 // (message.updated est très bavard en streaming) : on ne garde que le dernier état connu.
+// `out` (tokens de SORTIE) et `id` (messageID) servent au coût par lot à l'idle (lot #54) :
+// à chaque message.updated le record est écrasé, si bien qu'à l'idle il porte les tokens
+// FINAUX et l'id du dernier message — l'id sert de watermark anti-double-comptage.
 function recordFromMessage(info) {
   try {
     if (!info || info.role !== 'assistant' || !info.tokens || !info.sessionID) return false;
     const occ = occFromTokens(info.tokens);
     if (!(occ > 0)) return false;
-    const rec = { occ, providerID: info.providerID || null, modelID: info.modelID || null };
+    const rec = {
+      occ,
+      out: info.tokens.output > 0 ? info.tokens.output : 0,
+      id: info.id || null,
+      providerID: info.providerID || null,
+      modelID: info.modelID || null,
+    };
     fs.writeFileSync(stateFile(info.sessionID, 'occ.json'), JSON.stringify(rec));
     return true;
   } catch (_) {
