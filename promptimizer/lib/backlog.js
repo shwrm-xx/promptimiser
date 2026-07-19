@@ -263,6 +263,36 @@ function epicBilan(b, lot) {
   };
 }
 
+// Estimation prédictive du coût d'un lot (lot #63) : moyenne des cost_tokens des lots CLOS
+// comparables, affichée au /scope (add) et au démarrage (start) — avant que le lot n'ait
+// consommé le moindre token. « Comparable » par ordre de priorité décroissant (la famille la
+// plus fine d'abord) : (1) même model_hint + effort_hint ; (2) même model_hint seul ;
+// (3) même epic. null dès qu'aucune famille n'a de lot clos avec cost_tokens > 0 — pas de
+// chiffre fabriqué à partir de zéro échantillon.
+function estimateCost(b, lot) {
+  if (!lot) return null;
+  const done = b.lots.filter((l) => l.status === 'done' && l.id !== lot.id &&
+    Number.isFinite(l.cost_tokens) && l.cost_tokens > 0);
+  if (!done.length) return null;
+  let peers = [];
+  let basis = null;
+  if (lot.model_hint && lot.effort_hint) {
+    peers = done.filter((l) => l.model_hint === lot.model_hint && l.effort_hint === lot.effort_hint);
+    if (peers.length) basis = 'modèle+effort';
+  }
+  if (!peers.length && lot.model_hint) {
+    peers = done.filter((l) => l.model_hint === lot.model_hint);
+    if (peers.length) basis = 'modèle';
+  }
+  if (!peers.length && lot.epic) {
+    peers = done.filter((l) => l.epic === lot.epic);
+    if (peers.length) basis = 'epic';
+  }
+  if (!peers.length) return null;
+  const avg = Math.round(peers.reduce((s, l) => s + l.cost_tokens, 0) / peers.length);
+  return { avg, count: peers.length, basis };
+}
+
 function dropLot(root, id, note) {
   const b = loadBacklog(root);
   const lot = findLot(b, id);
@@ -449,7 +479,7 @@ function exportMarkdown(b) {
 module.exports = {
   backlogFile, loadBacklog, saveBacklog, addLot, setVerify, startLot, doneLot, dropLot, noteLot,
   touchLot, addCost, currentLot, nextLot, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
-  epicBilan,
+  epicBilan, estimateCost,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot, modelEffortTag,
   exportCsv, exportMarkdown,
   MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_NOTE, MAX_TODOS, EFFORT_LEVELS,

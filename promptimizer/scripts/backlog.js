@@ -18,6 +18,13 @@ function flag(name) {
   return i !== -1 && process.argv[i + 1] != null ? process.argv[i + 1] : null;
 }
 function out(s) { process.stdout.write(s + '\n'); }
+// Suffixe texte de l'estimation prédictive (lot #63) : vide si backlog.estimateCost n'a
+// aucune famille comparable (pas de lot clos avec cost_tokens > 0 sur ce modèle/effort/epic).
+function estimateSuffix(b, l) {
+  const est = backlog.estimateCost(b, l);
+  if (!est) return '';
+  return ` Estimation (${est.count} lot${est.count > 1 ? 's' : ''} comparable${est.count > 1 ? 's' : ''} par ${est.basis}) : ~${fmtK(est.avg)} tokens.`;
+}
 // Base des chemins d'aide affichés : racine du plugin en mode plugin (substituée par
 // Claude Code / exportée aux hooks), sinon l'emplacement de l'install manuelle.
 const PMZ_BASE = (process.env.CLAUDE_PLUGIN_ROOT || '').trim() || '~/.claude/promptimizer';
@@ -94,7 +101,9 @@ function main() {
       }
       return out('Refusé : --title manquant ou vide.');
     }
-    return out(`Lot #${newLot.id} « ${newLot.title} » ajouté (à faire)${backlog.modelEffortTag(newLot)}${newLot.epic ? ` [epic : ${newLot.epic}]` : ''}${newLot.verify ? ` [verify : ${newLot.verify}]` : ''}.`);
+    let addMsg = `Lot #${newLot.id} « ${newLot.title} » ajouté (à faire)${backlog.modelEffortTag(newLot)}${newLot.epic ? ` [epic : ${newLot.epic}]` : ''}${newLot.verify ? ` [verify : ${newLot.verify}]` : ''}.`;
+    addMsg += estimateSuffix(backlog.loadBacklog(root), newLot);
+    return out(addMsg);
   }
 
   if (cmd === 'verify') {
@@ -111,7 +120,9 @@ function main() {
   if (cmd === 'start') {
     const lot = backlog.startLot(root, id);
     if (!lot) return out(`Lot #${id} introuvable ou déjà clos/abandonné.`);
-    return out(`Lot #${lot.id} « ${lot.title} » démarré (en cours)${backlog.modelEffortTag(lot)}.`);
+    let startMsg = `Lot #${lot.id} « ${lot.title} » démarré (en cours)${backlog.modelEffortTag(lot)}.`;
+    startMsg += estimateSuffix(backlog.loadBacklog(root), lot);
+    return out(startMsg);
   }
 
   if (cmd === 'done') {

@@ -145,6 +145,12 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   quand le working tree redevient propre — nouveau lot). Fail-open dédié : une erreur
   d'agrégation ne casse jamais la clôture. `cost_tokens` ne s'accumule que sur un lot
   `in_progress` (un lot à faire/clos ne consomme pas) ; `addCost` est un no-op sur `tokens ≤ 0`.
+- **Estimation prédictive du coût d'un lot** (`backlog.js: estimateCost(b, lot)`, lot #63) :
+  avant même qu'un lot n'ait consommé le moindre token, moyenne des `cost_tokens` des lots
+  **clos** comparables — famille décroissante (1) `model_hint`+`effort_hint` (2) `model_hint`
+  seul (3) `epic` — `null` dès qu'aucune famille n'a de lot clos avec `cost_tokens > 0` (pas de
+  chiffre fabriqué à partir de zéro échantillon). Affiché en texte par `scripts/backlog.js`
+  à la suite du message `add` (au `/scope`) **et** `start` (au démarrage réel du lot).
 - **Ledgers projet** (`.vibe-agent/{read,context}-ledger.json`) : auto-créés par
   `ensureLedger` (tout hook qui touche au projet) puis maintenus par `post-tool-use.js`
   (atomique `tmp`+`rename`, cap FIFO). Servent l'advisory `/check-context`. Granularité

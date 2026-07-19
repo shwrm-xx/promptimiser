@@ -2,6 +2,21 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #63 — epic « Coût par livrable » : estimation prédictive du coût d'un lot)
+
+- `promptimizer/lib/backlog.js` : nouveau `estimateCost(b, lot)` — moyenne des `cost_tokens`
+  des lots **clos** comparables au lot visé, par famille décroissante : (1) même
+  `model_hint`+`effort_hint` ; (2) même `model_hint` seul ; (3) même `epic`. `null` dès qu'aucune
+  famille n'a de lot clos avec `cost_tokens > 0` (pas de chiffre fabriqué à partir de zéro
+  échantillon).
+- `promptimizer/scripts/backlog.js` : l'estimation est affichée en texte (« Estimation (N lot(s)
+  comparable(s) par <famille>) : ~Xk tokens. ») à la suite du message des commandes CLI `add` et
+  `start` — donc visible au `/scope` (création du lot) **et** au démarrage réel. Muette si aucune
+  famille comparable.
+- Tests : +8 cas (`test/run-tests.js`) — unit `estimateCost` (les 3 familles + cas `null`) et
+  intégration CLI (`add`/`start` affichent le même texte, silence total sans comparable).
+  788/788 verts. Vérifié en bac à sable (repo temporaire, CLI bout-en-bout).
+
 ## 2026-07-19 (lot #62 — epic « Coût par livrable » : détecteur de dérive de session)
 
 - `promptimizer/lib/turnstats.js` : nouveau `evaluateDrift(sid)` — au-delà du tour isolé, détecte

@@ -3615,6 +3615,71 @@ section('Résumés servis au lieu de la relecture (read-ledger.summaries, lot #5
   ok(Object.keys(rlCap.summaries).length === 200, 'T53 : summaries plafonné à 200 entrées (capObject)');
 }
 
+// ============================ V63. ESTIMATION PRÉDICTIVE DU COÛT (lot #63) ============================
+section('Estimation prédictive du coût d\'un lot : famille modèle+effort > modèle > epic (lot #63)');
+{
+  const repo = path.join(SANDBOX, 'repo-cost-estimate');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+
+  // Aucun lot clos -> pas d'estimation possible.
+  const fresh = backlogLib.addLot(repo, 'Lot frais', 'fait quand : x', 'sonnet', null, null, 'medium');
+  ok(backlogLib.estimateCost(backlogLib.loadBacklog(repo), fresh) === null,
+    'estimateCost : aucun lot clos -> null (pas de chiffre fabriqué)');
+
+  // Un lot clos sonnet/medium à 120000 tokens -> sert de comparable pour un 2e lot identique.
+  backlogLib.startLot(repo, fresh.id);
+  backlogLib.addCost(repo, fresh.id, 120000);
+  backlogLib.doneLot(repo, fresh.id, 'aaa0001');
+
+  const sameFamily = backlogLib.addLot(repo, 'Lot B', 'fait quand : y', 'sonnet', null, null, 'medium');
+  const estFamily = backlogLib.estimateCost(backlogLib.loadBacklog(repo), sameFamily);
+  ok(estFamily && estFamily.avg === 120000 && estFamily.count === 1 && estFamily.basis === 'modèle+effort',
+    'estimateCost : même modèle+effort -> famille la plus fine (120000, n=1)');
+
+  // Effort différent -> repli sur le modèle seul (toujours le même lot clos comme pair).
+  const diffEffort = backlogLib.addLot(repo, 'Lot C', 'fait quand : z', 'sonnet', null, null, 'high');
+  const estModel = backlogLib.estimateCost(backlogLib.loadBacklog(repo), diffEffort);
+  ok(estModel && estModel.avg === 120000 && estModel.basis === 'modèle',
+    'estimateCost : effort différent -> repli sur la famille modèle seul');
+
+  // Ni modèle+effort ni modèle seul comparables, mais un pair clos dans le même epic ->
+  // repli sur la moyenne epic (modèle et effort volontairement uniques pour isoler ce cas).
+  const epicPeer = backlogLib.addLot(repo, 'Lot E', 'fait quand : v', 'opus', 'Mon Epic', null, 'high');
+  backlogLib.startLot(repo, epicPeer.id);
+  backlogLib.addCost(repo, epicPeer.id, 40000);
+  backlogLib.doneLot(repo, epicPeer.id, 'bbb0002');
+  const diffModelSameEpic = backlogLib.addLot(repo, 'Lot D', 'fait quand : w', 'mistral', 'Mon Epic', null, 'low');
+  const estEpic = backlogLib.estimateCost(backlogLib.loadBacklog(repo), diffModelSameEpic);
+  ok(estEpic && estEpic.avg === 40000 && estEpic.basis === 'epic',
+    'estimateCost : ni modèle+effort ni modèle comparable -> repli sur la moyenne epic');
+
+  // CLI : l'estimation est affichée en texte lisible au `add` ET au `start`.
+  const repo2 = path.join(SANDBOX, 'repo-cost-estimate-cli');
+  fs.mkdirSync(repo2, { recursive: true });
+  execFileSync('git', ['init', '-q', repo2]);
+  fs.writeFileSync(path.join(repo2, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo2, 'add', '.']);
+  execFileSync('git', ['-C', repo2, 'commit', '-q', '-m', 'init']);
+  runNode(BKLG, ['add', '--cwd', repo2, '--title', 'Réf', '--model', 'sonnet', '--effort', 'medium']);
+  runNode(BKLG, ['start', '--cwd', repo2, '--id', '1']);
+  backlogLib.addCost(repo2, 1, 90000);
+  backlogLib.doneLot(repo2, 1, 'ccc0003');
+  const addOut = runNode(BKLG, ['add', '--cwd', repo2, '--title', 'Suivant', '--model', 'sonnet', '--effort', 'medium']);
+  ok(/Estimation \(1 lot comparable par modèle\+effort\) : ~90k tokens\./.test(addOut.out),
+    'CLI add : estimation affichée en texte (~90k, famille modèle+effort)');
+  const startOut = runNode(BKLG, ['start', '--cwd', repo2, '--id', '2']);
+  ok(/Estimation \(1 lot comparable par modèle\+effort\) : ~90k tokens\./.test(startOut.out),
+    'CLI start : même estimation réaffichée au démarrage');
+
+  // Sans aucune famille comparable -> pas de suffixe "Estimation" du tout (silence, pas de bruit).
+  const noEst = runNode(BKLG, ['add', '--cwd', repo2, '--title', 'Isolé', '--model', 'haiku', '--effort', 'low']);
+  ok(!/Estimation/.test(noEst.out), 'CLI add : aucune famille comparable -> pas de mention "Estimation"');
+}
+
 // ============================ OC. OPENCODE ============================
 section('OpenCode — squelette plugin + install sandbox (test/run-tests-opencode.js)');
 {
