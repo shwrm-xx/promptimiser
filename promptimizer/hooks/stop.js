@@ -142,7 +142,7 @@ function main() {
               : null;
             // tree propre ici -> changelogTouched se réduit au dernier commit (celui de clôture).
             const changelogMissing = !changelogTouched(root);
-            const proof = closureProofMessage(verify, changelogMissing);
+            const proof = closureProofMessage(verify, changelogMissing, !done.verify);
             if (proof) parts.push(proof);
           } catch (_) { /* fail-open : la clôture reste acquise, pas de preuve ce tour */ }
         }

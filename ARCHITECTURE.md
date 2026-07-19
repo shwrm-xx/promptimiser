@@ -111,11 +111,14 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   au `model_hint` du lot backlog `in_progress`. Correspondance par **sous-chaîne** insensible
   à la casse (`modelsDiffer` : le hint est un mot-clé libre — « sonnet » — le modèle réel un id
   complet — « claude-sonnet-5 ») plutôt qu'une énum à resynchroniser à chaque nouveau modèle.
-  Nudge `additionalContext` court, plafonné **1×/session** (clé `model_mismatch` dans
-  `prompt_reminders`, même state que les autres rappels du hook — repart à zéro sur nouvelle
-  `session_id`) : le modèle ne change normalement pas en cours de session, une seule alerte
-  suffit à signaler un mauvais démarrage. Fail-open total (backlog absent, transcript
-  illisible, aucun lot en cours ou sans `model_hint` → silence, jamais de blocage).
+  Nudge `additionalContext` court (suggère `/model`, lot #55), plafonné **1×/session** (clé
+  `model_mismatch` dans `prompt_reminders`, même state que les autres rappels du hook — repart à
+  zéro sur nouvelle `session_id`) : le modèle ne change normalement pas en cours de session, une
+  seule alerte suffit à signaler un mauvais démarrage. **Silence si le hint désigne un runtime
+  tiers** (`modelwatch.js: hintResolvableClaude` — allow-list `claude`/`opus`/`sonnet`/`haiku`/
+  `fable` ; un hint « ollama/… », « gpt-4o »… présumé non-Claude) : CC ne peut pas s'y basculer,
+  donc ni vigie ni `/model` (lot #55). Fail-open total (backlog absent, transcript illisible,
+  aucun lot en cours ou sans `model_hint` → silence, jamais de blocage).
 - **Coût réel par lot** (`backlog.js: addCost`, lot #43) : `stop.js` agrège chaque tour les
   **tokens de sortie** du tour (`turnstats.computeTurn().out`) sur le lot `in_progress`, dans
   le champ `cost_tokens` du lot lui-même — donc **agrégat trans-session** (porté par le lot,
@@ -241,7 +244,9 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   clôture manuelle via le CLI sans id, jamais deviné). Au plus un `in_progress` ; cap 20 lots
   ouverts ; `doneLot` idempotent. `model_hint` est **obligatoire à l'`add` CLI** (refus doux sans `--model`) ;
   `effort_hint` est optionnel mais refusé (doux) si `--effort` est fourni hors énum. Les deux sont
-  **réaffichés** partout où un lot est rendu (`show`/`start`/`next`, `summaryLines` → handoff auto)
+  **réaffichés** partout où un lot est rendu (`show`/`start`/`next`, `summaryLines` → handoff auto,
+  **filet resume `backlogResumeMessage`** qui pousse en plus une suggestion `/model` si le hint est
+  un Claude joignable et un rappel « pose une `verify` » si le lot n'en a pas — lot #55)
   sous forme combinée `[modèle : … · effort …]` (`lib/backlog.js: modelEffortTag`) — jamais perdu
   silencieusement. Écrit par l'assistant (CLI) ; **auto-clos par `stop.js`**
   quand le working tree redevient propre et qu'exactement un lot est `in_progress` (sinon ne
@@ -258,8 +263,10 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   rendu visible par `messages.js:closureProofMessage` — une non-terminaison dans le délai court est
   affichée « non terminée » (relancer via `/close-batch`), **pas** « ÉCHEC ». Le même message porte
   un **garde-fou CHANGELOG** : rappel doux si le commit de clôture (HEAD, tree propre ⇒
-  `changelogTouched` se réduit au dernier commit) ne touche pas `CHANGELOG.md`. try/catch dédié →
-  fail-open : la clôture reste acquise même si la preuve échoue. Champ `closed_occupancy` (lot #29) :
+  `changelogTouched` se réduit au dernier commit) ne touche pas `CHANGELOG.md`. Un lot **sans
+  aucune `verify`** est clos avec une ligne doux « **clos sans preuve** » (paramètre `noVerify`
+  de `closureProofMessage`, lot #55) invitant à poser `--verify` au prochain `/scope`. try/catch
+  dédié → fail-open : la clôture reste acquise même si la preuve échoue. Champ `closed_occupancy` (lot #29) :
   occupation contexte du tour figée par `stop.js` à l'auto-clôture (`turnstats.computeTurn().occ`,
   métrologie de coût par lot) — `null` sur une clôture manuelle via le CLI (pas de transcript à ce
   niveau). Champ `cost_tokens` (lot #43) : coût réel cumulé du lot = tokens de sortie sommés par

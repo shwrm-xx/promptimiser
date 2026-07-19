@@ -1,7 +1,8 @@
 'use strict';
 // Messages injectés par les hooks. Courts, conformes à la spec mwn/ (rg -> git grep).
 const { BUCKETS, FLOATING_STEP } = require('./occupancy');
-const { COST_BUDGET_TOKENS } = require('./backlog');
+const { COST_BUDGET_TOKENS, modelEffortTag } = require('./backlog');
+const { hintResolvableClaude } = require('./modelwatch');
 
 const MSG_ACTIF = [
   'Promptimizer actif.',
@@ -217,14 +218,28 @@ function compactResumeMessage(lot, prog, todos) {
 }
 
 // Filet SessionStart quand aucun handoff n'est injectable mais qu'un plan de lots existe.
+// Transitions de lot (lot #55) : on pousse le tag modèle/effort, une suggestion /model si le
+// modèle préconisé est un Claude joignable, et un rappel « pose une verify » si le lot n'en a
+// pas (sinon il se clôturera « sans preuve »). Ordre = par priorité DÉCROISSANTE : les nudges
+// secondaires (/model surtout, déjà couvert par le tag) passent EN DERNIER pour être rognés en
+// premier par le cap 400c — l'identité du lot et l'instruction cœur survivent toujours.
 function backlogResumeMessage(cur, next, prog) {
   const lines = [];
   if (cur) {
-    lines.push(`Plan de lots : ${prog.done}/${prog.total} faits. Lot en cours : « ${cur.title} »${cur.scope ? ` — ${String(cur.scope).slice(0, 120)}` : ''}.`);
+    lines.push(`Plan de lots : ${prog.done}/${prog.total} faits. Lot en cours : « ${String(cur.title).slice(0, 60)} »${modelEffortTag(cur)}${cur.scope ? ` — ${String(cur.scope).slice(0, 100)}` : ''}.`);
     lines.push('Traite ce lot uniquement ; clôture par vérif ciblée + CHANGELOG + commit.');
+    if (!cur.verify) {
+      lines.push('Ce lot n\'a pas de commande verify — sans elle, « clos sans preuve » à la clôture (pose-en une : backlog.js verify --set).');
+    }
+    if (hintResolvableClaude(cur.model_hint)) {
+      lines.push('Modèle préconisé ci-dessus : bascule via /model avant d\'attaquer si besoin.');
+    }
   } else if (next) {
-    lines.push(`Plan de lots : ${prog.done}/${prog.total} faits. Prochain lot : « ${next.title} »${next.scope ? ` — ${String(next.scope).slice(0, 120)}` : ''}.`);
+    lines.push(`Plan de lots : ${prog.done}/${prog.total} faits. Prochain lot : « ${String(next.title).slice(0, 60)} »${modelEffortTag(next)}${next.scope ? ` — ${String(next.scope).slice(0, 100)}` : ''}.`);
     lines.push(`Démarre-le (node ~/.claude/promptimizer/scripts/backlog.js start --id ${next.id}) puis traite ce lot uniquement.`);
+    if (hintResolvableClaude(next.model_hint)) {
+      lines.push('Modèle préconisé ci-dessus : bascule via /model avant de démarrer si besoin.');
+    }
   } else {
     return null; // plan terminé/abandonné : rien à rappeler
   }
@@ -259,12 +274,13 @@ function lotCostMessage(lot, costTokens) {
   ].join('\n');
 }
 
-// Preuve de clôture à l'AUTO-clôture (lot #44) : à l'instant où le tree redevient propre et
-// que le lot univoque est marqué fait, on rend VISIBLE (systemMessage stop.js, jamais réinjecté)
-// (a) le résultat du verify du lot s'il en a un — jamais bloquant, une non-terminaison dans le
-// délai court n'est PAS un échec ; (b) un rappel doux si le commit de clôture ne touche pas
-// CHANGELOG.md. Renvoie null si rien à dire (pas de verify + CHANGELOG présent).
-function closureProofMessage(verify, changelogMissing) {
+// Preuve de clôture à l'AUTO-clôture (lot #44, étendu #55) : à l'instant où le tree redevient
+// propre et que le lot univoque est marqué fait, on rend VISIBLE (systemMessage stop.js, jamais
+// réinjecté) (a) le résultat du verify du lot s'il en a un — jamais bloquant, une non-terminaison
+// dans le délai court n'est PAS un échec ; (b) un rappel doux si le commit de clôture ne touche pas
+// CHANGELOG.md ; (c) si le lot n'avait AUCUNE commande verify (noVerify), un « clos sans preuve »
+// doux invitant à en poser une au prochain lot. Renvoie null si rien à dire.
+function closureProofMessage(verify, changelogMissing, noVerify) {
   const lines = [];
   if (verify && verify.cmd) {
     if (verify.ok) {
@@ -274,6 +290,8 @@ function closureProofMessage(verify, changelogMissing) {
     } else {
       lines.push(`Verify du lot (\`${verify.cmd}\`) : ÉCHEC (clôture non bloquée) — à corriger avant d'enchaîner :\n  ${verify.tail}`);
     }
+  } else if (noVerify) {
+    lines.push('Clos sans preuve : ce lot n\'avait pas de commande verify. Au prochain /scope, ajoute `--verify "…"` (si le lot est vérifiable par commande) pour une clôture prouvée.');
   }
   if (changelogMissing) {
     lines.push('Rappel doux : le commit de clôture ne touche pas CHANGELOG.md — un lot de retours = une entrée datée au CHANGELOG.');
@@ -312,7 +330,7 @@ function subagentNudgeMessage(occ, mix) {
 function modelMismatchMessage(lot, actualModel) {
   return [
     `Modèle réel (${actualModel}) ≠ modèle préconisé pour le lot en cours (« ${lot.title} » : ${lot.model_hint}).`,
-    'Vérifie si le changement de modèle est volontaire ou si la session a démarré avec le mauvais modèle.',
+    `Bascule via /model si le lot le demande, ou ignore si le changement est volontaire.`,
   ].join('\n');
 }
 

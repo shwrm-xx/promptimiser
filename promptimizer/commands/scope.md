@@ -27,11 +27,14 @@ quand : … » vérifiable** — au-delà, redécouper plutôt que grossir un lo
    (écrit `.vibe-agent/epic`, cap 60 caractères).
 4. Persister chaque lot validé (un appel par lot), avec sa préconisation de modèle, son
    effort et, si présent, l'epic :
-   `node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "fait quand : …" --model sonnet --effort medium --epic "Nom de l'epic"`
+   `node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "fait quand : …" --model sonnet --effort medium --verify "npm test" --epic "Nom de l'epic"`
    (`--model` est **obligatoire** — l'ajout est refusé sans lui ; `--effort` doit valoir
-   `low`/`medium`/`high`/`xhigh` sinon l'ajout est refusé ; `--epic` reste optionnel)
-   puis démarrer le premier :
-   `node ~/.claude/promptimizer/scripts/backlog.js start --id <id>`.
+   `low`/`medium`/`high`/`xhigh` sinon l'ajout est refusé ; `--epic` reste optionnel).
+   **`--verify` dès que le lot est vérifiable par une commande** (test, typecheck, build,
+   lint…) : c'est la preuve rejouée à l'auto-clôture. Un lot posé sans elle sera « clos sans
+   preuve » — à réserver aux lots réellement non vérifiables par commande (doc, choix visuel).
+   Elle est éditable après coup : `backlog.js verify --set "…" --id <id>`. Puis démarrer le
+   premier : `node ~/.claude/promptimizer/scripts/backlog.js start --id <id>`.
 5. Afficher le plan (`node ~/.claude/promptimizer/scripts/backlog.js show`, ou
    `show --epic "Nom de l'epic"` pour filtrer) et traiter **UNIQUEMENT le premier lot**.
 

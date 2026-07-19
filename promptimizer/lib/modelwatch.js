@@ -65,4 +65,16 @@ function modelsDiffer(hint, actualModel) {
   return !String(actualModel).toLowerCase().includes(String(hint).toLowerCase());
 }
 
-module.exports = { readLastModel, modelsDiffer };
+// Le model_hint désigne-t-il un modèle de la famille Claude, joignable par /model dans Claude
+// Code ? Un lot peut préconiser un runtime tiers (« ollama », « gpt-4o », « gemini »…) : dans
+// ce cas la vigie modèle et la suggestion /model n'ont AUCUN sens (CC ne peut pas s'y basculer)
+// et doivent rester muettes. Allow-list des marqueurs Claude plutôt que deny-list des tiers :
+// un hint inconnu est présumé non-Claude (silence sûr) — jamais de faux nudge « bascule ».
+const CLAUDE_HINT_TOKENS = ['claude', 'opus', 'sonnet', 'haiku', 'fable'];
+function hintResolvableClaude(hint) {
+  if (!hint) return false;
+  const h = String(hint).toLowerCase();
+  return CLAUDE_HINT_TOKENS.some((t) => h.includes(t));
+}
+
+module.exports = { readLastModel, modelsDiffer, hintResolvableClaude };

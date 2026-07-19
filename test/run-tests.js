@@ -2851,6 +2851,14 @@ section('Vigie modèle réel vs préconisé (UserPromptSubmit, anti-spam 1×/ses
   ok(modelwatch.readLastModel(null) === null, 'readLastModel : transcript_path absent -> null, fail-open');
   ok(modelwatch.readLastModel(path.join(SANDBOX, 'inexistant.jsonl')) === null, 'readLastModel : fichier absent -> null, fail-open');
 
+  // R1-bis. hintResolvableClaude (lot #55) : marqueurs Claude -> true ; runtime tiers/inconnu -> false.
+  ok(modelwatch.hintResolvableClaude('sonnet') === true, 'hintResolvableClaude : « sonnet » -> Claude');
+  ok(modelwatch.hintResolvableClaude('Opus 4.8') === true, 'hintResolvableClaude : « Opus 4.8 » -> Claude (casse ignorée)');
+  ok(modelwatch.hintResolvableClaude('fable') === true, 'hintResolvableClaude : « fable » -> Claude');
+  ok(modelwatch.hintResolvableClaude('ollama/llama3') === false, 'hintResolvableClaude : « ollama/… » -> non-Claude');
+  ok(modelwatch.hintResolvableClaude('gpt-4o') === false, 'hintResolvableClaude : « gpt-4o » -> non-Claude');
+  ok(modelwatch.hintResolvableClaude('') === false && modelwatch.hintResolvableClaude(null) === false, 'hintResolvableClaude : vide/null -> false');
+
   // R2. bout-en-bout via le hook
   const repo = path.join(SANDBOX, 'repo-model-watch');
   fs.mkdirSync(repo, { recursive: true });
@@ -2869,6 +2877,7 @@ section('Vigie modèle réel vs préconisé (UserPromptSubmit, anti-spam 1×/ses
   const ctxMismatch = ctxOf(rMismatch);
   ok(/Modèle réel.*≠.*préconisé/.test(ctxMismatch), 'mismatch : nudge injecté');
   ok(ctxMismatch.includes('Lot vigie modèle') && ctxMismatch.includes('claude-sonnet-5'), 'mismatch : nomme le lot et le modèle réel');
+  ok(/\/model/.test(ctxMismatch), 'mismatch : suggère /model (transition, lot #55)');
 
   // R2b. anti-spam : 2e prompt de la même session -> pas de répétition
   const rMismatch2 = runHook('user-prompt-submit.js', { cwd: repo, session_id: 'sess-mw1', prompt: 'et ensuite ?', transcript_path: tMismatch });
@@ -2883,6 +2892,19 @@ section('Vigie modèle réel vs préconisé (UserPromptSubmit, anti-spam 1×/ses
   const rNoTranscript = runHook('user-prompt-submit.js', { cwd: repo, session_id: 'sess-mw3', prompt: 'bonjour', transcript_path: path.join(SANDBOX, 'absent.jsonl') });
   ok(rNoTranscript.code === 0, 'transcript illisible -> fail-open, exit 0');
   ok(!/Modèle réel/.test(ctxOf(rNoTranscript)), 'transcript illisible -> pas de nudge (rien à comparer)');
+
+  // R2e. hint non-Claude (ollama) + modèle réel différent -> AUCUN nudge (CC ne peut pas s'y
+  // basculer, hintResolvableClaude, lot #55). Nouveau repo pour un lot au hint tiers.
+  const repoNC = path.join(SANDBOX, 'repo-model-nonclaude');
+  fs.mkdirSync(repoNC, { recursive: true });
+  execFileSync('git', ['init', '-q', repoNC]);
+  fs.writeFileSync(path.join(repoNC, 'CLAUDE.md'), 'règles');
+  execFileSync('git', ['-C', repoNC, 'add', '.']);
+  execFileSync('git', ['-C', repoNC, 'commit', '-q', '-m', 'init']);
+  const lotNC = backlogLib.addLot(repoNC, 'Lot runtime tiers', 'fait quand : test', 'ollama/llama3');
+  backlogLib.startLot(repoNC, lotNC.id);
+  const rNC = runHook('user-prompt-submit.js', { cwd: repoNC, session_id: 'sess-nc', prompt: 'bonjour', transcript_path: tMismatch });
+  ok(!/Modèle réel/.test(ctxOf(rNC)), 'hint non-Claude -> aucun nudge vigie modèle (rien à basculer)');
 }
 
 // ============================ S. COÛT RÉEL PAR LOT (lot #43) ============================
@@ -2993,6 +3015,10 @@ section('Clôture prouvée : verify à l\'auto-clôture + garde-fou CHANGELOG (l
   ok(/ÉCHEC.*à corriger/s.test(messages.closureProofMessage({ cmd: 'x', ok: false, timedOut: false, tail: 'zut' }, false)), 'closureProofMessage : verify échec');
   ok(/Rappel doux.*CHANGELOG\.md/s.test(messages.closureProofMessage(null, true)), 'closureProofMessage : garde-fou CHANGELOG seul');
   ok(messages.closureProofMessage(null, false) === null, 'closureProofMessage : rien à dire -> null');
+  // noVerify (lot #55) : lot clos sans commande verify -> ligne « Clos sans preuve ».
+  ok(/Clos sans preuve.*--verify/s.test(messages.closureProofMessage(null, false, true)), 'closureProofMessage : lot sans verify -> « Clos sans preuve »');
+  ok(!/Verify du lot/.test(messages.closureProofMessage(null, false, true)), 'closureProofMessage : « clos sans preuve » ne prétend pas avoir joué une verify');
+  ok(!/Clos sans preuve/.test(messages.closureProofMessage({ cmd: 'x', ok: true }, false, false)), 'closureProofMessage : lot AVEC verify -> pas de « clos sans preuve »');
 
   // Fabrique un repo bootstrappé (ledgers ignorés) + helper d'auto-clôture (dirty -> arme le
   // flag, puis commit -> transition tree propre = auto-clôture au Stop suivant).
@@ -3060,8 +3086,48 @@ section('Clôture prouvée : verify à l\'auto-clôture + garde-fou CHANGELOG (l
     const r = runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empT });
     ok(r.code === 0, 'e2e : lot sans verify -> exit 0 (fail-open)');
     ok(!/Verify du lot/.test(sysMsg(r)), 'e2e : lot sans verify -> aucune ligne verify');
+    ok(/Clos sans preuve/.test(sysMsg(r)), 'e2e : lot sans verify -> « clos sans preuve » à la clôture (lot #55)');
     ok(backlogLib.loadBacklog(repo).lots[0].status === 'done', 'e2e : lot sans verify auto-clôturé');
   }
+}
+
+// ============================ T-bis. TRANSITIONS DE LOT (lot #55) ============================
+section('Transitions de lot : backlogResumeMessage — verify prescrit + /model + cap 400c (lot #55)');
+{
+  const brm = messages.backlogResumeMessage;
+  const prog = { done: 2, total: 5 };
+
+  // TR1. Lot en cours SANS verify + hint Claude -> rappel verify + suggestion /model + tag.
+  const cur = { title: 'Lot transition', scope: 'fait quand : vert', model_hint: 'sonnet', effort_hint: 'medium', verify: null };
+  const mCur = brm(cur, null, prog);
+  ok(/\[modèle : sonnet · effort medium\]/.test(mCur), 'resume : tag modèle/effort poussé');
+  ok(/pas de commande verify.*clos sans preuve/s.test(mCur), 'resume : lot sans verify -> rappel « clos sans preuve »');
+  ok(/\/model/.test(mCur), 'resume : hint Claude -> suggestion /model');
+
+  // TR2. Lot AVEC verify -> pas de rappel verify (mais tag + /model restent).
+  const curV = { title: 'Lot prouvé', scope: 'x', model_hint: 'opus', effort_hint: 'high', verify: 'npm test' };
+  const mCurV = brm(curV, null, prog);
+  ok(!/pas de commande verify/.test(mCurV), 'resume : lot avec verify -> pas de rappel verify');
+  ok(/\/model/.test(mCurV), 'resume : lot avec verify -> /model toujours suggéré');
+
+  // TR3. Hint non-Claude -> AUCUNE suggestion /model (rien à basculer côté CC).
+  const curNC = { title: 'Lot tiers', scope: 'x', model_hint: 'ollama/llama3', effort_hint: 'medium', verify: 'make check' };
+  ok(!/\/model/.test(brm(curNC, null, prog)), 'resume : hint non-Claude -> pas de /model');
+
+  // TR4. Prochain lot (aucun en cours) -> tag + /model ; pas de rappel verify (on ne l'a pas démarré).
+  const next = { id: 7, title: 'Prochain', scope: 'y', model_hint: 'haiku', effort_hint: 'low', verify: null };
+  const mNext = brm(null, next, prog);
+  ok(/start --id 7/.test(mNext) && /\[modèle : haiku/.test(mNext), 'resume : prochain lot -> instruction start + tag');
+  ok(/\/model/.test(mNext), 'resume : prochain lot hint Claude -> /model');
+
+  // TR5. Cap 400c tenu au PIRE cas (titre/scope/hint maximaux, tous les nudges présents).
+  const worst = { title: 'W'.repeat(80), scope: 'z'.repeat(400), model_hint: 'z'.repeat(40) + 'sonnet', effort_hint: 'xhigh', verify: null };
+  const mWorst = brm(worst, null, { done: 999, total: 999 });
+  ok(mWorst.length <= 400, `resume : cap 400c respecté au pire cas (len=${mWorst.length})`);
+  ok(/Lot en cours/.test(mWorst), 'resume : au pire cas, l\'identité du lot survit à la troncature');
+
+  // TR6. Plan terminé (ni cur ni next) -> null (rien à rappeler).
+  ok(brm(null, null, { done: 5, total: 5 }) === null, 'resume : plan terminé -> null');
 }
 
 // ============================ U. STATUSLINE OPT-IN (lot #45) ============================

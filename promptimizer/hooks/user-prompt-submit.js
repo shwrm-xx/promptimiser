@@ -21,7 +21,7 @@ const {
   sessionTitleMessage, modelMismatchMessage,
 } = require('../lib/messages');
 const occupancy = require('../lib/occupancy');
-const { readLastModel, modelsDiffer } = require('../lib/modelwatch');
+const { readLastModel, modelsDiffer, hintResolvableClaude } = require('../lib/modelwatch');
 
 const OCC_PROMPT_THRESHOLD = 500000;
 
@@ -103,7 +103,9 @@ function main() {
     if (!st.prompt_reminders.model_mismatch) {
       const b = loadBacklog(root);
       const cur = currentLot(b);
-      if (cur && cur.model_hint) {
+      // Silence si le hint désigne un runtime tiers (ollama/gpt/…) : CC ne peut pas s'y
+      // basculer, donc ni vigie ni suggestion /model (lot #55, hintResolvableClaude).
+      if (cur && cur.model_hint && hintResolvableClaude(cur.model_hint)) {
         const actualModel = readLastModel(input.transcript_path);
         if (actualModel && modelsDiffer(cur.model_hint, actualModel)) {
           st.prompt_reminders.model_mismatch = true;

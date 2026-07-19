@@ -12,9 +12,11 @@ poursuit trois objectifs :
    `/fresh-session`) et **injecté automatiquement au démarrage de la session suivante**.
    Une grosse demande peut être **lotie** (`/scope`) en un plan de 2-5 lots persistant
    (`.vibe-agent/backlog.json`), **chaque lot portant une préconisation de modèle**
-   (`sonnet`/`opus`, réaffichée à chaque `show`/`start` et dans le handoff) : chaque lot est
-   clos automatiquement au commit, le suivant est annoncé, et le plan survit aux sessions
-   comme à la compaction.
+   (`sonnet`/`opus`, réaffichée à chaque `show`/`start`, au resume et dans le handoff — avec
+   suggestion `/model` si le modèle diffère, muette pour un runtime tiers) et, si vérifiable par
+   commande, une **`verify`** rejouée comme preuve à la clôture (un lot sans elle est signalé
+   « clos sans preuve ») : chaque lot est clos automatiquement au commit, le suivant est annoncé,
+   et le plan survit aux sessions comme à la compaction.
 3. **Initialisation prudente des projets** — propose de créer `CLAUDE.md` / `AGENTS.md` /
    `.vibe-agent/` / `CHANGELOG.md`, **uniquement après ta confirmation**, jamais d'écrasement.
    Sur un **projet en cours** qui a déjà ces fichiers, `/init` ajoute la section « Règles

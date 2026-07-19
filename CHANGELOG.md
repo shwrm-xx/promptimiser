@@ -2,6 +2,34 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #55 — epic « Autopilote PMZ II » : transitions de lot — verify prescrit + `/model` poussé + vigie symétrique)
+
+- `promptimizer/lib/modelwatch.js` : nouvelle `hintResolvableClaude` — allow-list des marqueurs
+  Claude (`claude`/`opus`/`sonnet`/`haiku`/`fable`) ; un `model_hint` de runtime tiers
+  (« ollama/… », « gpt-4o »…) ou inconnu est présumé **non-Claude** → silence sûr.
+- `promptimizer/hooks/user-prompt-submit.js` : la vigie modèle ne se déclenche plus que si le
+  hint est **joignable par CC** (`hintResolvableClaude`) — un lot préconisant un runtime tiers ne
+  produit aucun nudge (CC ne peut pas s'y basculer). `modelMismatchMessage` suggère désormais
+  `/model`.
+- `promptimizer/lib/messages.js` : `closureProofMessage(verify, changelogMissing, noVerify)` —
+  un lot clos **sans aucune commande verify** émet une ligne doux « **clos sans preuve** »
+  invitant à poser `--verify` au prochain `/scope` (jamais bloquant). `backlogResumeMessage` (filet
+  resume SessionStart) pousse le tag `[modèle : … · effort …]`, une suggestion `/model` si le hint
+  est un Claude joignable, et un rappel « pose une verify » si le lot n'en a pas — ordonné par
+  priorité décroissante pour que le **cap 400c** rogne les nudges secondaires en premier.
+- `promptimizer/hooks/stop.js` : passe `!done.verify` à `closureProofMessage` (déclenche « clos
+  sans preuve » à l'auto-clôture d'un lot non vérifiable par commande).
+- `promptimizer/commands/scope.md` : prescrit `--verify` **dès qu'un lot est vérifiable par une
+  commande** (test/typecheck/build/lint), avec la formule « si vérifiable par commande » et le
+  rappel que `verify --set` édite après coup. (Le flag CLI `verify --set`, et non `--cmd`, existait
+  déjà — lot #29.)
+- Tests : `run-tests.js` 671 → 694 assertions (units `hintResolvableClaude` ; mismatch suggère
+  `/model` + silence hint non-Claude ; `closureProofMessage` branche `noVerify` + e2e « clos sans
+  preuve » ; nouvelle section « Transitions de lot » couvrant `backlogResumeMessage` — rappel verify,
+  `/model`, silence non-Claude, prochain lot, **cap 400c au pire cas**, plan terminé → null).
+  `VERSION` 1.2.4 → 1.2.5. `run-tests-opencode.js` inchangé (119 OK). Rebuild `dist/marketplace`
+  (plugin.json 1.2.5, gitignoré).
+
 ## 2026-07-19 (lot #54 — epic « Autopilote PMZ II » : OC — parité de clôture, coût réel par lot + preuve à l'idle)
 
 - `opencode/plugin/impl/index.js` : nouvelle `accountCost` — à `session.idle`, agrège les tokens
