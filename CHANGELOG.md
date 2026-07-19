@@ -2,6 +2,12 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (version — 1.3.0)
+
+- `promptimizer/VERSION` : bump mineur 1.2.8 → 1.3.0 (`bumpVersion('minor')`), epic « Vigies &
+  signal » (#69/#73/#74/#75) livrée depuis la dernière mineure. Plugin republié (`plugin-release`)
+  et canal manuel resynchronisé.
+
 ## 2026-07-19 (lot #75 — epic « Vigies & signal » : notifications OS opt-in)
 
 - `promptimizer/lib/notify.js` (nouveau) : relaie les 2 événements les plus graves de `stop.js`
