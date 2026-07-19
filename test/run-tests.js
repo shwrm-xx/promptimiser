@@ -1698,6 +1698,83 @@ const AUDIT_CTX = path.join(PKG, 'scripts', 'audit-context.js');
   ok(/Gaspillage estimé :\n- \(aucun détecté\)/.test(auditClean.out), 'B1 : sans gaspillage → « aucun détecté »');
 }
 
+// ============================ T52. GASPILLAGE AUTO-SURFACÉ + NUDGE SUBAGENT ============================
+section('Gaspillage auto-surfacé : paliers trans-session + coupables + nudge subagent (lot #52)');
+{
+  const ledger = require(path.join(PKG, 'lib', 'ledger'));
+  const empty = path.join(SANDBOX, 'empty.jsonl');
+  const sysMsg = (r) => { try { return JSON.parse(r.out).systemMessage || ''; } catch (_) { return ''; } };
+
+  // -- wasteBucketIndex : paliers 25k/50k/100k puis flottant +100k --
+  ok(ledger.wasteBucketIndex(0) === 0 && ledger.wasteBucketIndex(24999) === 0, 'T52 : < 25k → palier 0');
+  ok(ledger.wasteBucketIndex(25000) === 1 && ledger.wasteBucketIndex(50000) === 2 && ledger.wasteBucketIndex(100000) === 3,
+    'T52 : 25k/50k/100k → paliers 1/2/3');
+  ok(ledger.wasteBucketIndex(300000) === 5, 'T52 : au-delà de 100k, rappel flottant +100k (300k → 3 + 2 = 5)');
+
+  // -- stop.js : un seul systemMessage par palier, top-3 coupables, monotone TRANS-session --
+  const repo = path.join(SANDBOX, 'repo-t52-waste');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  const hog = path.join(repo, 'hog.js');
+  fs.writeFileSync(hog, 'x'.repeat(120000)); // est_tokens = 30000 par relecture gaspillée
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const readHog = () => runHook('post-tool-use.js', { tool_name: 'Read', tool_input: { file_path: hog }, cwd: repo, session_id: 't52' });
+  const ctxLedgerT52 = () => JSON.parse(fs.readFileSync(path.join(repo, '.vibe-agent', 'context-ledger.json'), 'utf8'));
+
+  readHog(); readHog(); // 1re justifiée, 2e = gaspillage 30k (>= palier 25k)
+  const w1 = sysMsg(runHook('stop.js', { session_id: 't52', cwd: repo, transcript_path: empty }));
+  ok(/Gaspillage de relecture/.test(w1) && /hog\.js/.test(w1) && /30k/.test(w1),
+    'T52 : palier 25k franchi → message + coupable hog.js cité');
+  ok(ctxLedgerT52().waste_bucket === 1, 'T52 : waste_bucket=1 persisté dans le ledger');
+
+  const w2 = sysMsg(runHook('stop.js', { session_id: 't52', cwd: repo, transcript_path: empty }));
+  ok(!/Gaspillage de relecture/.test(w2), 'T52 : même palier → pas de 2e message (monotone)');
+
+  readHog(); // gaspillage cumulé 60k (>= palier 50k)
+  const w3 = sysMsg(runHook('stop.js', { session_id: 't52-autre', cwd: repo, transcript_path: empty }));
+  ok(/Gaspillage de relecture/.test(w3) && /60k/.test(w3),
+    'T52 : nouveau palier 50k franchi (autre session) → nouveau message (persistance trans-session)');
+  ok(ctxLedgerT52().waste_bucket === 2, 'T52 : waste_bucket=2 persisté');
+
+  // -- ledger corrompu → silence total, exit 0 (fail-open) --
+  const repoC = path.join(SANDBOX, 'repo-t52-corrupt');
+  fs.mkdirSync(path.join(repoC, '.vibe-agent'), { recursive: true });
+  execFileSync('git', ['init', '-q', repoC]);
+  fs.writeFileSync(path.join(repoC, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoC, 'add', '.']);
+  execFileSync('git', ['-C', repoC, 'commit', '-q', '-m', 'init']);
+  fs.writeFileSync(path.join(repoC, '.vibe-agent', 'context-ledger.json'), '{corrupt json');
+  const rC = runHook('stop.js', { session_id: 't52c', cwd: repoC, transcript_path: empty });
+  ok(rC.code === 0 && !/Gaspillage/.test(sysMsg(rC)), 'T52 : ledger corrompu → silence, exit 0');
+
+  // -- nudge subagent : hygiène consommée à 80k, puis occ 320k → le nudge part quand même --
+  const repoN = path.join(SANDBOX, 'repo-t52-subagent');
+  fs.mkdirSync(repoN, { recursive: true });
+  execFileSync('git', ['init', '-q', repoN]);
+  fs.writeFileSync(path.join(repoN, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoN, 'add', '.']);
+  execFileSync('git', ['-C', repoN, 'commit', '-q', '-m', 'init']);
+  const sidN = 't52-sub';
+  const mixLines = (occ) => {
+    const l = [usageLine(occ, 0, 0)];
+    for (let i = 0; i < 5; i++) l.push(toolUseLine('Read', { file_path: `f${i}.js` }));
+    return l;
+  };
+  // tour à 80k : hygiène consommée (evaluateReadMix), occ < 300k → PAS de nudge subagent
+  const tLow = writeTranscript('t52-sub-low.jsonl', mixLines(80000));
+  const rLow = sysMsg(runHook('stop.js', { session_id: sidN, cwd: repoN, transcript_path: tLow }));
+  ok(!/subagent/.test(rLow), 'T52 : occ 80k → pas de nudge subagent (< 300k)');
+  // tour à 320k : le nudge subagent part MALGRÉ l'hygiène déjà consommée (anti-spam dédié)
+  const tHigh = writeTranscript('t52-sub-high.jsonl', mixLines(320000));
+  const mHigh = sysMsg(runHook('stop.js', { session_id: sidN, cwd: repoN, transcript_path: tHigh }));
+  ok(/subagent/.test(mHigh) && /320k/.test(mHigh),
+    'T52 : occ 320k + lectures → nudge subagent (indépendant de l\'hygiène consommée à 80k)');
+  // même session, occ toujours haute → pas de 2e nudge (anti-spam dédié)
+  const mHigh2 = sysMsg(runHook('stop.js', { session_id: sidN, cwd: repoN, transcript_path: tHigh }));
+  ok(!/subagent/.test(mHigh2), 'T52 : anti-spam dédié → pas de 2e nudge subagent (même session)');
+}
+
 // ============================ B3. STATUT CHIFFRÉ EN TOKENS RÉELS ============================
 section('Statut d\'économie chiffré en tokens réels (occupation + fallback annoncé)');
 {

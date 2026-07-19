@@ -17,7 +17,7 @@ const { systemMessage, passThrough } = require('../lib/output');
 const { gitRoot, ensureLedger, gitStatusMeaningful, changelogTouched, runVerify } = require('../lib/project');
 const { writeAutoHandoff } = require('../lib/handoff');
 const { loadSessionState, saveSessionState } = require('../lib/state');
-const { loadContextLedger, recordOccupancy } = require('../lib/ledger');
+const { loadContextLedger, recordOccupancy, evaluateWaste } = require('../lib/ledger');
 const { incrementLot } = require('../lib/lot');
 const { loadBacklog, doneLot, nextLot, progress, currentLot, addCost, COST_WARN_TOKENS } = require('../lib/backlog');
 const occupancy = require('../lib/occupancy');
@@ -25,6 +25,7 @@ const turnstats = require('../lib/turnstats');
 const {
   MSG_CLOTURE, MSG_LECTURE, occupancyMessage, lotClosedMessage,
   costlyTurnMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
+  wasteBucketMessage, subagentNudgeMessage,
 } = require('../lib/messages');
 
 function main() {
@@ -50,6 +51,13 @@ function main() {
     ].join('\n'));
   }
 
+  // (a2bis) nudge subagent (lot #52) — haute occupation (>= 300k) + lectures récentes :
+  // suggère de déporter l'exploration hors du contexte. Anti-spam DÉDIÉ (état 'subagent'),
+  // indépendant de l'hygiène ci-dessus : part même si (a2) a déjà été consommé plus tôt à
+  // basse occupation. Indépendant du ledger (transcript + état seuls) -> marche hors projet.
+  const sub = occupancy.evaluateSubagentNudge(input.transcript_path, sid);
+  if (sub) parts.push(subagentNudgeMessage(sub.occ, sub.mix));
+
   // (a3) métrologie PAR TOUR — coût réel du dernier tour (scan du seul offset ajouté).
   // Fonctionne hors projet (ne dépend que du transcript). Le miroir ledger est fait
   // plus bas, quand root est connu.
@@ -69,6 +77,15 @@ function main() {
     ensureLedger(root);
     // Miroir compact de l'occupation dans le ledger projet (aperçu lisible).
     if (turn && turn.occ != null) recordOccupancy(root, { occ: turn.occ, delta: turn.delta, sessionId: sid });
+
+    // (a5) palier de gaspillage trans-session (lot #52) — évalué INCONDITIONNELLEMENT
+    // (surtout PAS dans la branche clôture, qui n'est prise qu'à tree sale) : au
+    // franchissement d'un nouveau palier (25k/50k/100k puis +100k), un seul systemMessage
+    // avec le top-3 des coupables. writeAtomic + fail-open dans evaluateWaste. Après
+    // recordOccupancy pour lire le ledger le plus à jour.
+    const waste = evaluateWaste(root);
+    if (waste) parts.push(wasteBucketMessage(waste.waste, waste.topFiles));
+
     const st = loadSessionState(root, sid);
 
     // (a4) coût réel par lot (#43) : agrège la sortie du tour écoulé sur le lot EN COURS

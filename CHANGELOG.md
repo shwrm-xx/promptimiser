@@ -2,6 +2,32 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #52 — epic « Autopilote PMZ II » : gaspillage auto-surfacé, paliers trans-session + coupables + nudge subagent)
+
+- `promptimizer/lib/ledger.js` : nouveaux paliers de gaspillage `WASTE_BUCKETS` (25k/50k/100k
+  puis rappel flottant +100k) + `wasteBucketIndex` + `evaluateWaste(root)`. Au franchissement d'un
+  **nouveau** palier de `estimated_context_waste`, renvoie le total et le **top-3 des coupables**
+  (`waste_by_file` trié). Palier persisté dans `context-ledger.json.waste_bucket` (via `writeAtomic`)
+  → monotone croissant, borné **1×/palier sur la vie du projet** (trans-session). Ledger
+  absent/corrompu/erreur → `null` (silence total, fail-open).
+- `promptimizer/hooks/stop.js` : émet le `systemMessage` de palier de gaspillage **hors de la
+  branche clôture** (évaluation inconditionnelle, après `recordOccupancy` pour lire le ledger le
+  plus à jour) + le **nudge subagent**.
+- `promptimizer/lib/occupancy.js` (`evaluateSubagentNudge`) : à haute occupation (≥ 300k) **et**
+  avec des lectures récentes (`scanTailForReadMix`, ≥ 3 `Read`), invite à déporter l'exploration
+  vers un subagent. Anti-spam **dédié** (état sha1 suffixe `-subagent`) **indépendant de
+  l'hygiène** : part même si `evaluateReadMix` a déjà été consommé à basse occupation.
+- `promptimizer/lib/messages.js` : `wasteBucketMessage` (coupables cités) + `subagentNudgeMessage`.
+- `promptimizer/scripts/audit-context.js` : le seuil de gaspillage « significatif » du statut
+  `/budget`·`/check-context` s'aligne (lot #52) sur le **dernier palier fixe** de `WASTE_BUCKETS`
+  (100k, source de vérité unique) au lieu du `BUCKETS[0]`=150k codé — plus de contradiction entre
+  l'alerte de fin de tour et le statut d'audit.
+- `test/run-tests.js` : +12 assertions dédiées (paliers `wasteBucketIndex`, message + coupable +
+  `waste_bucket` persisté, monotonie trans-session, ledger corrompu → silence, nudge subagent
+  indépendant de l'hygiène + anti-spam dédié). Suite complète verte (658 OK) ainsi que
+  `run-tests-opencode.js` (108 OK, inchangé).
+- **VERSION** `1.2.1 → 1.2.2` + rebuild `dist/marketplace` (`build-plugin.js`, manifeste 1.2.2).
+
 ## 2026-07-19 (lot #51 — epic « Autopilote PMZ II » : boucle fermée anti-relecture, handoff auto au format machine)
 
 - `promptimizer/lib/handoff.js` (`writeAutoHandoff`) : la section « Ne pas relire sauf

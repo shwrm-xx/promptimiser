@@ -173,6 +173,26 @@ function evaluateReadMix(transcriptPath, sessionId) {
   return mix;
 }
 
+// Nudge « délègue à un subagent » (lot #52) : à haute occupation (>= palier 300k) ET avec
+// des lectures récentes dans la fenêtre, suggère de sortir l'exploration du contexte
+// principal. Anti-spam DÉDIÉ (fichier d'état 'subagent') indépendant de l'hygiène : part
+// même si evaluateReadMix a déjà consommé son état à basse occupation. 1×/session. Fail-open.
+function evaluateSubagentNudge(transcriptPath, sessionId) {
+  if (!transcriptPath) return null;
+  const occ = readLastOccupancy(transcriptPath);
+  if (!occ || occ < BUCKETS[1]) return null; // < 300k : pas encore la peine de déléguer
+  const mix = scanTailForReadMix(transcriptPath);
+  if (!mix || mix.reads < 3) return null; // peu de lectures : rien à déporter
+  const sf = stateFileFor(sessionId, 'subagent');
+  if (fs.existsSync(sf)) return null; // déjà nudgé cette session
+  try {
+    fs.writeFileSync(sf, '1');
+  } catch (_) {
+    /* fail-open : au pire on resignale */
+  }
+  return { occ, mix };
+}
+
 // Réécrit le fichier de palier avec le bucket correspondant à `occ`. Utilisé après
 // une compaction (delta très négatif) détectée par turnstats : le palier persisté
 // est alors périmé (trop haut), et sans ce resync aucune alerte ne se réarmerait tant
@@ -214,6 +234,6 @@ function evaluate(transcriptPath, sessionId) {
 
 module.exports = {
   readLastOccupancy, bucketIndex, evaluate, scanTailForReadMix, evaluateReadMix,
-  resyncBucket, stateFileFor,
+  evaluateSubagentNudge, resyncBucket, stateFileFor,
   BUCKETS, FLOATING_STEP, STATE_DIR,
 };

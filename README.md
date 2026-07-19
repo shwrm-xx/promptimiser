@@ -139,7 +139,11 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
 - **En fin de tour** : alerte de coût aux paliers de contexte et sur le **coût du dernier tour**
   (tour à +50k tokens ; cache invalidé après une pause vs en plein tour) ; rappel de clôture si un
   lot est ouvert sans commit ; si un plan de lots existe, le lot en cours est **clos automatiquement
-  au commit** et le suivant annoncé.
+  au commit** et le suivant annoncé. Le **gaspillage de relecture** cumulé (relectures complètes de
+  fichiers inchangés) est surfacé aux paliers 25k/50k/100k avec le **top-3 des fichiers coupables**
+  (une seule fois par palier, sur toute la vie du projet). À haute occupation avec beaucoup de
+  lectures, un nudge invite à **déléguer l'exploration à un subagent** (les lectures restent hors du
+  contexte principal).
 - **Pendant le tour** : une relecture **complète** d'un gros fichier (≥ 16 Ko) déjà lu et
   inchangé déclenche une note discrète (~60 tokens, plafonnée à 1×/fichier et 3×/session) —
   jamais de blocage, juste un rappel.

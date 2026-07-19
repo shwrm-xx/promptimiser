@@ -281,6 +281,32 @@ function closureProofMessage(verify, changelogMissing) {
   return lines.length ? lines.join('\n') : null;
 }
 
+// Palier de gaspillage franchi (lot #52) : gaspillage de relecture cumulé (relectures
+// COMPLÈTES de fichiers INCHANGÉS) au-dessus d'un nouveau palier. Message VISIBLE
+// (systemMessage stop.js — jamais réinjecté), 1×/palier trans-session (borné par le
+// waste_bucket persisté). Cite le top-3 des fichiers coupables.
+function wasteBucketMessage(waste, topFiles) {
+  const lines = [
+    `Gaspillage de relecture ≈ ${fmtK(waste)} tokens cumulés (relectures complètes de fichiers inchangés).`,
+  ];
+  if (topFiles && topFiles.length) {
+    lines.push('Principaux coupables : ' + topFiles.map((f) => `${f.path} (~${fmtK(f.waste)})`).join(', ') + '.');
+  }
+  lines.push('Avant de rouvrir un fichier déjà lu : git diff/git grep, ou lecture partielle (offset/limit).');
+  return lines.join('\n');
+}
+
+// Nudge subagent (lot #52) : à haute occupation avec beaucoup de lectures, l'exploration
+// gagne à être déléguée à un subagent (seul le résultat synthétique remonte dans ce
+// contexte). Message VISIBLE (systemMessage stop.js — jamais réinjecté), 1×/session.
+function subagentNudgeMessage(occ, mix) {
+  const k = Math.round(occ / 1000);
+  return [
+    `Contexte ≈ ${k}k tokens et beaucoup de lectures ce tour (${mix.fullReads}/${mix.reads} Read complets).`,
+    "À cette occupation, délègue l'exploration à un subagent (outil Agent/Task) : le gros des lectures reste HORS de ce contexte, seul le résultat synthétique y revient.",
+  ].join('\n');
+}
+
 // Vigie modèle réel vs préconisé (lot #42) : le modèle qui répond ce tour ne correspond pas
 // au model_hint du lot en cours. Injecté au 1er prompt du lot, 1×/session (anti-spam).
 function modelMismatchMessage(lot, actualModel) {
@@ -295,5 +321,6 @@ module.exports = {
   occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
   compactResumeMessage, backlogResumeMessage, largeWithPlanMessage,
   costlyTurnMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
+  wasteBucketMessage, subagentNudgeMessage,
   fmtK, statusLineText,
 };

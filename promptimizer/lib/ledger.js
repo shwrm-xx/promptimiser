@@ -9,6 +9,23 @@ const MAX_READS = 200;
 const MAX_MODIFIED = 200;
 const MAX_REPEATED = 200;
 
+// Paliers de gaspillage de relecture (tokens cumulés, trans-session) — plus fins que les
+// paliers d'occupation d'occupancy.js car le gaspillage est un signal évitable qu'on veut
+// surfacer tôt. Au-delà du dernier palier fixe, rappel flottant tous les +100k. Source de
+// vérité unique : audit-context.js aligne son statut sur WASTE_BUCKETS (lot #52).
+const WASTE_BUCKETS = [25000, 50000, 100000];
+const WASTE_FLOATING_STEP = 100000;
+
+function wasteBucketIndex(waste) {
+  let idx = 0;
+  for (let i = 0; i < WASTE_BUCKETS.length; i++) {
+    if (waste >= WASTE_BUCKETS[i]) idx = i + 1;
+  }
+  const last = WASTE_BUCKETS[WASTE_BUCKETS.length - 1];
+  if (waste >= last) idx = WASTE_BUCKETS.length + Math.floor((waste - last) / WASTE_FLOATING_STEP);
+  return idx;
+}
+
 function readLedgerFile(root) { return path.join(vibeDir(root), 'read-ledger.json'); }
 function contextLedgerFile(root) { return path.join(vibeDir(root), 'context-ledger.json'); }
 
@@ -29,6 +46,9 @@ function loadContextLedger(root) {
   cl.waste_by_file = cl.waste_by_file && typeof cl.waste_by_file === 'object' ? cl.waste_by_file : {};
   cl.warnings = Array.isArray(cl.warnings) ? cl.warnings : [];
   if (!('occupancy' in cl)) cl.occupancy = null;
+  // Palier de gaspillage franchi et persisté (trans-session, monotone croissant) : borne
+  // l'alerte à 1×/palier sur toute la vie du projet, pas 1×/session (lot #52).
+  cl.waste_bucket = Number.isFinite(cl.waste_bucket) ? cl.waste_bucket : 0;
   return cl;
 }
 
@@ -127,6 +147,35 @@ function topWaste(root, n) {
   }
 }
 
+// Évalue le palier de gaspillage trans-session à partir de `estimated_context_waste`.
+// Le palier franchi est PERSISTÉ dans le ledger (waste_bucket) donc monotone croissant
+// sur toute la vie du projet -> un seul systemMessage par palier, jamais de re-alerte.
+// Renvoie { waste, bucket, topFiles } au franchissement d'un NOUVEAU palier, sinon null.
+// Ledger absent/corrompu/erreur -> null (silence total, fail-open). L'écriture du nouveau
+// palier passe par writeAtomic (jamais de ledger tronqué).
+function evaluateWaste(root) {
+  try {
+    if (!isInitialized(root)) return null;
+    const cl = loadContextLedger(root);
+    const waste = cl.estimated_context_waste || 0;
+    if (waste <= 0) return null;
+    const cur = wasteBucketIndex(waste);
+    const prev = Number.isFinite(cl.waste_bucket) ? cl.waste_bucket : 0;
+    if (cur <= prev) return null; // même palier ou redescente : silence
+    cl.waste_bucket = cur;
+    if (!writeAtomic(contextLedgerFile(root), cl)) return null;
+    const wb = cl.waste_by_file || {};
+    const topFiles = Object.keys(wb)
+      .filter((p) => (wb[p] || 0) > 0)
+      .sort((a, b) => (wb[b] || 0) - (wb[a] || 0))
+      .slice(0, 3)
+      .map((p) => ({ path: p, waste: wb[p] }));
+    return { waste, bucket: cur, topFiles };
+  } catch (_) {
+    return null;
+  }
+}
+
 // Sème avoid_reread_notes à partir de chemins fournis (ex : `pmz:skip:` du handoff) —
 // actif dès le tour 1, sans attendre une 1re relecture réelle. Fail-open.
 function seedAvoidReread(root, paths) {
@@ -141,4 +190,7 @@ function seedAvoidReread(root, paths) {
   writeAtomic(readLedgerFile(root), rl);
 }
 
-module.exports = { loadReadLedger, loadContextLedger, recordRead, recordModify, recordOccupancy, estTokens, seedAvoidReread, topWaste };
+module.exports = {
+  loadReadLedger, loadContextLedger, recordRead, recordModify, recordOccupancy, estTokens,
+  seedAvoidReread, topWaste, evaluateWaste, wasteBucketIndex, WASTE_BUCKETS, WASTE_FLOATING_STEP,
+};

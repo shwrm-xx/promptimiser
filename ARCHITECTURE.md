@@ -32,7 +32,7 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
 | `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd`, `transcript_path` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large (anti-spam 1×/session), nudge occupation ≥ 500k en 2 lignes (anti-spam 1×/palier, lot B5), vigie modèle réel vs préconisé du lot en cours (anti-spam 1×/session, lot #42) |
 | `pre-tool-use.js` | PreToolUse `Bash` | `tool_input.command` | `permissionDecision` allow/ask/deny | sûreté commandes |
 | `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite` | `tool_input.file_path`, `tool_input.todos` | `additionalContext` (rare, advisory) + effet de bord ledgers | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite), signale une relecture complète redondante (lot B4) |
-| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), hygiène de lecture, rappel de clôture nommant les skills, incrémente le compteur de lot, agrège le coût réel du lot en cours (`cost_tokens`) et alerte à l'approche du budget ~300k avec proposition de redécoupage (lot #43), auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, exécute la `verify` du lot à l'auto-clôture (timeout court `VERIFY_AUTOCLOSE_MS`, résultat visible, jamais bloquant) + rappel doux si le commit de clôture ne touche pas `CHANGELOG.md` (lot #44), écrit le handoff auto (écrasé à chaque tour) |
+| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), hygiène de lecture, **nudge subagent** à haute occupation + lectures (lot #52), **palier de gaspillage auto-surfacé** avec top-3 coupables (`waste_bucket` persisté, lot #52), rappel de clôture nommant les skills, incrémente le compteur de lot, agrège le coût réel du lot en cours (`cost_tokens`) et alerte à l'approche du budget ~300k avec proposition de redécoupage (lot #43), auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, exécute la `verify` du lot à l'auto-clôture (timeout court `VERIFY_AUTOCLOSE_MS`, résultat visible, jamais bloquant) + rappel doux si le commit de clôture ne touche pas `CHANGELOG.md` (lot #44), écrit le handoff auto (écrasé à chaque tour) |
 | `pre-compact.js` | PreCompact `manual\|auto` | `cwd`, `trigger`, `transcript_path` | `systemMessage` (manual) ou — (auto : effet de bord handoff seul) | sauve le handoff auto (plan de lots + todos compris) AVANT compaction ; la réinjection minimale se fait au SessionStart(compact). Sur `manual` (/compact), ajoute un rappel **chiffré** visible : compacter ≈ réécriture de l'occupation en cache-write (×1,25) + résumé lossy, vs clôture + handoff (~8k) — TTL prudent, aucun prix en dur (lot T1). `auto` reste silencieux (compaction subie) |
 
 ### Invariants NON négociables
@@ -97,6 +97,14 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   brut, fenêtre fixe 1,5 Mo, aucune dépendance au ledger), tally les blocs `tool_use` récents pour
   détecter une majorité de `Read` sans `offset`/`limit` face aux recherches (`Grep`/`Glob`/`grep`
   en Bash). Une seule note par session (fichier d'état sha1 dédié, suffixe `-hygiene`).
+- **Nudge subagent** (`lib/occupancy.js: evaluateSubagentNudge`, lot #52) : à **haute occupation**
+  (≥ `BUCKETS[1]`=300k) **ET** avec des lectures récentes dans la fenêtre (`scanTailForReadMix`,
+  ≥ 3 `Read`), `stop.js` émet un `systemMessage` invitant à **déporter l'exploration vers un
+  subagent** (le gros des lectures reste hors du contexte principal, seul le résultat synthétique
+  y revient). Anti-spam **dédié** (fichier d'état sha1 suffixe `-subagent`) **indépendant de
+  l'hygiène** : le nudge part même si `evaluateReadMix` a déjà consommé son état à basse
+  occupation (scénario type : hygiène signalée à 80k, puis occupation qui grimpe à 320k → le
+  nudge subagent part quand même). 1×/session, transcript + état seuls (marche hors projet).
 - **Vigie modèle réel vs préconisé** (`lib/modelwatch.js`, lot #42) : `user-prompt-submit.js`
   lit le `model` du dernier message assistant du transcript (même méthode fenêtrée que
   `occupancy.js: readLastOccupancy` — lecture seule, aucune dépendance ledger) et le compare
@@ -129,12 +137,23 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   incrémente `estimated_context_waste` (total) et `waste_by_file[path]` (ventilé) — une lecture
   partielle ou un fichier modifié entre-temps est un coût justifié, pas du gaspillage.
   `audit-context.js` en tire la ligne « Gaspillage ≈ Xk sur N fichiers » + liste triée par coût.
+- **Palier de gaspillage auto-surfacé** (`lib/ledger.js: evaluateWaste`, lot #52) : `stop.js`
+  évalue **inconditionnellement** (hors branche clôture) le total `estimated_context_waste`
+  contre des paliers **plus fins** que l'occupation — `WASTE_BUCKETS` = 25k/50k/100k puis
+  rappel flottant tous les +100k. Au franchissement d'un **nouveau** palier, un seul
+  `systemMessage` cite le **top-3 des coupables** (`waste_by_file` trié). Le palier franchi est
+  **persisté** dans `context-ledger.json.waste_bucket` → monotone croissant, borné **1×/palier
+  sur la vie du projet** (trans-session, pas 1×/session), écrit via `writeAtomic`. Ledger
+  absent/corrompu/erreur → `null` (silence total, fail-open).
 - **Statut d'économie chiffré en tokens** (`audit-context.js`, servant `/budget` et
   `/check-context`) : le verdict vert/orange/rouge est piloté par l'**occupation en tokens
   réels** — le miroir `context-ledger.json.occupancy.last` posé par le hook `Stop` (métrologie
   par tour) — combiné au gaspillage de relecture ci-dessus. Seuils alignés sur les paliers
   d'`occupancy.js` (orange à `BUCKETS[1]`=300k, rouge à `BUCKETS[2]`=500k, sans échelle inventée) ;
-  un gaspillage ≥ un palier aggrave d'un cran. **Fallback annoncé** : sans occupation token connue
+  un gaspillage **significatif** aggrave d'un cran — seuil aligné (lot #52) sur le **dernier palier
+  fixe** de `WASTE_BUCKETS` (100k, source de vérité unique via `ledger.js`), de sorte que dès que
+  `stop.js` a crié au franchissement du plus haut palier fixe, `/budget` lit au moins orange (pas
+  de contradiction entre l'alerte de fin de tour et le statut d'audit). **Fallback annoncé** : sans occupation token connue
   (jamais passé par un `Stop` récent, hors-git), retombe sur le comptage de relectures et le dit
   explicitement — jamais de chiffre tokens fantôme.
 - **Advisory intra-tour** (`lib/advisory.js`, appelé par `post-tool-use.js`) : sur un `Read`

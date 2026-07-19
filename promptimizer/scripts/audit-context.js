@@ -5,13 +5,17 @@
 // hook Stop dans context-ledger.json.occupancy) combinée au gaspillage de relecture (B1).
 // Fallback annoncé sur le comptage de relectures quand aucune occupation token n'est connue.
 const { gitRoot, isInitialized } = require('../lib/project');
-const { loadReadLedger, loadContextLedger } = require('../lib/ledger');
+const { loadReadLedger, loadContextLedger, WASTE_BUCKETS } = require('../lib/ledger');
 const { BUCKETS } = require('../lib/occupancy');
 const { parseCwd } = require('../lib/cli');
 
 // Seuils de statut alignés sur les paliers d'occupation d'occupancy.js (pas d'échelle inventée).
 const ORANGE_AT = BUCKETS[1]; // 300k : session substantielle
 const ROUGE_AT = BUCKETS[2]; // 500k : envisager sérieusement une session fraîche
+// Seuil de gaspillage « significatif » = dernier palier FIXE d'alerte (lot #52) : dès que
+// stop.js a crié au franchissement du plus haut palier fixe (100k), /budget lit au moins
+// orange — pas de contradiction entre l'alerte de fin de tour et le statut d'audit.
+const WASTE_SIGNIFICANT = WASTE_BUCKETS[WASTE_BUCKETS.length - 1]; // 100k
 
 // Statut token : l'occupation courante domine ; le gaspillage de relecture peut
 // aggraver d'un cran (beaucoup de relectures inutiles = risque même à occupation modérée).
@@ -19,8 +23,8 @@ function tokenStatus(occ, wasteTotal) {
   let statut = 'vert';
   if (occ >= ORANGE_AT) statut = 'orange';
   if (occ >= ROUGE_AT) statut = 'rouge';
-  // Gaspillage significatif (≥ un palier) pousse d'un cran vers le rouge.
-  if (wasteTotal >= BUCKETS[0] && statut === 'vert') statut = 'orange';
+  // Gaspillage significatif (≥ dernier palier fixe) pousse d'un cran vers le rouge.
+  if (wasteTotal >= WASTE_SIGNIFICANT && statut === 'vert') statut = 'orange';
   if (wasteTotal >= ORANGE_AT && statut === 'orange') statut = 'rouge';
   return statut;
 }
