@@ -9,11 +9,19 @@ const WATCHDOG_MARGIN_MS = 500;
 // Verify exécutée à l'AUTO-clôture (hook Stop, lot #44) : timeout COURT, borné bien en deçà
 // du watchdog Stop (watchdogMs(5) = 4500 ms). execSync rend la main à ce délai au plus (le
 // process n'est pas tué), après quoi doneLot est déjà persisté -> aucune corruption d'état
-// même si le tour dépasse ensuite le watchdog. La preuve complète reste /close-batch (20 s).
+// même si le tour dépasse ensuite le watchdog. La preuve complète reste /close-batch
+// (VERIFY_CLOSE_MS ci-dessous).
 const VERIFY_AUTOCLOSE_MS = 2500;
+
+// Verify rejouée à la clôture délibérée (/close-batch) : budget LARGE — cette commande est
+// pilotée par l'assistant, hors du budget serré d'un hook, et doit laisser une vraie suite de
+// tests aller au bout (les nôtres tournent ~35 s). Assez généreux pour ne pas tuer une suite
+// réelle à mi-course (un kill par timeout n'est PAS un échec : status null, à distinguer d'un
+// exit ≠ 0), mais borné pour que /close-batch ne pende jamais indéfiniment.
+const VERIFY_CLOSE_MS = 120000;
 
 function watchdogMs(timeoutS) {
   return Math.max(0, timeoutS * 1000 - WATCHDOG_MARGIN_MS);
 }
 
-module.exports = { SETTINGS_TIMEOUT_S, WATCHDOG_MARGIN_MS, VERIFY_AUTOCLOSE_MS, watchdogMs };
+module.exports = { SETTINGS_TIMEOUT_S, WATCHDOG_MARGIN_MS, VERIFY_AUTOCLOSE_MS, VERIFY_CLOSE_MS, watchdogMs };

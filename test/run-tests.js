@@ -1194,6 +1194,21 @@ section('backlog — verify + closed_occupancy (lot #29)');
   ok(/Verify \(`true`\) : OK/.test(rCloseOk.out), 'close-batch : verify réussie → OK');
   backlogLib.doneLot(repo, lotOk.id);
 
+  // V6b. close-batch : verify dont la SORTIE contient des motifs trompeurs (ABORT / échec /
+  // "n'est pas un JSON valide" — la sortie attendue d'un test négatif volontaire) mais qui
+  // retourne exit 0 → considérée OK. Garde-fou anti-régression : l'ÉCHEC se fonde sur l'exit
+  // code réel, jamais sur un grep de stdout/stderr. (Bug lot #56 : verify signalée ÉCHEC à tort.)
+  const lotNoisy = backlogLib.addLot(repo, 'Lot verify bruyante', null, 'sonnet', null,
+    'echo "ABORT : settings.json echec - n est pas un JSON valide" && exit 0');
+  backlogLib.startLot(repo, lotNoisy.id);
+  const rCloseNoisy = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', repo]);
+  ok(rCloseNoisy.code === 0, 'close-batch : exit 0 avec verify à sortie bruyante');
+  ok(/Verify \(.*\) : OK/.test(rCloseNoisy.out),
+    'close-batch : sortie contenant ABORT/échec mais exit 0 → OK (jamais grep de sortie)');
+  ok(!/ÉCHEC/.test(rCloseNoisy.out),
+    'close-batch : aucune mention ÉCHEC quand exit 0, même si stdout contient "ABORT"/"échec"');
+  backlogLib.doneLot(repo, lotNoisy.id);
+
   // V7. close-batch : verify en échec → ligne "ÉCHEC", refus doux, toujours exit 0
   const lotFail = backlogLib.addLot(repo, 'Lot verify KO', null, 'sonnet', null, 'exit 1');
   backlogLib.startLot(repo, lotFail.id);

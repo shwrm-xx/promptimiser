@@ -258,8 +258,13 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   shell de preuve de clôture, posée à l'`add --verify` ou éditée après coup (`backlog.js verify
   --id N --set "…"`) — exécuté par `lib/project.js:runVerify` (helper partagé, ne throw jamais :
   `{ok}` / `{ok:false, timedOut, tail}`). `/close-batch` (`scripts/close-batch.js`) l'appelle avec un
-  timeout large (20 s) avant d'indiquer le `done` et affiche OK/ÉCHEC (refus doux, **jamais bloquant**
-  — même en échec la checklist reste exit 0, la décision de clore reste humaine/assistant). À
+  timeout **large** (`VERIFY_CLOSE_MS` = 120 s — clôture délibérée pilotée par l'assistant, hors budget
+  serré d'un hook : une vraie suite peut aller au bout) avant d'indiquer le `done`. L'**ÉCHEC** n'est
+  prononcé que sur un **exit ≠ 0 réel** (`ok:false && !timedOut`), jamais sur un grep de la sortie : un
+  dépassement de délai tue l'enfant (`status` null) et son stdout bufferisé peut contenir des motifs
+  trompeurs (p.ex. la ligne `ABORT` d'un test négatif volontaire) — il est affiché « non terminée »,
+  pas « ÉCHEC » (bug lot #57bis). Refus doux **jamais bloquant** — même en échec la checklist reste
+  exit 0, la décision de clore reste humaine/assistant. À
   l'**auto-clôture** (lot #44), `stop.js` l'exécute aussi mais avec un timeout **court**
   (`VERIFY_AUTOCLOSE_MS` = 2500 ms, borné bien en deçà du watchdog Stop 4,5 s) : lancé **après** que
   `doneLot` a persisté (un dépassement de watchdog ne peut donc pas corrompre le backlog), résultat

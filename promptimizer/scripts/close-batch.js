@@ -3,6 +3,7 @@
 // Checklist de clôture (format spec). Pré-rempli via audit-batch quand détectable.
 const { compute } = require('./audit-batch');
 const { runVerify } = require('../lib/project');
+const { VERIFY_CLOSE_MS } = require('../lib/timeouts');
 const { parseCwd } = require('../lib/cli');
 
 function yn(v) { return v ? 'oui' : 'non'; }
@@ -12,7 +13,10 @@ const PMZ_BASE = (process.env.CLAUDE_PLUGIN_ROOT || '').trim() || '~/.claude/pro
 // Exécute la commande verify du lot en cours (si posée) AVANT le `done` — preuve de
 // clôture. Jamais bloquant : un échec ne fait qu'ajouter une ligne « à corriger » dans
 // la checklist, la décision de marquer le lot fait reste à l'humain/l'assistant. Timeout
-// large (20 s) : /close-batch est piloté par l'assistant, pas dans le budget serré d'un hook.
+// large (VERIFY_CLOSE_MS) : /close-batch est piloté par l'assistant, pas dans le budget serré
+// d'un hook. L'ÉCHEC est prononcé UNIQUEMENT sur un exit ≠ 0 réel (runVerify.ok=false && !timedOut) :
+// un dépassement de délai tue l'enfant (status null) et son stdout bufferisé peut contenir des
+// motifs trompeurs (p.ex. la ligne ABORT d'un test négatif volontaire) — ce n'est pas un échec.
 function main() {
   const d = compute(parseCwd());
   const changelog = yn(d.changelog_touched);
@@ -22,10 +26,12 @@ function main() {
   const bl = d.backlog;
   let verifyLine = '';
   if (bl && bl.current && bl.current.verify) {
-    const v = runVerify(d.root, bl.current.verify);
+    const v = runVerify(d.root, bl.current.verify, VERIFY_CLOSE_MS);
     verifyLine = v.ok
       ? `\n- Verify (\`${bl.current.verify}\`) : OK`
-      : `\n- Verify (\`${bl.current.verify}\`) : ÉCHEC — refus doux, corriger avant de marquer fait (clôture non bloquée automatiquement) :\n  ${v.tail}`;
+      : v.timedOut
+        ? `\n- Verify (\`${bl.current.verify}\`) : non terminée dans le délai (${Math.round(VERIFY_CLOSE_MS / 1000)} s) — relance-la à la main pour la preuve complète (ce n'est PAS un échec)`
+        : `\n- Verify (\`${bl.current.verify}\`) : ÉCHEC — refus doux, corriger avant de marquer fait (clôture non bloquée automatiquement) :\n  ${v.tail}`;
   }
   const backlogBlock = bl ? `
 ## Plan de lots

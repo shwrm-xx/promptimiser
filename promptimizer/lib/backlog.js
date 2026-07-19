@@ -236,6 +236,33 @@ function doneLot(root, id, commitSha, lotNumber, sessionId, occupancy) {
   return saveBacklog(root, b) ? lot : null;
 }
 
+// Bilan chiffré d'une epic (lot #58) : appelé juste après doneLot sur le lot qui vient de
+// clore. Renvoie null tant qu'il reste un lot de la MÊME epic en todo/in_progress (l'epic
+// n'est pas terminée) ou si le lot n'a pas d'epic. Coût = somme des cost_tokens déjà
+// persistés par lot (#43, aucun recalcul depuis le transcript). Durée = écart entre le plus
+// ancien started_at et le plus récent closed_at parmi les lots de l'epic — best-effort, null
+// si l'une des deux dates manque (anciens lots créés avant l'ajout de started_at).
+function epicBilan(b, lot) {
+  if (!lot || !lot.epic) return null;
+  const peers = b.lots.filter((l) => l.epic === lot.epic && l.status !== 'dropped');
+  const pending = peers.filter((l) => l.status === 'todo' || l.status === 'in_progress');
+  if (pending.length) return null;
+  const totalCost = peers.reduce((s, l) => s + (Number.isFinite(l.cost_tokens) ? l.cost_tokens : 0), 0);
+  const count = peers.length;
+  const starts = peers.map((l) => l.started_at).filter(Boolean).sort();
+  const ends = peers.map((l) => l.closed_at).filter(Boolean).sort();
+  let durationMs = null;
+  if (starts.length && ends.length) {
+    const d = new Date(ends[ends.length - 1]).getTime() - new Date(starts[0]).getTime();
+    if (Number.isFinite(d) && d >= 0) durationMs = d;
+  }
+  return {
+    epic: lot.epic, count, totalCost,
+    avgCost: count ? Math.round(totalCost / count) : 0,
+    durationMs,
+  };
+}
+
 function dropLot(root, id, note) {
   const b = loadBacklog(root);
   const lot = findLot(b, id);
@@ -399,6 +426,7 @@ function reconcile(root) {
 module.exports = {
   backlogFile, loadBacklog, saveBacklog, addLot, setVerify, startLot, doneLot, dropLot, noteLot,
   touchLot, addCost, currentLot, nextLot, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
+  epicBilan,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot, modelEffortTag,
   MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_NOTE, MAX_TODOS, EFFORT_LEVELS,
   COST_BUDGET_TOKENS, COST_WARN_TOKENS,

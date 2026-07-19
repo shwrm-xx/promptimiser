@@ -2,6 +2,28 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (correctif — `/close-batch` : verify signalée « ÉCHEC » à tort)
+
+- **Bug** : `/close-batch` affichait « Verify : ÉCHEC » en citant la ligne `ABORT : … n'est pas
+  un JSON valide` (sortie ATTENDUE du test négatif de fail-open de merge-settings), alors que la
+  suite du lot #56 (`node test/run-tests.js && node test/run-tests-opencode.js`) retourne exit 0.
+  Cause réelle : `runVerify` était appelé **sans** `timeoutMs` → défaut 20 s, mais la suite dure
+  ~35 s wall-clock ; `execSync` tuait l'enfant à 20 s (SIGTERM, `status` null) et le `tail`
+  bufferisé à cet instant montrait la ligne `ABORT` en cours. close-batch ne branchait que sur
+  `v.ok` et rendait ce **timeout** comme un **échec**.
+- `promptimizer/lib/timeouts.js` : nouveau `VERIFY_CLOSE_MS` = 120 s — budget dédié à la clôture
+  délibérée (`/close-batch` est piloté par l'assistant, hors budget serré d'un hook), assez large
+  pour laisser une vraie suite aller au bout, borné pour ne jamais pendre.
+- `promptimizer/scripts/close-batch.js` : passe `VERIFY_CLOSE_MS` à `runVerify` et **distingue**
+  `v.timedOut` (« non terminée dans le délai — relance à la main, PAS un échec ») de l'échec réel.
+  L'**ÉCHEC** ne se fonde plus que sur un **exit ≠ 0 réel** (`ok:false && !timedOut`), jamais sur
+  un motif de sortie. Vérifié : `audit-batch` n'exécute pas verify (n'affiche que la commande),
+  `stop.js` distinguait déjà `timedOut` via `closureProofMessage` — seul close-batch était fautif.
+- Tests : `test/run-tests.js` — V6b (commande verify dont la sortie contient `ABORT`/`échec`/
+  « n'est pas un JSON valide » mais qui retourne exit 0 → considérée **OK**, aucune mention ÉCHEC).
+  744 OK / 119 OK, exit 0.
+- `ARCHITECTURE.md` : section verify mise à jour (`VERIFY_CLOSE_MS`, ÉCHEC = exit ≠ 0 réel).
+
 ## 2026-07-19 (lot #57 — epic « Coût par livrable » : arbitre de tour — plafond de nudges)
 
 - `promptimizer/lib/arbiter.js` (**nouveau**) : `arbitrate(items, {max, sevOf})` plafonne le

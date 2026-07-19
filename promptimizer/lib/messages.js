@@ -354,6 +354,27 @@ function avoidableRereadsMessage(rereads) {
   return MSG_LECTURE + '\nRelectures évitables ce lot : ' + rereads.join(', ') + '.';
 }
 
+// Durée approximative jours/heures (bilan d'epic) — pas de dépendance date-fns, juste ce
+// qu'il faut pour un ordre de grandeur lisible.
+function fmtDurationApprox(ms) {
+  const h = ms / 3600000;
+  if (h < 1) return '< 1 h';
+  if (h < 48) return `${Math.round(h)} h`;
+  return `${Math.round(h / 24)} j`;
+}
+
+// Bilan d'epic (lot #58) : émis UNE fois, à la clôture du DERNIER lot d'une epic (cf.
+// backlog.epicBilan) — chiffres déjà persistés par lot (cost_tokens #43, started_at/closed_at),
+// aucun recalcul depuis le transcript. Nudge VISIBLE (systemMessage stop.js / toast OpenCode)
+// donc passe par la grammaire de sévérité et l'arbitre de tour (#57) comme les autres.
+function epicBilanMessage(bilan) {
+  const lines = [
+    `Epic « ${bilan.epic} » terminée : ${bilan.count} lot(s), ${fmtK(bilan.totalCost)} tokens`
+    + ` (≈ ${fmtK(bilan.avgCost)}/lot)${bilan.durationMs != null ? `, ${fmtDurationApprox(bilan.durationMs)}` : ''}.`,
+  ];
+  return withSeverity(SEV.INFO, lines);
+}
+
 // Vigie modèle réel vs préconisé (lot #42) : le modèle qui répond ce tour ne correspond pas
 // au model_hint du lot en cours. INJECTÉ (additionalContext user-prompt-submit) 1×/session :
 // hors grammaire de sévérité (pas de glyphe — coût de contexte, pas alerte visible).
@@ -370,5 +391,6 @@ module.exports = {
   compactResumeMessage, backlogResumeMessage, largeWithPlanMessage,
   costlyTurnMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
+  epicBilanMessage,
   fmtK, statusLineText,
 };
