@@ -2,6 +2,19 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #59 — epic « Coût par livrable » : carte de clôture)
+
+- `promptimizer/lib/messages.js` : nouveau `lotClosureCardMessage(lot, rereadsAvoided)` — mini-récap
+  chiffré (coût réel `cost_tokens`, durée `started_at`→`closed_at`, relectures évitées) émis à
+  **chaque** auto-clôture de lot, contrairement à `lotCostMessage` (seuil ~300k) ou
+  `epicBilanMessage` (dernier lot d'une epic seulement). Glyphe INFO (grammaire #56).
+- `promptimizer/hooks/stop.js` (Claude Code) et `opencode/plugin/impl/index.js` (OpenCode) :
+  câblent la carte au même point que l'auto-clôture existante (choke points #57/#58), poussée
+  **après** le bilan d'epic pour que l'arbitre (#57) le fasse primer en cas d'arbitrage à égalité
+  de sévérité. Relectures évitées lues depuis `read-ledger.avoid_reread_notes` (taille du tableau).
+- Tests : unités `lotClosureCardMessage` (dates présentes/absentes) + e2e `stop.js` (carte présente
+  à l'auto-clôture d'un lot qui n'est pas le dernier de son epic).
+
 ## 2026-07-19 (lot #58 — epic « Coût par livrable » : bilan d'epic auto + hitRate visible)
 
 - `promptimizer/lib/backlog.js` : nouveau `epicBilan(b, lot)` — appelé après `doneLot`, renvoie

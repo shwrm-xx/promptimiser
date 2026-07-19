@@ -375,6 +375,23 @@ function epicBilanMessage(bilan) {
   return withSeverity(SEV.INFO, lines);
 }
 
+// Carte de clôture (lot #59) : mini-récap chiffré émis à CHAQUE auto-clôture de lot —
+// contrairement à lotCostMessage (seuil ~300k) et epicBilanMessage (dernier lot d'une epic
+// seulement), celui-ci sort systématiquement. Coût réel (cost_tokens déjà persisté, #43),
+// durée (started_at -> closed_at, même logique que epicBilan), relectures évitées grâce à
+// l'hygiène de lecture (read-ledger.avoid_reread_notes — fichiers qu'une relecture aurait
+// re-coûté). Nudge VISIBLE (systemMessage stop.js), passe par l'arbitre de tour (#57).
+function lotClosureCardMessage(lot, rereadsAvoided) {
+  const cost = Number.isFinite(lot.cost_tokens) ? lot.cost_tokens : 0;
+  const durationMs = (lot.started_at && lot.closed_at)
+    ? new Date(lot.closed_at).getTime() - new Date(lot.started_at).getTime()
+    : null;
+  const bits = [`~${fmtK(cost)} tokens`];
+  if (Number.isFinite(durationMs) && durationMs >= 0) bits.push(fmtDurationApprox(durationMs));
+  bits.push(`${rereadsAvoided || 0} relecture(s) évitée(s)`);
+  return withSeverity(SEV.INFO, [`Carte de clôture — lot « ${lot.title} » : ${bits.join(', ')}.`]);
+}
+
 // Vigie modèle réel vs préconisé (lot #42) : le modèle qui répond ce tour ne correspond pas
 // au model_hint du lot en cours. INJECTÉ (additionalContext user-prompt-submit) 1×/session :
 // hors grammaire de sévérité (pas de glyphe — coût de contexte, pas alerte visible).
@@ -391,6 +408,6 @@ module.exports = {
   compactResumeMessage, backlogResumeMessage, largeWithPlanMessage,
   costlyTurnMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
-  epicBilanMessage,
+  epicBilanMessage, lotClosureCardMessage,
   fmtK, statusLineText,
 };

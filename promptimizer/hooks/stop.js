@@ -17,7 +17,7 @@ const { systemMessage, passThrough } = require('../lib/output');
 const { gitRoot, ensureLedger, gitStatusMeaningful, changelogTouched, runVerify } = require('../lib/project');
 const { writeAutoHandoff } = require('../lib/handoff');
 const { loadSessionState, saveSessionState } = require('../lib/state');
-const { loadContextLedger, recordOccupancy, evaluateWaste } = require('../lib/ledger');
+const { loadContextLedger, loadReadLedger, recordOccupancy, evaluateWaste } = require('../lib/ledger');
 const { incrementLot } = require('../lib/lot');
 const { loadBacklog, doneLot, nextLot, progress, currentLot, addCost, COST_WARN_TOKENS, epicBilan } = require('../lib/backlog');
 const occupancy = require('../lib/occupancy');
@@ -27,6 +27,7 @@ const {
   MSG_CLOTURE, occupancyMessage, lotClosedMessage, epicBilanMessage,
   costlyTurnMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
+  lotClosureCardMessage,
 } = require('../lib/messages');
 
 function main() {
@@ -128,9 +129,19 @@ function main() {
           const after = loadBacklog(root);
           parts.push(lotClosedMessage(done, nextLot(after), progress(after)));
           // Bilan d'epic (lot #58) : émis en plus, seulement quand ce lot clôturait le
-          // DERNIER lot en attente de son epic (epicBilan renvoie null sinon).
+          // DERNIER lot en attente de son epic (epicBilan renvoie null sinon). Poussé AVANT
+          // la carte de clôture (#59) : à sévérité INFO égale et sous plafond de l'arbitre
+          // (#57, stable à égalité -> le premier poussé survit), le bilan d'epic — rare,
+          // un seul par epic — doit primer sur la carte, elle qui sort à CHAQUE lot.
           const bilan = epicBilan(after, done);
           if (bilan) parts.push(epicBilanMessage(bilan));
+          // Carte de clôture (lot #59) : mini-récap chiffré à CHAQUE clôture (coût, durée,
+          // relectures évitées) — try/catch dédié, une erreur de lecture du ledger ne doit
+          // jamais faire échouer la clôture déjà acquise ci-dessus.
+          try {
+            const rl = loadReadLedger(root);
+            parts.push(lotClosureCardMessage(done, rl.avoid_reread_notes.length));
+          } catch (_) { /* fail-open : pas de carte ce tour */ }
           // (b2) Preuve de clôture (lot #44) — APRÈS que doneLot a persisté l'état (un dépassement
           // du watchdog pendant le verify ne peut donc plus corrompre le backlog). Jamais bloquant :
           // le lot est déjà marqué fait quoi qu'il arrive ici. try/catch dédié -> fail-open local.

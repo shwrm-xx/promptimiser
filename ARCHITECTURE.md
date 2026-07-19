@@ -755,3 +755,15 @@ plusieurs sessions réelles (capture fournie par l'utilisateur, 2026-07-12).
   (pas de chiffre fantôme). Non couvert : mirroring de l'occupation côté OpenCode (`recordOccupancy`
   n'y est jamais appelé, gap préexistant hors scope de ce lot) — `/pmz budget` y retombe sur le
   fallback « comptage de relectures » comme avant.
+
+- **Carte de clôture** (lot #59, epic « Coût par livrable ») : contrairement à `lotCostMessage`
+  (seuil ~300k) et `epicBilanMessage` (dernier lot d'une epic seulement), `lotClosureCardMessage`
+  sort à **CHAQUE** auto-clôture de lot univoque — coût réel (`cost_tokens` déjà persisté, #43),
+  durée (`started_at` → `closed_at`, même calcul que `epicBilan`, `null` silencieux si une date
+  manque), relectures évitées (taille de `read-ledger.avoid_reread_notes` — fichiers que l'hygiène
+  de lecture a empêché de relire). Glyphe INFO (grammaire #56), passe par l'arbitre de tour (#57).
+  **Ordre de poussée délibéré** : dans les deux choke points (bloc auto-clôture de `hooks/stop.js`,
+  `closureAndHandoff` OpenCode), la carte est poussée **après** le bilan d'epic — à sévérité INFO
+  égale, l'arbitre départage à égalité par ordre d'origine (stable) ; le bilan (rare, 1×/epic) doit
+  donc primer sur la carte (systématique, 1×/lot) quand les deux coïncident et que le plafond de 3
+  force un arbitrage. Aucun recalcul depuis le transcript.

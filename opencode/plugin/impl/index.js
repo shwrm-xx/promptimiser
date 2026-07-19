@@ -31,7 +31,7 @@ const { severityOf, SEV } = require('../lib/severity');
 const {
   MSG_ACTIF, MSG_HANDOFF, MSG_CLOTURE, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   backlogResumeMessage, compactResumeMessage, largeWithPlanMessage, modelMismatchMessage,
-  lotCostMessage, closureProofMessage, epicBilanMessage,
+  lotCostMessage, closureProofMessage, epicBilanMessage, lotClosureCardMessage,
 } = require('../lib/messages');
 
 // Détection init/scaffold et demandes trop larges (miroir de hooks/user-prompt-submit.js).
@@ -244,6 +244,7 @@ async function createHooks(input) {
       let closureToast = null;
       let proof = null; // { text, failed } — preuve de clôture à l'auto-clôture univoque
       let bilanToast = null; // bilan d'epic (lot #58), parité stop.js
+      let cardToast = null; // carte de clôture (lot #59), parité stop.js
       if (open && !st.closure_reminded_for_batch) {
         st.closure_reminded_for_batch = true;
         closureToast = MSG_CLOTURE.split('\n')[0] + ' Propose /close-batch (commit + changelog + handoff).';
@@ -263,6 +264,13 @@ async function createHooks(input) {
               const bilan = epicBilan(loadBacklog(root), done);
               if (bilan) bilanToast = epicBilanMessage(bilan);
             } catch (_) { /* fail-open : pas de bilan ce tour */ }
+            // Carte de clôture (lot #59), parité stop.js — poussée APRÈS le bilan d'epic :
+            // à sévérité égale et sous plafond de l'arbitre (#57), le bilan (rare, 1×/epic)
+            // doit primer sur la carte (systématique, 1×/lot).
+            try {
+              const rl = ledger.loadReadLedger(root);
+              cardToast = lotClosureCardMessage(done, rl.avoid_reread_notes.length);
+            } catch (_) { /* fail-open : pas de carte ce tour */ }
           }
           // (b2) Preuve de clôture (parité lot #44) — APRÈS que doneLot a persisté l'état : un
           // dépassement du délai court du verify ne peut plus corrompre le backlog. Le lot est
@@ -294,6 +302,7 @@ async function createHooks(input) {
       if (closureToast) toasts.push({ text: closureToast, level: 'info', sev: SEV.WARN });
       if (proof) toasts.push({ text: proof.text, level: proof.failed ? 'warning' : 'info', sev: severityOf(proof.text) });
       if (bilanToast) toasts.push({ text: bilanToast, level: 'info', sev: severityOf(bilanToast) });
+      if (cardToast) toasts.push({ text: cardToast, level: 'info', sev: severityOf(cardToast) });
       return toasts;
     } catch (_) { return []; /* fail-open : l'idle ne casse jamais la session */ }
   }

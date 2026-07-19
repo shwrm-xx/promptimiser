@@ -3141,6 +3141,17 @@ section('Bilan d\'epic auto + hitRate visible (lot #58)');
   ok(/Epic « Mon Epic » terminée/.test(txt) && /2 lot\(s\)/.test(txt) && /14k tokens/.test(txt),
     'epicBilanMessage : texte nomme l\'epic, le nombre de lots et le coût total');
 
+  // messages.lotClosureCardMessage (lot #59) — coût, durée, relectures évitées.
+  const cardTxt = msgLib.lotClosureCardMessage(
+    { title: 'Mon lot', cost_tokens: 14000, started_at: '2026-01-01T00:00:00.000Z', closed_at: '2026-01-01T02:00:00.000Z' },
+    3,
+  );
+  ok(/Carte de clôture — lot « Mon lot »/.test(cardTxt) && /14k tokens/.test(cardTxt) && /2 h/.test(cardTxt) && /3 relecture\(s\) évitée\(s\)/.test(cardTxt),
+    'lotClosureCardMessage : coût + durée + relectures évitées, tous chiffrés');
+  const cardNoDates = msgLib.lotClosureCardMessage({ title: 'Vieux lot', cost_tokens: 500 }, 0);
+  ok(/~500 tokens/.test(cardNoDates) && /0 relecture\(s\) évitée\(s\)/.test(cardNoDates) && !/\d+ [hj]\b/.test(cardNoDates),
+    'lotClosureCardMessage : dates manquantes (lot ancien) -> pas de durée fantôme, pas de crash');
+
   // e2e stop.js — auto-clôture du 1er lot d'une epic à 2 lots : PAS de bilan (epic pas finie).
   const repo58 = path.join(SANDBOX, 'repo-t58-e2e');
   fs.mkdirSync(repo58, { recursive: true });
@@ -3164,6 +3175,7 @@ section('Bilan d\'epic auto + hitRate visible (lot #58)');
   const r1 = runHook('stop.js', { session_id: 't58-s1', cwd: repo58, transcript_path: empty58 });
   ok(backlogLib.loadBacklog(repo58).lots[0].status === 'done', 't58 : lot A auto-clos');
   ok(!/Epic « Epic E2E » terminée/.test(sysMsg58(r1)), 't58 : lot A clos mais lot B todo -> pas de bilan d\'epic');
+  ok(/Carte de clôture — lot « Lot A »/.test(sysMsg58(r1)), 't59 : carte de clôture émise à CHAQUE auto-clôture (pas seulement en fin d\'epic)');
 
   // e2e stop.js — auto-clôture du DERNIER lot de l'epic : bilan émis dans le systemMessage.
   backlogLib.startLot(repo58, f2.id);
