@@ -2,6 +2,24 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #75 — epic « Vigies & signal » : notifications OS opt-in)
+
+- `promptimizer/lib/notify.js` (nouveau) : relaie les 2 événements les plus graves de `stop.js`
+  (**zone rouge** #71, **clôture de lot** #43/#59) en notification native hors terminal —
+  `osascript` (mac), `notify-send` (linux), toast PowerShell (win32, zéro dépendance). **Opt-in
+  strict** (`PMZ_NOTIFY=1`, désactivé par défaut) : le `systemMessage` reste le canal par défaut.
+  Aucun anti-spam propre — s'appuie sur celui déjà en place à la source (zone rouge 1×/épisode,
+  clôture = one-shot). `spawn` injectable (défaut `child_process.spawn`, détaché + `unref`) pour
+  stuber le lanceur en test sans jamais déclencher de vraie notification. Fail-open total.
+- `promptimizer/hooks/stop.js` : `notify.notifyRedZone()` après la prescription zone-rouge,
+  `notify.notifyLotClosed(done)` à l'auto-clôture d'un lot.
+- Doc : ARCHITECTURE.md (tableau hooks + section vigie dédiée) et README.md (comportement en fin
+  de tour).
+- Tests : `node test/run-tests.js` → **933 OK · 0 échec** (+17 assertions V75 : opt-in par défaut
+  désactivé, activation, commande par plateforme (darwin/linux/win32) + plateforme inconnue,
+  échappement guillemets/apostrophes, fail-open sur spawn qui lève, câblage notifyRedZone /
+  notifyLotClosed via lanceur stubé).
+
 ## 2026-07-19 (lot #74 — epic « Vigies & signal » : gouvernance du CLAUDE.md)
 
 - `promptimizer/lib/claudemd.js` (nouveau) : vigie du CLAUDE.md projet, rechargé dans le contexte

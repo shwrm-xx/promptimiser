@@ -26,6 +26,7 @@ const turnstats = require('../lib/turnstats');
 const loopwatch = require('../lib/loopwatch');
 const gitdebt = require('../lib/gitdebt');
 const claudemd = require('../lib/claudemd');
+const notify = require('../lib/notify');
 const { arbitrate } = require('../lib/arbiter');
 const {
   MSG_CLOTURE, occupancyMessage, redZonePrescriptionMessage, lotClosedMessage, epicBilanMessage,
@@ -54,7 +55,10 @@ function main() {
   // prudente. 1×/épisode (état 'redzone'), réarmé sur compaction plus bas. Indépendant du projet
   // (transcript + état seuls) -> marche même hors repo. Fail-open dédié dans evaluateRedZone.
   const rz = occupancy.evaluateRedZone(input.transcript_path, sid, readLastModel(input.transcript_path));
-  if (rz) parts.push(redZonePrescriptionMessage(rz));
+  if (rz) {
+    parts.push(redZonePrescriptionMessage(rz));
+    notify.notifyRedZone(); // opt-in (#75) ; anti-spam déjà géré par evaluateRedZone lui-même
+  }
 
   // (a2) hygiène de lecture — indépendante du ledger, une fois par session, marche
   // même sur un projet jamais initialisé (lit le transcript brut comme (a)).
@@ -177,6 +181,7 @@ function main() {
       if (inProg.length === 1) {
         const done = doneLot(root, inProg[0].id, null, closedNumber, sid, turn && turn.occ);
         if (done) {
+          notify.notifyLotClosed(done); // opt-in (#75) ; événement one-shot, pas d'anti-spam dédié nécessaire
           const after = loadBacklog(root);
           parts.push(lotClosedMessage(done, nextLot(after), progress(after)));
           // Bilan d'epic (lot #58) : émis en plus, seulement quand ce lot clôturait le

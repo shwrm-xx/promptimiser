@@ -4246,6 +4246,79 @@ section('Gouvernance du CLAUDE.md : absent ou hypertrophié -> nudge 1×/session
   ok(!/Pas de CLAUDE\.md projet/.test(w2), 'V74 : 2e tour, même session -> plus de nudge CLAUDE.md');
 }
 
+// ============================ V75. NOTIFICATIONS OS OPT-IN (lot #75) ============================
+section('Notifications OS opt-in : zone rouge / clôture de lot -> notification native (lot #75)');
+{
+  const notify = require(path.join(PKG, 'lib', 'notify'));
+  const prevNotify = process.env.PMZ_NOTIFY;
+
+  // -- Opt-in strict : désactivé par défaut, activé seulement par PMZ_NOTIFY=1 --
+  delete process.env.PMZ_NOTIFY;
+  ok(notify.enabled() === false, 'V75 : PMZ_NOTIFY absent -> désactivé par défaut');
+  process.env.PMZ_NOTIFY = '1';
+  ok(notify.enabled() === true, 'V75 : PMZ_NOTIFY=1 -> activé');
+
+  const calls = [];
+  const stubSpawn = (cmd, args) => {
+    calls.push({ cmd, args });
+    return { on() {}, unref() {} };
+  };
+
+  // -- Désactivé (PMZ_NOTIFY absent) : send() ne spawn jamais, même avec un stub fourni --
+  delete process.env.PMZ_NOTIFY;
+  calls.length = 0;
+  ok(notify.send('t', 'b', { platform: 'darwin', spawn: stubSpawn }) === false,
+    'V75 : send() désactivé -> false, pas de spawn');
+  ok(calls.length === 0, 'V75 : send() désactivé -> stubSpawn jamais appelé');
+  process.env.PMZ_NOTIFY = '1';
+
+  // -- Activé : une commande par plateforme gérée, aucune pour une plateforme inconnue --
+  calls.length = 0;
+  ok(notify.send('Titre', 'Corps', { platform: 'darwin', spawn: stubSpawn }) === true, 'V75 : darwin -> true');
+  ok(calls.length === 1 && calls[0].cmd === 'osascript' && /display notification/.test(calls[0].args[1]),
+    'V75 : darwin -> osascript display notification');
+  calls.length = 0;
+  ok(notify.send('Titre', 'Corps', { platform: 'linux', spawn: stubSpawn }) === true, 'V75 : linux -> true');
+  ok(calls.length === 1 && calls[0].cmd === 'notify-send' && calls[0].args[0] === 'Titre' && calls[0].args[1] === 'Corps',
+    'V75 : linux -> notify-send titre + corps');
+  calls.length = 0;
+  ok(notify.send('Titre', 'Corps', { platform: 'win32', spawn: stubSpawn }) === true, 'V75 : win32 -> true');
+  ok(calls.length === 1 && calls[0].cmd === 'powershell.exe' && /ToastNotification/.test(calls[0].args[3]),
+    'V75 : win32 -> powershell toast');
+  calls.length = 0;
+  ok(notify.send('Titre', 'Corps', { platform: 'freebsd', spawn: stubSpawn }) === false, 'V75 : plateforme inconnue -> false');
+  ok(calls.length === 0, 'V75 : plateforme inconnue -> pas de spawn');
+
+  // -- Échappement : guillemets/apostrophes dans le texte ne cassent pas la commande --
+  calls.length = 0;
+  notify.send('Lot "risqué"', 'Corps', { platform: 'darwin', spawn: stubSpawn });
+  ok(/Lot \\"risqué\\"/.test(calls[0].args[1]), 'V75 : darwin -> guillemets doubles échappés');
+  calls.length = 0;
+  notify.send("L'épic", 'Corps', { platform: 'win32', spawn: stubSpawn });
+  ok(/L''épic/.test(calls[0].args[3]), 'V75 : win32 -> apostrophes doublées (PowerShell)');
+
+  // -- Fail-open : le lanceur lève -> false, jamais d'exception --
+  const throwingSpawn = () => { throw new Error('spawn ECONNREFUSED'); };
+  let threw = false;
+  let sentOk;
+  try { sentOk = notify.send('t', 'b', { platform: 'darwin', spawn: throwingSpawn }); } catch (_) { threw = true; }
+  ok(!threw && sentOk === false, 'V75 : spawn qui lève -> false, pas d\'exception (fail-open)');
+
+  // -- Câblage des événements graves : zone rouge + clôture de lot (mêmes helpers que stop.js) --
+  calls.length = 0;
+  notify.notifyRedZone({ platform: 'linux', spawn: stubSpawn });
+  ok(calls.length === 1 && /zone rouge/.test(calls[0].args[0]) && /clôture/.test(calls[0].args[1]),
+    'V75 : notifyRedZone -> titre « zone rouge », corps prescrit la clôture');
+  calls.length = 0;
+  notify.notifyLotClosed({ id: 75, title: 'Notifications OS opt-in' }, { platform: 'linux', spawn: stubSpawn });
+  ok(calls.length === 1 && /clôturé/.test(calls[0].args[0]) && /#75 — Notifications OS opt-in/.test(calls[0].args[1]),
+    'V75 : notifyLotClosed -> titre « clôturé », corps = #id — titre du lot');
+
+  // -- Repli : sans env, PMZ_NOTIFY non défini -> stop.js reste inchangé (régression V71/V74
+  //    déjà couverte : ces tests tournent avec PMZ_NOTIFY absent et passent toujours). --
+  if (prevNotify === undefined) delete process.env.PMZ_NOTIFY; else process.env.PMZ_NOTIFY = prevNotify;
+}
+
 // ============================ OC. OPENCODE ============================
 section('OpenCode — squelette plugin + install sandbox (test/run-tests-opencode.js)');
 {

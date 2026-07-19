@@ -151,6 +151,9 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   (ou clôture) maintenant » — le travail non versionné est exposé à la perte et finit en commit
   monstre (anti-spam par palier ; réarmé au commit). Un **CLAUDE.md projet absent ou hypertrophié**
   (> 10 Ko, rechargé à chaque session) déclenche un nudge « créer / dégraisser » (1×/session).
+  Sur les 2 événements les plus graves (zone rouge, clôture de lot), une **notification OS**
+  native (mac/linux/win) peut relayer le signal hors du terminal — **opt-in** (`PMZ_NOTIFY=1`
+  dans l'environnement), désactivée par défaut.
   Ces rappels visibles portent un **glyphe de sévérité** (ℹ info / ⚠ warn /
   ⛔ alert) pour lire d'un coup d'œil ce qui est normal, ce qui mérite attention et ce qui est
   anormal. Quand un tour en déclenche trop, un **arbitre** n'en garde que les 3 plus sévères
