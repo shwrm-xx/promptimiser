@@ -397,13 +397,24 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   POSIX alors que `relOf` produit des `\` sous Windows ; texte plafonné 240 c ; cap 200
   entrées, éviction des plus anciennes via `capObject` étendu aux entrées `{ at }`). Trois
   débouchés : (1) l'advisory de relecture redondante sert le résumé (voir ci-dessus) ;
-  (2) le handoff **auto** restitue les ≤ 5 résumés les plus récents (`topSummaries`) en
-  lignes `pmz:summary` — la boucle survit de session en session sans relecture ; (3) le
+  (2) le handoff **auto** restitue les résumés **scorés par ROI** (`scoredSummaries`, lot #66)
+  en lignes `pmz:summary` — la boucle survit de session en session sans relecture ; (3) le
   modèle écrit les lignes initiales dans le handoff **manuel** (template + `/fresh-session`
   + `/close-batch`). **Purge sur Edit/Write** (`recordModify`) : un fichier modifié perd son
   résumé — mieux vaut aucun résumé qu'un résumé faux. `relOf` (post-tool-use) relativise
   désormais via `fs.realpathSync` quand le cwd passe par un symlink (macOS `/var` →
   `/private/var`) — sinon les clés de ledger divergeraient des chemins du handoff.
+- **Résumés servis à ROI mesuré — `scoredSummaries` (`lib/ledger.js`, lot #66)** : le handoff
+  auto ne déverse plus les N résumés les plus **récents** mais les mieux **rentables**. Score
+  par chemin = **octets × fréquence de relecture** — `octets` = dernière taille connue du
+  fichier (`reads[].bytes`), `fréquence` = nb d'entrées dans `repeated_reads` (minorée à 1, un
+  résumé pas encore relu garde un score ∝ sa taille). Tri décroissant, tie-break récence (`at`)
+  → un score nul reste ordonné comme l'ancien `topSummaries`. La sélection est remplie
+  **gloutonnement sous un budget de caractères explicite** (`MAX_SUMMARY_BUDGET_CHARS = 1200`,
+  câblé avec le cap de lignes `MAX_SUMMARY_LINES`) : garde toujours ≥ 1 résumé même s'il excède
+  seul le budget. Le **gain estimé** (`gainTokens` = Σ `estTokens(octets) × freq` − coût
+  one-shot des résumés servis) est affiché dans l'en-tête du bloc (« ≈ Nk tokens de relecture
+  évités ») pour rendre l'économie visible au repreneur. Fail-open : `{ entries:[], gainTokens:0 }`.
 - **Amorçage à froid — `hot_files` (`lib/project.js#gitHotFiles`,
   `lib/ledger.js#seedHotFiles/hotFiles`, `lib/bootstrap.js#runBootstrap`, lot #65)** : au
   bootstrap (`/init` ou auto-scaffold) d'un dépôt **mûr** (`hasAnyCommit` vrai) dont le ledger

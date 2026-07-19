@@ -9,7 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const { vibeDir, git, gitStatusMeaningful, lastCommitEpoch } = require('./project');
-const { loadContextLedger, topWaste, topSummaries } = require('./ledger');
+const { loadContextLedger, topWaste, scoredSummaries } = require('./ledger');
 const { readEpic, getLotCounter } = require('./lot');
 const { summaryLines, readTodoSnapshot } = require('./backlog');
 
@@ -161,10 +161,15 @@ function writeAutoHandoff(root) {
     // connus pour qu'ils survivent de session en session : parsés par parseSummaryLines
     // et re-semés côté session-start.js. Même contrainte que pmz:skip : émis tôt pour
     // survivre à la troncature 6000c de readHandoff.
-    const sums = topSummaries(root, MAX_SUMMARY_LINES);
-    if (sums.length) {
-      lines.push('- Résumés connus (à utiliser à la place d\'une relecture complète) :');
-      for (const s of sums) lines.push(`  pmz:summary: ${s.path} — ${s.text}`);
+    // Résumés servis SCORÉS par ROI (octets × fréquence de relecture, lot #66) et remplis sous
+    // un budget de caractères explicite — pas un déversement des N plus récents. Le gain estimé
+    // (tokens de relecture évités) est affiché pour rendre l'économie visible au repreneur.
+    const sel = scoredSummaries(root, undefined, MAX_SUMMARY_LINES);
+    if (sel.entries.length) {
+      const gain = sel.gainTokens >= 1000 ? `${Math.round(sel.gainTokens / 1000)}k` : `${sel.gainTokens}`;
+      const suffix = sel.gainTokens > 0 ? ` — ≈ ${gain} tokens de relecture évités` : '';
+      lines.push(`- Résumés connus (à utiliser à la place d'une relecture complète)${suffix} :`);
+      for (const s of sel.entries) lines.push(`  pmz:summary: ${s.path} — ${s.text}`);
     }
     // Avancement fonctionnel : plan de lots (backlog) + dernier état des todos.
     // Blocs omis si artefacts absents — le handoff reste purement mécanique sinon.

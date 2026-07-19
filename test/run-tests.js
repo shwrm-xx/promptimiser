@@ -3688,6 +3688,72 @@ section('Résumés servis au lieu de la relecture (read-ledger.summaries, lot #5
   ok(Object.keys(rlCap.summaries).length === 200, 'T53 : summaries plafonné à 200 entrées (capObject)');
 }
 
+// ============================ V66. HANDOFF À ROI MESURÉ (lot #66) ============================
+section('Handoff à ROI mesuré : résumés scorés (octets × fréquence) + budget + gain (lot #66)');
+{
+  const ledger = require(path.join(PKG, 'lib', 'ledger'));
+  const repo = path.join(SANDBOX, 'repo-v66');
+  fs.mkdirSync(path.join(repo, '.vibe-agent'), { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'CLAUDE.md'), 'règles');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const rlFile = path.join(repo, '.vibe-agent', 'read-ledger.json');
+  const clFile = path.join(repo, '.vibe-agent', 'context-ledger.json');
+
+  // reads[] fournit les octets ; repeated_reads fournit la fréquence de relecture.
+  fs.writeFileSync(rlFile, JSON.stringify({
+    reads: [
+      { path: 'big.js', bytes: 40000, mtime: 1 },
+      { path: 'small.js', bytes: 400, mtime: 1 },
+    ],
+    summaries: {
+      'big.js': { text: 'gros module', at: 100 },
+      'small.js': { text: 'petit', at: 200 },
+      'nosize.js': { text: 'jamais dimensionné', at: 300 },
+    },
+    avoid_reread_notes: [],
+  }));
+  fs.writeFileSync(clFile, JSON.stringify({
+    repeated_reads: [
+      { path: 'big.js', at: 1 }, { path: 'big.js', at: 2 }, { path: 'big.js', at: 3 },
+      { path: 'small.js', at: 1 },
+    ],
+  }));
+
+  // -- Scoring : ROI = octets × fréquence -> big.js (40000×3) > small.js (400×1) > nosize.js (0) --
+  const full = ledger.scoredSummaries(repo);
+  ok(full.entries.length === 3 && full.considered === 3, 'V66 : les 3 résumés tiennent sous le budget par défaut');
+  ok(full.entries[0].path === 'big.js' && full.entries[0].score === 120000, 'V66 : big.js classé 1er (octets × fréquence)');
+  ok(full.entries[1].path === 'small.js' && full.entries[2].path === 'nosize.js', 'V66 : ordre décroissant par score, score nul en dernier');
+  ok(full.entries[0].freq === 3 && full.entries[1].freq === 1, 'V66 : fréquence = nb de relectures (repeated_reads), minorée à 1');
+
+  // -- Gain affiché : tokens de relecture évités = Σ estTokens(octets) × freq − coût one-shot --
+  ok(full.gainTokens > 29000 && full.gainTokens < 31000, 'V66 : gainTokens ≈ 30k (big 10k×3 + small 100 − coût des résumés)');
+  ok(full.entries[2].savedTokens === 0, 'V66 : un résumé sans octets connus n\'apporte aucun gain mesuré');
+
+  // -- Budget explicite : un plafond serré tronque la sélection (mais garde ≥ 1) --
+  const tight = ledger.scoredSummaries(repo, 60);
+  ok(tight.entries.length === 1 && tight.entries[0].path === 'big.js' && tight.considered === 3,
+    'V66 : budget serré (60c) -> seul le mieux scoré est retenu, les autres tombent');
+  const minimal = ledger.scoredSummaries(repo, 5);
+  ok(minimal.entries.length === 1, 'V66 : budget < 1 ligne -> au moins le meilleur résumé est tout de même servi');
+
+  // -- Fail-open : aucun résumé -> structure vide, jamais d'exception --
+  const bare = path.join(SANDBOX, 'repo-v66-bare');
+  fs.mkdirSync(path.join(bare, '.vibe-agent'), { recursive: true });
+  const empty = ledger.scoredSummaries(bare);
+  ok(empty.entries.length === 0 && empty.gainTokens === 0, 'V66 : projet sans résumé -> { entries:[], gainTokens:0 }');
+
+  // -- Câblage handoff : le gain estimé est écrit dans le handoff auto --
+  handoff.writeAutoHandoff(repo);
+  const auto = fs.readFileSync(path.join(repo, '.vibe-agent', 'handoff.md'), 'utf8');
+  ok(/tokens de relecture évités/.test(auto), 'V66 : handoff auto affiche le gain estimé (tokens évités)');
+  ok(/pmz:summary: big\.js — gros module/.test(auto), 'V66 : handoff auto sert le résumé le mieux scoré en premier');
+  const firstSum = (auto.match(/pmz:summary: ([^\s]+)/) || [])[1];
+  ok(firstSum === 'big.js', 'V66 : ordre du handoff = ordre scoré (big.js en tête)');
+}
+
 // ============================ V63. ESTIMATION PRÉDICTIVE DU COÛT (lot #63) ============================
 section('Estimation prédictive du coût d\'un lot : famille modèle+effort > modèle > epic (lot #63)');
 {

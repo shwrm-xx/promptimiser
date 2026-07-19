@@ -2,6 +2,25 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #66 — epic « Atterrissages » : handoff à ROI mesuré, résumés scorés + budget + gain)
+
+- `promptimizer/lib/ledger.js` : `scoredSummaries(root, budgetChars, maxLines)` — sélectionne les
+  résumés servis au handoff par **ROI = octets × fréquence de relecture** (`octets` = dernière
+  taille connue `reads[].bytes`, `fréquence` = nb d'entrées `repeated_reads`, minorée à 1), tri
+  décroissant tie-break récence. Remplissage **glouton sous un budget de caractères explicite**
+  (`MAX_SUMMARY_BUDGET_CHARS` = 1200, exporté ; garde toujours ≥ 1 résumé). Renvoie le **gain
+  estimé** `gainTokens` (Σ `estTokens(octets) × freq` − coût one-shot des résumés). Fail-open
+  (`{ entries:[], gainTokens:0 }`). Helpers privés `rereadFreq` / `readBytes`.
+- `promptimizer/lib/handoff.js` : le bloc « Résumés connus » du handoff auto passe de
+  `topSummaries` (N plus récents) à `scoredSummaries` (mieux rentables) et **affiche le gain**
+  (« — ≈ Nk tokens de relecture évités ») dans son en-tête. Format `pmz:summary` inchangé (la
+  boucle trans-session reste valide).
+- Doc : bullet « Résumés servis à ROI mesuré — `scoredSummaries` » dans ARCHITECTURE.md, débouché
+  (2) du bloc `pmz:summary` mis à jour.
+- Tests : `node test/run-tests.js` → **848 OK · 0 échec** (+11 assertions V66 : scoring
+  octets×fréquence, ordre, gain ≈ 30k, budget serré tronque en gardant ≥ 1, fail-open, câblage
+  handoff). Suite OpenCode verte.
+
 ## 2026-07-19 (lot #65 — epic « Atterrissages » : amorçage à froid, seed hot-files depuis git log)
 
 - `promptimizer/lib/project.js` : `gitHotFiles(root, limit, n)` — compte les occurrences de

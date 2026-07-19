@@ -11,6 +11,10 @@ const MAX_REPEATED = 200;
 const MAX_SUMMARIES = 200;
 const MAX_SUMMARY_CHARS = 240;
 const MAX_HOT_FILES = 15;
+// Budget de caractères explicite du bloc de résumés servi au handoff (lot #66) : la sélection
+// est remplie gloutonnement sous ce plafond, par ROI décroissant — jamais un déversement de
+// tous les résumés connus.
+const MAX_SUMMARY_BUDGET_CHARS = 1200;
 
 // Clés de summaries normalisées avec des séparateurs `/` : les lignes pmz:summary d'un
 // handoff écrivent des chemins POSIX alors que relOf (post-tool-use) produit des `\` sous
@@ -249,6 +253,75 @@ function topSummaries(root, n) {
   }
 }
 
+// Fréquence de relecture par chemin (nb d'entrées dans repeated_reads, log append des
+// relectures). Clés normalisées `/`. Fail-open : {}.
+function rereadFreq(cl) {
+  const out = {};
+  for (const e of (cl.repeated_reads || [])) {
+    if (e && e.path) {
+      const k = normPath(e.path);
+      out[k] = (out[k] || 0) + 1;
+    }
+  }
+  return out;
+}
+
+// Dernière taille connue (octets) par chemin, depuis reads[]. Clés normalisées `/`. {}.
+function readBytes(rl) {
+  const out = {};
+  for (const r of (rl.reads || [])) {
+    if (r && r.path && typeof r.bytes === 'number') out[normPath(r.path)] = r.bytes;
+  }
+  return out;
+}
+
+// Résumés connus SCORÉS par ROI = octets(fichier) × fréquence de relecture, puis sélectionnés
+// gloutonnement sous un budget de caractères explicite (score décroissant, tie-break récence).
+// « octets » = dernière taille connue du fichier (reads[]) ; « fréquence » = nb de relectures
+// enregistrées (repeated_reads) minorée à 1 — un fichier résumé mais pas encore relu garde un
+// score ∝ sa taille au lieu d'un 0 qui l'exclurait. Un score nul (fichier jamais dimensionné)
+// reste ordonné par fraîcheur, comme l'ancien topSummaries.
+// `gainTokens` = tokens de relecture évités = Σ estTokens(octets) × freq − coût one-shot des
+// résumés servis (bornés à ≥ 0). Renvoie { entries:[{path,text,bytes,freq,score,savedTokens}],
+// gainTokens, budgetChars, considered }. Fail-open : { entries:[], gainTokens:0, ... }.
+function scoredSummaries(root, budgetChars, maxLines) {
+  const budget = Number.isFinite(budgetChars) && budgetChars > 0 ? budgetChars : MAX_SUMMARY_BUDGET_CHARS;
+  const cap = Number.isFinite(maxLines) && maxLines > 0 ? maxLines : MAX_SUMMARIES;
+  const empty = { entries: [], gainTokens: 0, budgetChars: budget, considered: 0 };
+  try {
+    const rl = loadReadLedger(root);
+    const cl = loadContextLedger(root);
+    const sums = rl.summaries;
+    const keys = Object.keys(sums).filter((p) => sums[p] && sums[p].text);
+    if (!keys.length) return empty;
+    const bytesBy = readBytes(rl);
+    const freqBy = rereadFreq(cl);
+    const scored = keys.map((p) => {
+      const bytes = bytesBy[p] || 0;
+      const freq = Math.max(1, freqBy[p] || 0);
+      return { path: p, text: sums[p].text, at: sums[p].at || 0, bytes, freq, score: bytes * freq };
+    });
+    scored.sort((a, b) => (b.score - a.score) || (b.at - a.at));
+    const entries = [];
+    let used = 0;
+    let gainTokens = 0;
+    for (const s of scored) {
+      if (entries.length >= cap) break;
+      const lineChars = ('  pmz:summary: ' + s.path + ' — ' + s.text).length + 1;
+      // Budget dépassé : on s'arrête, mais on garde toujours au moins 1 résumé (le mieux scoré)
+      // même s'il excède seul le budget — sinon un gros résumé unique ne serait jamais servi.
+      if (used + lineChars > budget && entries.length) break;
+      used += lineChars;
+      const saved = Math.max(0, estTokens({ bytes: s.bytes }) * s.freq - estTokens({ bytes: Buffer.byteLength(s.text, 'utf8') }));
+      gainTokens += saved;
+      entries.push({ path: s.path, text: s.text, bytes: s.bytes, freq: s.freq, score: s.score, savedTokens: saved });
+    }
+    return { entries, gainTokens, budgetChars: budget, considered: keys.length };
+  } catch (_) {
+    return empty;
+  }
+}
+
 // Notes « ne pas relire » (liste canonique) pour la réinjection post-compact (#72). Tail =
 // plus récent (append à chaque relecture / seed pmz:skip). Fail-open : [] au moindre doute.
 function avoidRereadNotes(root, n) {
@@ -304,7 +377,7 @@ function hotFiles(root, n) {
 
 module.exports = {
   loadReadLedger, loadContextLedger, recordRead, recordModify, recordOccupancy, estTokens,
-  seedAvoidReread, avoidRereadNotes, seedSummaries, getSummary, topSummaries, normPath,
-  topWaste, evaluateWaste, wasteBucketIndex, WASTE_BUCKETS, WASTE_FLOATING_STEP,
-  seedHotFiles, hotFiles, MAX_HOT_FILES,
+  seedAvoidReread, avoidRereadNotes, seedSummaries, getSummary, topSummaries, scoredSummaries,
+  normPath, topWaste, evaluateWaste, wasteBucketIndex, WASTE_BUCKETS, WASTE_FLOATING_STEP,
+  seedHotFiles, hotFiles, MAX_HOT_FILES, MAX_SUMMARY_BUDGET_CHARS,
 };
