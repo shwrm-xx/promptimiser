@@ -22,6 +22,7 @@ const { incrementLot } = require('../lib/lot');
 const { loadBacklog, doneLot, nextLot, progress, currentLot, addCost, COST_WARN_TOKENS } = require('../lib/backlog');
 const occupancy = require('../lib/occupancy');
 const turnstats = require('../lib/turnstats');
+const { arbitrate } = require('../lib/arbiter');
 const {
   MSG_CLOTURE, occupancyMessage, lotClosedMessage,
   costlyTurnMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
@@ -147,7 +148,10 @@ function main() {
     writeAutoHandoff(root);
   }
 
-  if (parts.length) return systemMessage(parts.join('\n\n'));
+  // Arbitre de tour (#57) : plafonne le nombre de nudges concaténés, priorité à la sévérité
+  // (via le glyphe de tête, sans re-parser la prose). Ordre de lecture d'origine préservé.
+  const shown = arbitrate(parts);
+  if (shown.length) return systemMessage(shown.join('\n\n'));
   return passThrough();
 }
 

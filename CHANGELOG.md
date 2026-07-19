@@ -2,6 +2,30 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #57 — epic « Coût par livrable » : arbitre de tour — plafond de nudges)
+
+- `promptimizer/lib/arbiter.js` (**nouveau**) : `arbitrate(items, {max, sevOf})` plafonne le
+  nombre de nudges VISIBLES émis en un tour à `MAX_NUDGES_PER_TURN` (3), en gardant les plus
+  **sévères** (tri par rang décroissant, départage stable par ordre d'origine) puis en les
+  **ré-émettant dans l'ordre d'origine** — la hiérarchie vient du glyphe, l'ordre de lecture reste
+  stable. Sévérité lue via `severityOf` (le glyphe de tête, sans re-parser la prose) ou un `sevOf`
+  fourni par l'appelant. Fail-open : entrée non-tableau → `[]`, jamais d'exception.
+- `promptimizer/hooks/stop.js` : `arbitrate(parts)` juste avant l'émission `systemMessage`
+  (choke point unique du canal Claude Code). VERSION → 1.2.7.
+- `opencode/plugin/impl/index.js` : port du même arbitrage — `evaluateOccupancy` et
+  `closureAndHandoff` **retournent** désormais leurs toasts (`{text, level, sev}`) au lieu de les
+  émettre ; le handler `session.idle` collecte tous les candidats (occupation + coût/clôture/preuve)
+  et les passe par `arbitrate(…, {sevOf: t => t.sev})` avant émission. Effets de bord (état +
+  handoff) restés inconditionnels. En pratique OpenCode dépasse rarement 3 toasts (clôture/preuve
+  mutuellement exclusives) : port pour la **parité de contrat**, pas un gain immédiat.
+- `ARCHITECTURE.md` : décision « Arbitre de tour — plafond de nudges » (choke point deux canaux,
+  sélection stable, alternative « (+N masqués) » écartée) + ligne `stop.js` du tableau des hooks.
+  `README.md` : mention de l'arbitre dans la section des rappels visibles.
+- Tests : `test/run-tests.js` — nouvelle section G2 (plafond par défaut, sous/au/au-delà du
+  plafond, élimination des info avant warn/alert, ré-émission ordre d'origine, départage stable,
+  `sevOf` custom du canal OpenCode, `max` personnalisé, fail-open non-tableau). **741 OK** (+12) /
+  0 · OpenCode **119 OK** / 0 (aucune régression du port).
+
 ## 2026-07-19 (lot #56 — epic « Coût par livrable » : grammaire de sévérité des nudges)
 
 - `promptimizer/lib/severity.js` (**nouveau**) : grammaire centralisée des nudges VISIBLES —

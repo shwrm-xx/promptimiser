@@ -416,6 +416,50 @@ section('Grammaire de sévérité : lib/severity.js + glyphes des fabriques visi
   ok(messages.closureProofMessage(null, false) === null, 'closureProof : rien à dire -> null (préservé)');
 }
 
+// ============ G2. ARBITRE DE TOUR — plafond de nudges par sévérité (lot #57) ============
+section('Arbitre de tour : lib/arbiter.js (plafond + priorité par sévérité)');
+{
+  const { arbitrate, MAX_NUDGES_PER_TURN } = require(path.join(PKG, 'lib', 'arbiter'));
+  const sev = require(path.join(PKG, 'lib', 'severity'));
+  const I = sev.withSeverity(sev.SEV.INFO, 'i');
+  const W = sev.withSeverity(sev.SEV.WARN, 'w');
+  const A = sev.withSeverity(sev.SEV.ALERT, 'a');
+
+  ok(MAX_NUDGES_PER_TURN === 3, 'arbitre : plafond par défaut = 3');
+  // Sous le plafond -> tout passe, copie (pas la même référence), ordre préservé.
+  const under = [W, I];
+  const outUnder = arbitrate(under);
+  ok(outUnder.length === 2 && outUnder[0] === W && outUnder[1] === I, 'arbitre : sous le plafond -> tout, ordre d\'origine');
+  ok(outUnder !== under, 'arbitre : renvoie une copie, jamais le tableau d\'entrée');
+  // Au plafond exact -> inchangé.
+  ok(arbitrate([I, W, A]).length === 3, 'arbitre : au plafond exact -> inchangé');
+  // Au-delà : garde les 3 plus sévères. Ici alert + warn (x2) éliminent 2 info.
+  const many = [I, W, I, A, W]; // idx 0..4
+  const kept = arbitrate(many);
+  ok(kept.length === 3, 'arbitre : au-delà du plafond -> plafonné à 3');
+  ok(kept.every((x) => x !== I), 'arbitre : les info sont éliminées avant les warn/alert');
+  ok(sev.severityOf(kept[0]) === 'warn' && sev.severityOf(kept[1]) === 'alert' && sev.severityOf(kept[2]) === 'warn',
+    'arbitre : survivants ré-émis dans l\'ordre d\'origine (W@1, A@3, W@4)');
+  // Départage à sévérité égale : le plus en amont survit.
+  const ties = [sev.withSeverity('warn', 'w0'), sev.withSeverity('warn', 'w1'),
+    sev.withSeverity('warn', 'w2'), sev.withSeverity('warn', 'w3')];
+  const keptTies = arbitrate(ties);
+  ok(keptTies.length === 3 && keptTies[0] === ties[0] && keptTies[2] === ties[2],
+    'arbitre : à sévérité égale, les 3 premiers survivent (stable)');
+  // sevOf custom (canal OpenCode : objets toast). idx : info0, alert1, info2, warn3.
+  // Survivants = alert(1) + warn(3) + l'info la plus en amont (0) ; ré-émis par ordre d'origine.
+  const objs = [{ sev: 'info', id: 0 }, { sev: 'alert', id: 1 }, { sev: 'info', id: 2 }, { sev: 'warn', id: 3 }];
+  const keptObjs = arbitrate(objs, { sevOf: (o) => o.sev });
+  ok(keptObjs.map((o) => o.id).join(',') === '0,1,3',
+    'arbitre : sevOf custom -> alert+warn+info amont, ordre d\'origine (0,1,3)');
+  // max personnalisé + garde-fous fail-open.
+  ok(arbitrate([I, W, A], { max: 1 }).length === 1 && sev.severityOf(arbitrate([I, W, A], { max: 1 })[0]) === 'alert',
+    'arbitre : max=1 -> garde le plus sévère (alert)');
+  ok(arbitrate([I, W], { max: 0 }).length === 0, 'arbitre : max=0 -> aucun nudge');
+  ok(arbitrate(null).length === 0 && arbitrate(undefined).length === 0 && arbitrate('x').length === 0,
+    'arbitre : entrée non-tableau -> [] (fail-open)');
+}
+
 // ============================ H. HYGIÈNE DE LECTURE (point 4) ============================
 section('Ratio Read-complet / recherche (point 4)');
 function toolUseLine(name, input) {

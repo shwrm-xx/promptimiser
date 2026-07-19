@@ -147,7 +147,8 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   lectures, un nudge invite à **déléguer l'exploration à un subagent** (les lectures restent hors du
   contexte principal). Ces rappels visibles portent un **glyphe de sévérité** (ℹ info / ⚠ warn /
   ⛔ alert) pour lire d'un coup d'œil ce qui est normal, ce qui mérite attention et ce qui est
-  anormal.
+  anormal. Quand un tour en déclenche trop, un **arbitre** n'en garde que les 3 plus sévères
+  (ordre de lecture préservé) — pas de pavé qui noie le signal important.
 - **Pendant le tour** : une relecture **complète** d'un gros fichier (≥ 16 Ko) déjà lu et
   inchangé déclenche une note discrète (~60 tokens, plafonnée à 1×/fichier et 3×/session) —
   jamais de blocage, juste un rappel. Si un **résumé** du fichier est connu (lignes

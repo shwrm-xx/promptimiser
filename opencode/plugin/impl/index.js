@@ -26,6 +26,8 @@ const { readHandoff, markConsumed, parseSkipPaths, writeAutoHandoff } = require(
 const { incrementLot, suggestedTitle } = require('../lib/lot');
 const { modelsDiffer } = require('../lib/modelwatch');
 const { VERIFY_AUTOCLOSE_MS } = require('../lib/timeouts');
+const { arbitrate } = require('../lib/arbiter');
+const { severityOf, SEV } = require('../lib/severity');
 const {
   MSG_ACTIF, MSG_HANDOFF, MSG_CLOTURE, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   backlogResumeMessage, compactResumeMessage, largeWithPlanMessage, modelMismatchMessage,
@@ -172,20 +174,23 @@ async function createHooks(input) {
   }
 
   // Franchissement de palier d'occupation -> toast (canal visible : pas de statusline OpenCode).
+  // Renvoie le toast { text, level, sev } au franchissement d'un nouveau palier, sinon null —
+  // l'arbitre de l'idle (#57) décide de l'émission (parité avec la sévérité 'warn' du canal CC).
   async function evaluateOccupancy(sid) {
     let rec = occ.readRecord(sid);
     if (!rec) {
       const info = await fallbackMessage(sid);
       if (info && occ.recordFromMessage(info)) rec = occ.readRecord(sid);
     }
-    if (!rec) return;
+    if (!rec) return null;
     const limit = await getLimit(rec.providerID, rec.modelID);
     const useful = occ.usefulWindow(limit);
-    if (!useful) return; // fenêtre inconnue (modèle local sans limit) -> pas d'alerte relative
+    if (!useful) return null; // fenêtre inconnue (modèle local sans limit) -> pas d'alerte relative
     const e = occ.evaluate(sid, useful);
     if (e && e.crossedNew && e.bucket > 0) {
-      await bridge.toast(client, occ.occupancyToast(e.pct, e.occ), e.bucket >= 3 ? 'warning' : 'info');
+      return { text: occ.occupancyToast(e.pct, e.occ), level: e.bucket >= 3 ? 'warning' : 'info', sev: SEV.WARN };
     }
+    return null;
   }
 
   // (a4) Coût réel par lot (parité lot #43) : agrège les tokens de SORTIE du dernier message
@@ -223,9 +228,11 @@ async function createHooks(input) {
   // Miroir de hooks/stop.js (Claude Code), canal = toast au lieu de systemMessage. Ordre
   // aligné : (a4) coût par lot AVANT le bloc clôture, puis à l'auto-clôture univoque la preuve
   // (verify court + garde-fou CHANGELOG, parité lot #44) rejouée — jamais bloquante.
+  // Renvoie la liste ordonnée des toasts { text, level, sev } (l'arbitre de l'idle #57 décide
+  // de l'émission) ; les effets de bord (état + handoff) restent internes et inconditionnels.
   async function closureAndHandoff(dir, sid) {
     const root = repoRoot(dir);
-    if (!root) return;
+    if (!root) return [];
     try {
       project.ensureLedger(root);
       const st = loadSessionState(root, sid);
@@ -270,13 +277,17 @@ async function createHooks(input) {
       // Persistance unique de l'état (avant les toasts : un toast raté ne corrompt rien).
       saveSessionState(root, st);
 
-      if (costToast) await bridge.toast(client, costToast, 'warning');
-      if (closureToast) await bridge.toast(client, closureToast, 'info');
-      if (proof) await bridge.toast(client, proof.text, proof.failed ? 'warning' : 'info');
-
       // (c) handoff auto : dernier état connu, écrasé à chaque idle ; injecté au prochain start.
       writeAutoHandoff(root);
-    } catch (_) { /* fail-open : l'idle ne casse jamais la session */ }
+
+      // Toasts collectés dans l'ordre du miroir stop.js ; sévérité lue au glyphe (cost/proof à
+      // sévérité variable), 'warn' fixe pour la clôture (parité MSG_CLOTURE côté CC).
+      const toasts = [];
+      if (costToast) toasts.push({ text: costToast, level: 'warning', sev: severityOf(costToast) });
+      if (closureToast) toasts.push({ text: closureToast, level: 'info', sev: SEV.WARN });
+      if (proof) toasts.push({ text: proof.text, level: proof.failed ? 'warning' : 'info', sev: severityOf(proof.text) });
+      return toasts;
+    } catch (_) { return []; /* fail-open : l'idle ne casse jamais la session */ }
   }
 
   // Renommage de session (client.session.update) — UNE fois par session, au 1er idle (une
@@ -416,11 +427,19 @@ async function createHooks(input) {
       } else if (t === 'session.idle') {
         const sid = props.sessionID || null;
         if (!sid) return;
-        await evaluateOccupancy(sid);
+        // Arbitre de tour (#57) : collecte tous les toasts candidats du tour (occupation +
+        // coût/clôture/preuve), plafonne par sévérité, puis émet — parité avec stop.js.
+        const toasts = [];
+        const occT = await evaluateOccupancy(sid);
+        if (occT) toasts.push(occT);
         const dir = input && input.directory;
         if (dir) {
-          await closureAndHandoff(dir, sid);
+          const more = await closureAndHandoff(dir, sid);
+          if (Array.isArray(more)) toasts.push(...more);
           await maybeRename(dir, sid);
+        }
+        for (const t2 of arbitrate(toasts, { sevOf: (x) => x.sev })) {
+          await bridge.toast(client, t2.text, t2.level);
         }
       } else if (t === 'session.compacted') {
         const sid = props.sessionID || null;

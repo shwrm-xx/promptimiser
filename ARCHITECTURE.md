@@ -32,7 +32,7 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
 | `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd`, `transcript_path` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large (anti-spam 1×/session), nudge occupation ≥ 500k en 2 lignes (anti-spam 1×/palier, lot B5), vigie modèle réel vs préconisé du lot en cours (anti-spam 1×/session, lot #42) |
 | `pre-tool-use.js` | PreToolUse `Bash` | `tool_input.command` | `permissionDecision` allow/ask/deny | sûreté commandes |
 | `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite` | `tool_input.file_path`, `tool_input.todos` | `additionalContext` (rare, advisory) + effet de bord ledgers | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite), signale une relecture complète redondante (lot B4) |
-| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), hygiène de lecture, **nudge subagent** à haute occupation + lectures (lot #52), **palier de gaspillage auto-surfacé** avec top-3 coupables (`waste_bucket` persisté, lot #52), rappel de clôture nommant les skills, incrémente le compteur de lot, agrège le coût réel du lot en cours (`cost_tokens`) et alerte à l'approche du budget ~300k avec proposition de redécoupage (lot #43), auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, exécute la `verify` du lot à l'auto-clôture (timeout court `VERIFY_AUTOCLOSE_MS`, résultat visible, jamais bloquant) + rappel doux si le commit de clôture ne touche pas `CHANGELOG.md` (lot #44), écrit le handoff auto (écrasé à chaque tour) |
+| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), hygiène de lecture, **nudge subagent** à haute occupation + lectures (lot #52), **palier de gaspillage auto-surfacé** avec top-3 coupables (`waste_bucket` persisté, lot #52), rappel de clôture nommant les skills, incrémente le compteur de lot, agrège le coût réel du lot en cours (`cost_tokens`) et alerte à l'approche du budget ~300k avec proposition de redécoupage (lot #43), auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, exécute la `verify` du lot à l'auto-clôture (timeout court `VERIFY_AUTOCLOSE_MS`, résultat visible, jamais bloquant) + rappel doux si le commit de clôture ne touche pas `CHANGELOG.md` (lot #44), **plafonne les nudges du tour par sévérité** (`lib/arbiter.js`, ≤ 3, lot #57), écrit le handoff auto (écrasé à chaque tour) |
 | `pre-compact.js` | PreCompact `manual\|auto` | `cwd`, `trigger`, `transcript_path` | `systemMessage` (manual) ou — (auto : effet de bord handoff seul) | sauve le handoff auto (plan de lots + todos compris) AVANT compaction ; la réinjection minimale se fait au SessionStart(compact). Sur `manual` (/compact), ajoute un rappel **chiffré** visible : compacter ≈ réécriture de l'occupation en cache-write (×1,25) + résumé lossy, vs clôture + handoff (~8k) — TTL prudent, aucun prix en dur (lot T1). `auto` reste silencieux (compaction subie) |
 
 ### Invariants NON négociables
@@ -717,3 +717,19 @@ plusieurs sessions réelles (capture fournie par l'utilisateur, 2026-07-12).
   sans re-parser la prose. Glyphes purement cosmétiques (jamais lus par une logique de contrôle) —
   fail-open par construction. Alternative écartée : nudges structurés `{severity, text}` portés
   jusqu'à `stop.js` — reporté au lot #57 (l'arbitre), pour garder #56 non invasif sur les hooks.
+
+- **Arbitre de tour — plafond de nudges** (lot #57, epic « Coût par livrable ») : même préfixés
+  d'un glyphe, cinq à six nudges concaténés en un tour noient le signal important. `lib/arbiter.js`
+  (`arbitrate(items, {max, sevOf})`) plafonne à `MAX_NUDGES_PER_TURN` (3) en gardant les plus
+  **sévères** : tri par rang décroissant (départage stable par ordre d'origine), puis **ré-émission
+  dans l'ordre d'origine** (l'ordre de lecture reste stable, la hiérarchie vient du glyphe). Il lit
+  la sévérité via `severityOf` (le glyphe de tête) sans re-parser la prose — décision « Grammaire de
+  sévérité » ci-dessus. **Choke point unique des deux canaux** : `stop.js` fait `arbitrate(parts)`
+  juste avant `systemMessage(parts.join)` ; le plugin OpenCode collecte tous les toasts candidats de
+  l'idle (occupation + coût/clôture/preuve) et les passe par `arbitrate(…, {sevOf: t => t.sev})`
+  avant émission — `evaluateOccupancy`/`closureAndHandoff` **retournent** désormais leurs toasts au
+  lieu de les émettre (les effets de bord état+handoff restent inconditionnels). Fail-open : entrée
+  non-tableau → `[]`, jamais d'exception. En pratique OpenCode dépasse rarement 3 toasts (clôture et
+  preuve sont mutuellement exclusives) : le port vise la **parité de contrat**, pas un gain immédiat.
+  Alternative écartée : indicateur « (+N nudges masqués) » en pied de bloc — écarté pour rester
+  littéral (plafond seul demandé) ; à rouvrir si un drop silencieux d'un `lotClosed`/`proof` gêne.
