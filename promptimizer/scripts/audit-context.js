@@ -6,8 +6,19 @@
 // Fallback annoncé sur le comptage de relectures quand aucune occupation token n'est connue.
 const { gitRoot, isInitialized } = require('../lib/project');
 const { loadReadLedger, loadContextLedger, WASTE_BUCKETS } = require('../lib/ledger');
-const { BUCKETS } = require('../lib/occupancy');
+const { BUCKETS, stateFileFor } = require('../lib/occupancy');
+const { readJson } = require('../lib/fsjson');
 const { parseCwd } = require('../lib/cli');
+
+// Sparkline (lot #61) : restitue turnstats.turns[] (FIFO 40, écrit à chaque Stop mais
+// jamais relu jusqu'ici) sans reparser le transcript — juste le miroir d'état par session.
+const SPARK_CHARS = '▁▂▃▄▅▆▇█';
+function sparkline(values) {
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  return values.map((v) => SPARK_CHARS[Math.round(((v - min) / range) * (SPARK_CHARS.length - 1))]).join('');
+}
 
 // Seuils de statut alignés sur les paliers d'occupation d'occupancy.js (pas d'échelle inventée).
 const ORANGE_AT = BUCKETS[1]; // 300k : session substantielle
@@ -76,6 +87,22 @@ function main() {
   lines.push('');
   lines.push(`Statut : ${statut} — ${baseLabel}`);
   if (hitRate != null) lines.push(`Cache hitRate (dernier tour) : ${Math.round(hitRate * 100)}%`);
+
+  // Courbe des tours (lot #61) : miroir turnstats.turns[] pour la session courante
+  // (cl.session_id, posé par recordOccupancy). Rien à montrer hors session connue.
+  const sid = cl.session_id || null;
+  const turnsState = sid ? readJson(stateFileFor(sid, 'turns.json'), null) : null;
+  const turnsHist = turnsState && Array.isArray(turnsState.turns) ? turnsState.turns : [];
+  if (turnsHist.length) {
+    const deltas = turnsHist.map((t) => (typeof t.d === 'number' ? t.d : 0));
+    const outs = turnsHist.map((t) => (typeof t.o === 'number' ? t.o : 0));
+    const avgDelta = deltas.reduce((a, b) => a + b, 0) / deltas.length;
+    const avgOut = outs.reduce((a, b) => a + b, 0) / outs.length;
+    lines.push('');
+    lines.push(`Courbe des tours (${turnsHist.length} mesurés) :`);
+    lines.push(sparkline(deltas));
+    lines.push(`- delta moyen : ${avgDelta >= 0 ? '+' : ''}${fmtK(avgDelta)} / tour · sortie moyenne : ${fmtK(avgOut)} / tour`);
+  }
   lines.push('');
   lines.push('Gaspillage estimé :');
   if (wasteEntries.length) {

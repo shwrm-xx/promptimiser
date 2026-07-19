@@ -3222,6 +3222,21 @@ section('Bilan d\'epic auto + hitRate visible (lot #58)');
   const auditOut = execFileSync('node', [path.join(PKG, 'scripts', 'audit-context.js')], { cwd: repo58, encoding: 'utf8' });
   ok(/Cache hitRate \(dernier tour\) : 87%/.test(auditOut), 'audit-context.js : ligne hitRate affichée (arrondie à 87%)');
 
+  // Courbe des tours (lot #61) : turnstats.turns[] (FIFO) restitué par /budget sans
+  // reparser le transcript — juste le miroir d'état par session (cl.session_id).
+  const ts61 = require(path.join(PKG, 'lib', 'turnstats'));
+  const t61 = path.join(SANDBOX, 'ts61.jsonl');
+  const stop61 = (line) => { fs.appendFileSync(t61, line + '\n'); return ts61.computeTurn(t61, 't61-turns'); };
+  stop61(usageLine(2000, 118000, 0, 500)); // baseline
+  stop61(usageLine(2000, 138000, 0, 700)); // delta +20k
+  stop61(usageLine(2000, 148000, 0, 300)); // delta +10k
+  ledger58.recordOccupancy(repo58, { occ: 150000, delta: 10000, sessionId: 't61-turns', hitRate: 0.9 });
+  const auditTurns = execFileSync('node', [path.join(PKG, 'scripts', 'audit-context.js')], { cwd: repo58, encoding: 'utf8' });
+  ok(/Courbe des tours \(3 mesurés\)/.test(auditTurns), 'audit-context.js : courbe des tours affichée (baseline + 2 tours = 3 entrées FIFO)');
+  ok(/[▁▂▃▄▅▆▇█]{3}/.test(auditTurns), 'audit-context.js : sparkline rendue (1 caractère / tour)');
+  ok(/delta moyen : \+10\.0k \/ tour · sortie moyenne : 0\.3k \/ tour/.test(auditTurns),
+    'audit-context.js : delta moyen (baseline 0, +20k, +10k -> +10.0k) et sortie moyenne (0, 700, 300 -> 0.3k) calculés');
+
   // Absence de hit_rate (jamais calculé) -> pas de ligne, pas de crash.
   const repoNoHr = path.join(SANDBOX, 'repo-t58-nohr');
   fs.mkdirSync(repoNoHr, { recursive: true });

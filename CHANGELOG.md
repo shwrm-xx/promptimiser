@@ -2,6 +2,18 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #61 — epic « Coût par livrable » : courbe de session dans /budget)
+
+- `promptimizer/scripts/audit-context.js` : `/budget` restitue désormais la **courbe des tours**
+  — `turnstats.turns[]` (FIFO 40, déjà écrit à chaque `Stop` par `computeTurn` mais jamais relu)
+  est retrouvé via `context-ledger.json.session_id`, puis rendu en sparkline unicode + résumé
+  chiffré (delta moyen, sortie moyenne). Absente si aucune session connue — jamais de courbe
+  vide ou trompeuse.
+- `ARCHITECTURE.md` : section dédiée (miroir d'état, provenance du `session_id`, comportement à
+  vide).
+- Tests : nouveau cas dans la section hitRate (lot #58) de `test/run-tests.js` — 3 tours mesurés
+  (baseline + 2), sparkline présente, delta/sortie moyens vérifiés. 769/769 verts.
+
 ## 2026-07-19 (lot #60 — epic « Coût par livrable » : trailer git + export backlog)
 
 - `promptimizer/scripts/close-batch.js` : la checklist affiche un bloc `PMZ-Lot`/`PMZ-Cost`/

@@ -162,6 +162,13 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   de contradiction entre l'alerte de fin de tour et le statut d'audit). **Fallback annoncé** : sans occupation token connue
   (jamais passé par un `Stop` récent, hors-git), retombe sur le comptage de relectures et le dit
   explicitement — jamais de chiffre tokens fantôme.
+- **Courbe des tours** (`audit-context.js`, lot #61) : `turnstats.computeTurn` persiste déjà à
+  chaque `Stop` un FIFO `turns[]` (40 entrées, `{d: delta occupation, o: sortie, at}`) dans l'état
+  hors-projet `<sha1(session_id)>-turns.json` — jamais relu avant ce lot. `/budget` retrouve le
+  `session_id` courant via `context-ledger.json.session_id` (posé par `recordOccupancy`), lit ce
+  FIFO et rend une **sparkline** unicode (1 caractère/tour, échelle min-max locale au FIFO) suivie
+  d'un résumé chiffré (delta moyen, sortie moyenne). Aucune session connue → section absente
+  (jamais de courbe vide ou trompeuse).
 - **Advisory intra-tour** (`lib/advisory.js`, appelé par `post-tool-use.js`) : sur un `Read`
   **COMPLET** (`!partial`) d'un fichier **≥ 16 Ko** déjà lu, **inchangé** (mtime identique —
   signal `waste` renvoyé par `ledger.recordRead`) et **hors `files_modified`** (garde-fou en
