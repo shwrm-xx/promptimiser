@@ -2,6 +2,18 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #60 — epic « Coût par livrable » : trailer git + export backlog)
+
+- `promptimizer/scripts/close-batch.js` : la checklist affiche un bloc `PMZ-Lot`/`PMZ-Cost`/
+  `PMZ-Model` à coller en pied du commit de clôture, quand un lot est en cours (id backlog,
+  coût cumulé formaté, modèle/effort préconisés).
+- `promptimizer/scripts/audit-batch.js` : `backlogSummary` porte désormais `model_hint`/
+  `effort_hint`/`cost_tokens` sur `current` (nécessaire au bloc trailers ci-dessus).
+- `promptimizer/lib/backlog.js` + `promptimizer/scripts/backlog.js` : nouvelle commande
+  `backlog.js export --format csv|md` — export brut de tous les lots (CSV échappé ou table
+  Markdown), pour reporting externe.
+- Tests + vérif manuelle : 758/758 verts, export et bloc trailers testés en sandbox local.
+
 ## 2026-07-19 (lot #59 — epic « Coût par livrable » : carte de clôture)
 
 - `promptimizer/lib/messages.js` : nouveau `lotClosureCardMessage(lot, rereadsAvoided)` — mini-récap

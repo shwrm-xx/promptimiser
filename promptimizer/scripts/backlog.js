@@ -138,6 +138,15 @@ function main() {
       : 'Aucun lot à faire.');
   }
 
+  if (cmd === 'export') {
+    const format = flag('format') || 'md';
+    if (format !== 'md' && format !== 'csv') {
+      return out(`Refusé : --format invalide (« ${format} »). Valeurs acceptées : md | csv.`);
+    }
+    const b = backlog.loadBacklog(root);
+    return out(format === 'csv' ? backlog.exportCsv(b) : backlog.exportMarkdown(b));
+  }
+
   if (cmd === 'reconcile') {
     const r = backlog.reconcile(root);
     if (!r.fixed.length && !r.warnings.length) return out('Rien à réparer.');
@@ -146,7 +155,7 @@ function main() {
     return;
   }
 
-  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | next | reconcile | epic | verify | trigram.`);
+  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | next | reconcile | epic | verify | trigram | export.`);
 }
 
 if (require.main === module) {

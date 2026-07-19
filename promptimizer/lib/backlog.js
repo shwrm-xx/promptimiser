@@ -423,11 +423,35 @@ function reconcile(root) {
   return { fixed, warnings };
 }
 
+const EXPORT_COLUMNS = ['id', 'title', 'status', 'epic', 'model_hint', 'effort_hint', 'verify', 'cost_tokens', 'closed_commit', 'closed_at'];
+
+function csvField(v) {
+  const s = v == null ? '' : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+// Export brut du plan de lots en CSV (une ligne par lot, colonnes EXPORT_COLUMNS) — pour
+// tableur externe (reporting, coût par livrable). Toujours tous les lots, y compris abandonnés.
+function exportCsv(b) {
+  const lines = [EXPORT_COLUMNS.join(',')];
+  for (const l of b.lots) lines.push(EXPORT_COLUMNS.map((c) => csvField(l[c])).join(','));
+  return lines.join('\n');
+}
+
+// Même contenu que exportCsv, en table Markdown (coller dans un compte-rendu/doc).
+function exportMarkdown(b) {
+  const header = `| ${EXPORT_COLUMNS.join(' | ')} |`;
+  const sep = `| ${EXPORT_COLUMNS.map(() => '---').join(' | ')} |`;
+  const rows = b.lots.map((l) => `| ${EXPORT_COLUMNS.map((c) => String(l[c] == null ? '' : l[c]).replace(/\|/g, '\\|')).join(' | ')} |`);
+  return [header, sep, ...rows].join('\n');
+}
+
 module.exports = {
   backlogFile, loadBacklog, saveBacklog, addLot, setVerify, startLot, doneLot, dropLot, noteLot,
   touchLot, addCost, currentLot, nextLot, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
   epicBilan,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot, modelEffortTag,
+  exportCsv, exportMarkdown,
   MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_NOTE, MAX_TODOS, EFFORT_LEVELS,
   COST_BUDGET_TOKENS, COST_WARN_TOKENS,
 };

@@ -1245,6 +1245,31 @@ section('backlog — verify + closed_occupancy (lot #29)');
   b = backlogLib.loadBacklog(repo);
   ok(b.lots[0].verify === null && b.lots[0].closed_occupancy === null,
     'legacy : verify/closed_occupancy absents → null, pas de crash');
+
+  // V12. close-batch : bloc trailers PMZ-Lot/PMZ-Cost/PMZ-Model quand un lot est en cours (lot #60)
+  const lotTrail = backlogLib.addLot(repo, 'Lot trailers', null, 'sonnet', null, null, 'medium');
+  backlogLib.startLot(repo, lotTrail.id);
+  backlogLib.addCost(repo, lotTrail.id, 12345);
+  const rCloseTrail = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', repo]);
+  ok(new RegExp(`PMZ-Lot: ${lotTrail.id}\\b`).test(rCloseTrail.out), 'close-batch : trailer PMZ-Lot = id du lot en cours');
+  ok(/PMZ-Cost: ~12k tokens/.test(rCloseTrail.out), 'close-batch : trailer PMZ-Cost formaté via fmtK');
+  ok(/PMZ-Model: sonnet\/medium/.test(rCloseTrail.out), 'close-batch : trailer PMZ-Model = model_hint\\/effort_hint');
+  backlogLib.dropLot(repo, lotTrail.id);
+
+  // V13. close-batch : aucun lot en cours → pas de bloc trailers
+  const rCloseNoLot = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', repo]);
+  ok(!/Trailers du commit/.test(rCloseNoLot.out), 'close-batch : sans lot en cours, aucun bloc trailers');
+
+  // V14. backlog.js export --format csv|md : en-tête + lignes, refus doux hors énum
+  const rExportCsv = runNode(BKLG, ['export', '--cwd', repo, '--format', 'csv']);
+  ok(/^id,title,status,epic,model_hint,effort_hint,verify,cost_tokens,closed_commit,closed_at/.test(rExportCsv.out),
+    'export --format csv : en-tête de colonnes');
+  ok(rExportCsv.out.split('\n').length >= backlogLib.loadBacklog(repo).lots.length + 1,
+    'export --format csv : une ligne par lot (+ en-tête)');
+  const rExportMd = runNode(BKLG, ['export', '--cwd', repo, '--format', 'md']);
+  ok(/^\| id \| title \|/.test(rExportMd.out), 'export --format md : en-tête de table Markdown');
+  const rExportBad = runNode(BKLG, ['export', '--cwd', repo, '--format', 'xml']);
+  ok(/Refusé : --format invalide/.test(rExportBad.out), 'export : --format hors énum → refus doux');
 }
 
 // ============================ O. CAPTURE TODOWRITE ============================

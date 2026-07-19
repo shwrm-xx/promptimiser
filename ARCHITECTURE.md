@@ -288,6 +288,21 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   n'était pas suivi par git. À part : `.vibe-agent/todo-snapshot.json`, capture passive de la
   todo-list Claude Code (écrasée à chaque `TodoWrite`, sens unique outil→disque — granularité
   tâche ≠ lot, jamais de promotion todo→backlog).
+- **Trailers git du commit de clôture** (`scripts/close-batch.js: trailerBlock`, lot #60) : la
+  checklist affiche, quand un lot est `in_progress`, un bloc `PMZ-Lot`/`PMZ-Cost`/`PMZ-Model`
+  prêt à coller en pied du message de commit (id backlog, `cost_tokens` cumulé formaté
+  `fmtK`, `model_hint`/`effort_hint` combinés) — traçabilité coût/modèle par commit,
+  greppable via `git log --format=%(trailers)` sans reparser le sujet. `null`/« non mesuré »
+  si le champ correspondant est absent, jamais de valeur inventée. Nécessite `model_hint`/
+  `effort_hint`/`cost_tokens` sur `d.backlog.current` (`scripts/audit-batch.js:
+  backlogSummary`, étendu à cet effet — absents du résumé initial qui ne portait que
+  `id`/`title`/`verify`).
+- **Export du plan de lots** (`backlog.js export --format csv|md`, `lib/backlog.js: exportCsv`/
+  `exportMarkdown`, lot #60) : sortie brute de tous les lots (colonnes fixes : id, title,
+  status, epic, model_hint, effort_hint, verify, cost_tokens, closed_commit, closed_at),
+  CSV échappé (guillemets doublés) ou table Markdown — pour reporting externe (tableur,
+  compte-rendu) sans reparser `backlog.json` à la main. `--format` par défaut `md` ; refus
+  doux hors énum `csv|md`.
 - **Handoff de session** (`.vibe-agent/handoff.md`, `lib/handoff.js`) : UN fichier, **écrasé à
   chaque fin de tour** par `stop.js` (jamais cumulé — pas de bloat). Deux origines distinguées
   par marqueur en 1re ligne : `<!-- pmz:handoff:auto -->` (mécanique : epic/lot, branche,

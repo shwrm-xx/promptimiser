@@ -5,8 +5,18 @@ const { compute } = require('./audit-batch');
 const { runVerify } = require('../lib/project');
 const { VERIFY_CLOSE_MS } = require('../lib/timeouts');
 const { parseCwd } = require('../lib/cli');
+const { fmtK } = require('../lib/messages');
 
 function yn(v) { return v ? 'oui' : 'non'; }
+
+// Trailers git à coller en pied du message de commit de clôture — traçabilité coût/modèle
+// par lot (lot #60), lisibles par `git log --format=%(trailers)` sans reparser le sujet.
+function trailerBlock(l) {
+  if (!l) return '';
+  const model = l.model_hint ? `${l.model_hint}${l.effort_hint ? `/${l.effort_hint}` : ''}` : 'non posé';
+  const cost = l.cost_tokens > 0 ? `~${fmtK(l.cost_tokens)} tokens` : 'non mesuré';
+  return `\n\n## Trailers du commit\n\nÀ coller en pied du message de commit :\n\`\`\`\nPMZ-Lot: ${l.id}\nPMZ-Cost: ${cost}\nPMZ-Model: ${model}\n\`\`\`\n`;
+}
 // Base des chemins d'aide affichés : racine du plugin en mode plugin, sinon install manuelle.
 const PMZ_BASE = (process.env.CLAUDE_PLUGIN_ROOT || '').trim() || '~/.claude/promptimizer';
 
@@ -53,7 +63,7 @@ Checklist :
 - CHANGELOG mis à jour : ${changelog}
 - Commit fait : ${commit}
 - Non vérifié explicitement listé : à confirmer
-${backlogBlock}
+${backlogBlock}${trailerBlock(bl && bl.current)}
 ## Économie de contexte
 
 - lectures évitées : voir .vibe-agent/read-ledger.json

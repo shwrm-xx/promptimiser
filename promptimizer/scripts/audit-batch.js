@@ -18,7 +18,10 @@ function backlogSummary(root) {
     return {
       done: p.done,
       total: p.total,
-      current: cur ? { id: cur.id, title: cur.title, verify: cur.verify || null } : null,
+      current: cur ? {
+        id: cur.id, title: cur.title, verify: cur.verify || null,
+        model_hint: cur.model_hint || null, effort_hint: cur.effort_hint || null, cost_tokens: cur.cost_tokens || 0,
+      } : null,
       next: nxt ? { id: nxt.id, title: nxt.title } : null,
     };
   } catch (_) {
