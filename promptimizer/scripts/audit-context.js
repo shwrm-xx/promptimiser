@@ -48,6 +48,8 @@ function main() {
   const occ = cl.occupancy && typeof cl.occupancy.last === 'number' ? cl.occupancy.last : null;
   const delta = cl.occupancy && typeof cl.occupancy.delta_last_turn === 'number'
     ? cl.occupancy.delta_last_turn : null;
+  // hitRate cache (lot #58) : miroir posé par recordOccupancy, jamais recalculé ici.
+  const hitRate = cl.occupancy && typeof cl.occupancy.hit_rate === 'number' ? cl.occupancy.hit_rate : null;
 
   let statut;
   let baseLabel;
@@ -73,6 +75,7 @@ function main() {
   lines.push('## Économie de contexte');
   lines.push('');
   lines.push(`Statut : ${statut} — ${baseLabel}`);
+  if (hitRate != null) lines.push(`Cache hitRate (dernier tour) : ${Math.round(hitRate * 100)}%`);
   lines.push('');
   lines.push('Gaspillage estimé :');
   if (wasteEntries.length) {

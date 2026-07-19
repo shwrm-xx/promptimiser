@@ -3109,6 +3109,91 @@ section('Coût réel par lot (agrégation cost_tokens + alerte ~300k, lot #43)')
   ok(cF.code === 0, 'e2e : aucun lot + transcript absent -> exit 0 (fail-open)');
 }
 
+// ============================ S6. BILAN D'EPIC AUTO (lot #58) ============================
+section('Bilan d\'epic auto + hitRate visible (lot #58)');
+{
+  // Unit — epicBilan : null tant qu'un lot de l'epic reste todo/in_progress ; renvoie le
+  // total agrégé + durée une fois le DERNIER lot de l'epic clos.
+  const repoE = path.join(SANDBOX, 'repo-epic-bilan');
+  fs.mkdirSync(repoE, { recursive: true });
+  execFileSync('git', ['init', '-q', repoE]);
+  const e1 = backlogLib.addLot(repoE, 'Lot epic 1', 'fait quand : test', null, 'Mon Epic');
+  const e2 = backlogLib.addLot(repoE, 'Lot epic 2', 'fait quand : test', null, 'Mon Epic');
+  const eOther = backlogLib.addLot(repoE, 'Lot sans epic', 'fait quand : test', null, null);
+  ok(backlogLib.epicBilan(backlogLib.loadBacklog(repoE), eOther) === null, 'epicBilan : lot sans epic -> null');
+
+  backlogLib.startLot(repoE, e1.id);
+  backlogLib.addCost(repoE, e1.id, 10000);
+  const d1 = backlogLib.doneLot(repoE, e1.id, 'aaa1111');
+  ok(backlogLib.epicBilan(backlogLib.loadBacklog(repoE), d1) === null,
+    'epicBilan : encore un lot todo dans l\'epic -> null (pas le dernier)');
+
+  backlogLib.startLot(repoE, e2.id);
+  backlogLib.addCost(repoE, e2.id, 4000);
+  const d2 = backlogLib.doneLot(repoE, e2.id, 'bbb2222');
+  const bilan = backlogLib.epicBilan(backlogLib.loadBacklog(repoE), d2);
+  ok(bilan && bilan.epic === 'Mon Epic' && bilan.count === 2 && bilan.totalCost === 14000 && bilan.avgCost === 7000,
+    'epicBilan : dernier lot clos -> agrégat correct (2 lots, 14000 tokens, 7000/lot)');
+
+  // messages.epicBilanMessage — grammaire de sévérité (glyphe INFO) + chiffres lisibles.
+  const msgLib = require(path.join(PKG, 'lib', 'messages'));
+  const txt = msgLib.epicBilanMessage(bilan);
+  ok(/Epic « Mon Epic » terminée/.test(txt) && /2 lot\(s\)/.test(txt) && /14k tokens/.test(txt),
+    'epicBilanMessage : texte nomme l\'epic, le nombre de lots et le coût total');
+
+  // e2e stop.js — auto-clôture du 1er lot d'une epic à 2 lots : PAS de bilan (epic pas finie).
+  const repo58 = path.join(SANDBOX, 'repo-t58-e2e');
+  fs.mkdirSync(repo58, { recursive: true });
+  execFileSync('git', ['init', '-q', repo58]);
+  fs.mkdirSync(path.join(repo58, '.vibe-agent'), { recursive: true });
+  fs.writeFileSync(path.join(repo58, '.vibe-agent', '.gitignore'), '*\n!.gitignore\n!backlog.json\n!rules.yaml\n');
+  fs.writeFileSync(path.join(repo58, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo58, 'add', '.']);
+  execFileSync('git', ['-C', repo58, 'commit', '-q', '-m', 'init']);
+  const f1 = backlogLib.addLot(repo58, 'Lot A', 'fait quand : test', null, 'Epic E2E');
+  const f2 = backlogLib.addLot(repo58, 'Lot B', 'fait quand : test', null, 'Epic E2E');
+  backlogLib.startLot(repo58, f1.id);
+  const empty58 = path.join(SANDBOX, 'empty-t58.jsonl');
+  fs.writeFileSync(empty58, '');
+  const sysMsg58 = (r) => { try { return JSON.parse(r.out).systemMessage || ''; } catch (_) { return ''; } };
+
+  fs.writeFileSync(path.join(repo58, 'w.txt'), 'x'); // lot ouvert
+  runHook('stop.js', { session_id: 't58-s1', cwd: repo58, transcript_path: empty58 });
+  execFileSync('git', ['-C', repo58, 'add', '.']);
+  execFileSync('git', ['-C', repo58, 'commit', '-q', '-m', 'lot A fini']);
+  const r1 = runHook('stop.js', { session_id: 't58-s1', cwd: repo58, transcript_path: empty58 });
+  ok(backlogLib.loadBacklog(repo58).lots[0].status === 'done', 't58 : lot A auto-clos');
+  ok(!/Epic « Epic E2E » terminée/.test(sysMsg58(r1)), 't58 : lot A clos mais lot B todo -> pas de bilan d\'epic');
+
+  // e2e stop.js — auto-clôture du DERNIER lot de l'epic : bilan émis dans le systemMessage.
+  backlogLib.startLot(repo58, f2.id);
+  fs.writeFileSync(path.join(repo58, 'w2.txt'), 'y'); // lot ouvert
+  runHook('stop.js', { session_id: 't58-s2', cwd: repo58, transcript_path: empty58 });
+  execFileSync('git', ['-C', repo58, 'add', '.']);
+  execFileSync('git', ['-C', repo58, 'commit', '-q', '-m', 'lot B fini']);
+  const r2 = runHook('stop.js', { session_id: 't58-s2', cwd: repo58, transcript_path: empty58 });
+  ok(backlogLib.loadBacklog(repo58).lots[1].status === 'done', 't58 : lot B auto-clos');
+  ok(/Epic « Epic E2E » terminée/.test(sysMsg58(r2)), 't58 : dernier lot de l\'epic -> bilan émis (systemMessage)');
+
+  // hitRate cache : recordOccupancy persiste occupancy.hit_rate, /budget (audit-context.js)
+  // le restitue sans reparser le transcript.
+  const ledger58 = require(path.join(PKG, 'lib', 'ledger'));
+  const project58 = require(path.join(PKG, 'lib', 'project'));
+  project58.ensureLedger(repo58);
+  ledger58.recordOccupancy(repo58, { occ: 50000, delta: 1000, sessionId: 't58-hr', hitRate: 0.87 });
+  ok(ledger58.loadContextLedger(repo58).occupancy.hit_rate === 0.87, 'recordOccupancy : hit_rate persisté tel quel');
+  const auditOut = execFileSync('node', [path.join(PKG, 'scripts', 'audit-context.js')], { cwd: repo58, encoding: 'utf8' });
+  ok(/Cache hitRate \(dernier tour\) : 87%/.test(auditOut), 'audit-context.js : ligne hitRate affichée (arrondie à 87%)');
+
+  // Absence de hit_rate (jamais calculé) -> pas de ligne, pas de crash.
+  const repoNoHr = path.join(SANDBOX, 'repo-t58-nohr');
+  fs.mkdirSync(repoNoHr, { recursive: true });
+  execFileSync('git', ['init', '-q', repoNoHr]);
+  project58.ensureLedger(repoNoHr);
+  const auditNoHr = execFileSync('node', [path.join(PKG, 'scripts', 'audit-context.js')], { cwd: repoNoHr, encoding: 'utf8' });
+  ok(!/Cache hitRate/.test(auditNoHr), 'audit-context.js : pas de hit_rate connu -> aucune ligne (pas de chiffre fantôme)');
+}
+
 // ============================ T. CLÔTURE PROUVÉE (verify auto + garde-fou changelog, lot #44) ============================
 section('Clôture prouvée : verify à l\'auto-clôture + garde-fou CHANGELOG (lot #44)');
 {

@@ -184,7 +184,11 @@ désinstallation. Un redémarrage de session peut être nécessaire pour l'affic
 
 `/budget` et `/check-context` chiffrent leur statut vert/orange/rouge en **tokens réels**
 (occupation courante du contexte + gaspillage de relecture), avec repli annoncé sur le comptage
-de relectures quand l'occupation token n'est pas encore connue.
+de relectures quand l'occupation token n'est pas encore connue. `/budget` affiche aussi le
+**hitRate cache** du dernier tour quand il est connu.
+
+À la clôture du **dernier lot d'une epic**, un **bilan chiffré** est émis (nombre de lots, coût
+total, coût moyen/lot, durée) — en plus du nudge habituel de clôture de lot.
 
 _Après une mise à jour du package, relance l'installeur (`install.command`/`.sh`/`.ps1`) puis
 redémarre Claude Code : les matchers de hooks ne s'appliquent qu'à la réinstallation._

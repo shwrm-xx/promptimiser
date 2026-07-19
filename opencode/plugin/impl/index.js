@@ -19,7 +19,7 @@ const project = require('../lib/project');
 const ledger = require('../lib/ledger');
 const {
   writeTodoSnapshot, loadBacklog, currentLot, nextLot, progress, readTodoSnapshot, doneLot,
-  addCost, COST_WARN_TOKENS,
+  addCost, COST_WARN_TOKENS, epicBilan,
 } = require('../lib/backlog');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { readHandoff, markConsumed, parseSkipPaths, writeAutoHandoff } = require('../lib/handoff');
@@ -31,7 +31,7 @@ const { severityOf, SEV } = require('../lib/severity');
 const {
   MSG_ACTIF, MSG_HANDOFF, MSG_CLOTURE, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   backlogResumeMessage, compactResumeMessage, largeWithPlanMessage, modelMismatchMessage,
-  lotCostMessage, closureProofMessage,
+  lotCostMessage, closureProofMessage, epicBilanMessage,
 } = require('../lib/messages');
 
 // Détection init/scaffold et demandes trop larges (miroir de hooks/user-prompt-submit.js).
@@ -243,6 +243,7 @@ async function createHooks(input) {
       const open = project.gitStatusMeaningful(root).length > 0;
       let closureToast = null;
       let proof = null; // { text, failed } — preuve de clôture à l'auto-clôture univoque
+      let bilanToast = null; // bilan d'epic (lot #58), parité stop.js
       if (open && !st.closure_reminded_for_batch) {
         st.closure_reminded_for_batch = true;
         closureToast = MSG_CLOTURE.split('\n')[0] + ' Propose /close-batch (commit + changelog + handoff).';
@@ -257,6 +258,12 @@ async function createHooks(input) {
         if (inProg.length === 1) {
           const r = occ.readRecord(sid);
           const done = doneLot(root, inProg[0].id, null, closedNumber, sid, r ? r.occ : null);
+          if (done) {
+            try {
+              const bilan = epicBilan(loadBacklog(root), done);
+              if (bilan) bilanToast = epicBilanMessage(bilan);
+            } catch (_) { /* fail-open : pas de bilan ce tour */ }
+          }
           // (b2) Preuve de clôture (parité lot #44) — APRÈS que doneLot a persisté l'état : un
           // dépassement du délai court du verify ne peut plus corrompre le backlog. Le lot est
           // déjà marqué fait quoi qu'il arrive ici. Échec/timeout -> toast distinct (warning),
@@ -286,6 +293,7 @@ async function createHooks(input) {
       if (costToast) toasts.push({ text: costToast, level: 'warning', sev: severityOf(costToast) });
       if (closureToast) toasts.push({ text: closureToast, level: 'info', sev: SEV.WARN });
       if (proof) toasts.push({ text: proof.text, level: proof.failed ? 'warning' : 'info', sev: severityOf(proof.text) });
+      if (bilanToast) toasts.push({ text: bilanToast, level: 'info', sev: severityOf(bilanToast) });
       return toasts;
     } catch (_) { return []; /* fail-open : l'idle ne casse jamais la session */ }
   }

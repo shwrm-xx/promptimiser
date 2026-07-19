@@ -2,6 +2,30 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #58 — epic « Coût par livrable » : bilan d'epic auto + hitRate visible)
+
+- `promptimizer/lib/backlog.js` : nouveau `epicBilan(b, lot)` — appelé après `doneLot`, renvoie
+  `null` tant qu'un lot de la MÊME epic reste todo/in_progress, sinon agrège ce qui est déjà
+  persisté par lot (`cost_tokens` #43, `started_at`/`closed_at`) : nombre de lots, coût total,
+  coût moyen/lot, durée (best-effort, `null` si une date manque). Aucun recalcul de transcript.
+- `promptimizer/lib/messages.js` : nouveau `epicBilanMessage(bilan)` — nudge VISIBLE (glyphe INFO,
+  grammaire de sévérité #56), émis juste après `lotClosedMessage`.
+- `promptimizer/hooks/stop.js` (Claude Code) et `opencode/plugin/impl/index.js` (OpenCode) :
+  câblent le bilan au même point que l'auto-clôture existante (choke points identiques au lot
+  #57) — passe par l'arbitre de tour (#57).
+- `promptimizer/lib/ledger.js` : `recordOccupancy` persiste désormais `occupancy.hit_rate`
+  (miroir de `turnstats.computeTurn().hitRate`, jusque-là calculé mais jamais conservé) dans
+  `context-ledger.json`, dernière valeur connue conservée si absente ce tour.
+- `promptimizer/scripts/audit-context.js` (script partagé Claude Code / OpenCode, donc `/budget`
+  sur les deux canaux) : affiche le hitRate cache en pourcentage arrondi quand connu, sans ligne
+  ni chiffre fantôme sinon.
+- Tests : `test/run-tests.js` — section « Bilan d'epic auto + hitRate visible (lot #58) »
+  (unitaire `epicBilan`/`epicBilanMessage` + bout-en-bout `stop.js` sur une epic à 2 lots +
+  persistance/restitution du hitRate). 755 OK / 0 échec ; OpenCode 119 OK / 0 (inchangé).
+- Note : `epicBilan`/`epicBilanMessage` avaient déjà atterri dans le commit `2eace9e` (collision
+  avec une session parallèle travaillant dans le même répertoire, dont le commit a ramassé mon
+  travail non commité) — ce lot committe le reste du câblage (hooks, ledger, audit, tests, doc).
+
 ## 2026-07-19 (correctif — `/close-batch` : verify signalée « ÉCHEC » à tort)
 
 - **Bug** : `/close-batch` affichait « Verify : ÉCHEC » en citant la ligne `ABORT : … n'est pas

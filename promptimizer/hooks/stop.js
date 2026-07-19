@@ -19,12 +19,12 @@ const { writeAutoHandoff } = require('../lib/handoff');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { loadContextLedger, recordOccupancy, evaluateWaste } = require('../lib/ledger');
 const { incrementLot } = require('../lib/lot');
-const { loadBacklog, doneLot, nextLot, progress, currentLot, addCost, COST_WARN_TOKENS } = require('../lib/backlog');
+const { loadBacklog, doneLot, nextLot, progress, currentLot, addCost, COST_WARN_TOKENS, epicBilan } = require('../lib/backlog');
 const occupancy = require('../lib/occupancy');
 const turnstats = require('../lib/turnstats');
 const { arbitrate } = require('../lib/arbiter');
 const {
-  MSG_CLOTURE, occupancyMessage, lotClosedMessage,
+  MSG_CLOTURE, occupancyMessage, lotClosedMessage, epicBilanMessage,
   costlyTurnMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
 } = require('../lib/messages');
@@ -72,7 +72,7 @@ function main() {
   if (root) {
     ensureLedger(root);
     // Miroir compact de l'occupation dans le ledger projet (aperçu lisible).
-    if (turn && turn.occ != null) recordOccupancy(root, { occ: turn.occ, delta: turn.delta, sessionId: sid });
+    if (turn && turn.occ != null) recordOccupancy(root, { occ: turn.occ, delta: turn.delta, sessionId: sid, hitRate: turn.hitRate });
 
     // (a5) palier de gaspillage trans-session (lot #52) — évalué INCONDITIONNELLEMENT
     // (surtout PAS dans la branche clôture, qui n'est prise qu'à tree sale) : au
@@ -127,6 +127,10 @@ function main() {
         if (done) {
           const after = loadBacklog(root);
           parts.push(lotClosedMessage(done, nextLot(after), progress(after)));
+          // Bilan d'epic (lot #58) : émis en plus, seulement quand ce lot clôturait le
+          // DERNIER lot en attente de son epic (epicBilan renvoie null sinon).
+          const bilan = epicBilan(after, done);
+          if (bilan) parts.push(epicBilanMessage(bilan));
           // (b2) Preuve de clôture (lot #44) — APRÈS que doneLot a persisté l'état (un dépassement
           // du watchdog pendant le verify ne peut donc plus corrompre le backlog). Jamais bloquant :
           // le lot est déjà marqué fait quoi qu'il arrive ici. try/catch dédié -> fail-open local.

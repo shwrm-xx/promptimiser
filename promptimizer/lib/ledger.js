@@ -123,7 +123,7 @@ function recordRead(root, relPath, sessionId, partial, stat) {
 // fine vit dans l'état hors-projet <sha1>-turns.json ; ici c'est un aperçu lisible,
 // last-writer-wins ASSUMÉ (le dernier Stop écrase — acceptable, ce n'est pas la source
 // de vérité). No-op hors projet initialisé ou sans occ.
-function recordOccupancy(root, { occ, delta, sessionId }) {
+function recordOccupancy(root, { occ, delta, sessionId, hitRate }) {
   if (!isInitialized(root) || occ == null) return;
   const cl = loadContextLedger(root);
   cl.occupancy = {
@@ -131,6 +131,9 @@ function recordOccupancy(root, { occ, delta, sessionId }) {
     at: Date.now(),
     delta_last_turn: delta == null ? null : delta,
     session: sessionId || null,
+    // hitRate cache (lot #58) : miroir de turnstats.computeTurn().hitRate, lu par /budget
+    // sans reparser le transcript. null si non calculable ce tour (garde la dernière valeur).
+    hit_rate: Number.isFinite(hitRate) ? hitRate : (cl.occupancy && Number.isFinite(cl.occupancy.hit_rate) ? cl.occupancy.hit_rate : null),
   };
   if (sessionId) cl.session_id = sessionId;
   writeAtomic(contextLedgerFile(root), cl);

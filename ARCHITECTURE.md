@@ -738,3 +738,20 @@ plusieurs sessions réelles (capture fournie par l'utilisateur, 2026-07-12).
   preuve sont mutuellement exclusives) : le port vise la **parité de contrat**, pas un gain immédiat.
   Alternative écartée : indicateur « (+N nudges masqués) » en pied de bloc — écarté pour rester
   littéral (plafond seul demandé) ; à rouvrir si un drop silencieux d'un `lotClosed`/`proof` gêne.
+
+- **Bilan d'epic auto + hitRate visible** (lot #58, epic « Coût par livrable ») : `backlog.epicBilan(b,
+  lot)` s'appelle juste après `doneLot` — renvoie `null` tant qu'un lot de la MÊME epic reste
+  todo/in_progress, sinon agrège ce qui est **déjà persisté par lot** (`cost_tokens` #43,
+  `started_at`/`closed_at`) : nombre de lots, coût total, coût moyen/lot, durée (écart entre le plus
+  ancien `started_at` et le plus récent `closed_at`, `null` si l'une des deux dates manque — vieux
+  lots créés avant l'ajout de `started_at`). Aucun recalcul depuis le transcript. `epicBilanMessage`
+  émet le nudge (glyphe INFO, grammaire #56) juste après `lotClosedMessage` ; passe par l'arbitre de
+  tour (#57) comme les autres. **Choke points identiques à #57** : bloc auto-clôture de `hooks/stop.js`
+  côté Claude Code, `closureAndHandoff` côté OpenCode (même toast, même parité de contrat).
+  hitRate cache : `turnstats.computeTurn().hitRate` était déjà calculé mais jamais persisté —
+  `recordOccupancy` le miroir maintenant dans `context-ledger.json` (`occupancy.hit_rate`, dernière
+  valeur connue conservée si absente ce tour) ; `audit-context.js` (donc `/budget` sur les deux
+  canaux, script partagé) l'affiche en pourcentage arrondi, une ligne en moins si jamais calculé
+  (pas de chiffre fantôme). Non couvert : mirroring de l'occupation côté OpenCode (`recordOccupancy`
+  n'y est jamais appelé, gap préexistant hors scope de ce lot) — `/pmz budget` y retombe sur le
+  fallback « comptage de relectures » comme avant.
