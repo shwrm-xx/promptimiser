@@ -3,6 +3,7 @@
 const { BUCKETS, FLOATING_STEP } = require('./occupancy');
 const { COST_BUDGET_TOKENS, modelEffortTag } = require('./backlog');
 const { hintResolvableClaude } = require('./modelwatch');
+const { SEV, withSeverity } = require('./severity');
 
 const MSG_ACTIF = [
   'Promptimizer actif.',
@@ -28,17 +29,21 @@ const MSG_NON_INIT = [
   'Avant de coder : finaliser CLAUDE.md/AGENTS.md avec lecture minimale, puis proposer un premier lot court.',
 ].join('\n');
 
-const MSG_LECTURE = [
+// MSG_LECTURE / MSG_CLOTURE sont des nudges VISIBLES (systemMessage stop.js, toast OpenCode) :
+// ils portent le glyphe de sévérité (grammaire lib/severity.js). Les constantes ci-dessus
+// (MSG_ACTIF…MSG_INIT_BEFORE_CODE) sont au contraire INJECTÉES (additionalContext) — des
+// instructions, pas des alertes — et restent volontairement sans glyphe.
+const MSG_LECTURE = withSeverity(SEV.WARN, [
   'Lecture potentiellement coûteuse.',
   'Ce fichier semble déjà connu ou non modifié.',
   'Préférer git grep, git diff ou lecture partielle sauf besoin exact.',
-].join('\n');
+]);
 
-const MSG_CLOTURE = [
+const MSG_CLOTURE = withSeverity(SEV.WARN, [
   'Lot modifié sans clôture complète.',
   'Propose la clôture via une question à choix (OK / Non) — pas en texte libre ; sur OK,',
   'lance /close-batch pour la checklist et l\'audit complets (vérif ciblée, CHANGELOG, commit, handoff).',
-].join('\n');
+]);
 
 const MSG_HANDOFF = [
   'Handoff de la session précédente (.vibe-agent/handoff.md) — prends-le comme point de départ.',
@@ -101,7 +106,7 @@ function occupancyMessage(occ, bucket) {
   // plus cher qu'une clôture + session fraîche. Ces messages sont VISIBLES (systemMessage),
   // pas réinjectés dans le contexte — donc ce détail n'ajoute aucun coût de cache.
   if (bucket >= 2) lines.push(...compactionCostLines(occ));
-  return lines.join('\n');
+  return withSeverity(SEV.WARN, lines);
 }
 
 // Message VISIBLE émis par pre-compact sur une compaction MANUELLE (/compact) : rappelle
@@ -113,11 +118,13 @@ function compactionNudgeMessage(occ) {
   lines.push(
     "Alternative la prochaine fois : /close-batch (lot fini) ou commit intermédiaire + /fresh-session — repart d'un handoff sans résumé lossy.",
   );
-  return lines.join('\n');
+  return withSeverity(SEV.WARN, lines);
 }
 
 // Nudge occupation HAUTE injecté dans UserPromptSubmit (coûte du contexte) — donc
-// volontairement court (2 lignes) et plafonné 1×/palier par l'appelant.
+// volontairement court (2 lignes) et plafonné 1×/palier par l'appelant. INJECTÉ (additionalContext,
+// pas systemMessage) : hors grammaire de sévérité (pas de glyphe — c'est un coût de contexte, pas
+// une alerte visible), à la différence de occupancyMessage ci-dessus.
 function occupancyPromptMessage(occ, bucket) {
   const k = Math.round(occ / 1000);
   return [
@@ -153,30 +160,30 @@ function statusLineText(info) {
 
 // Tour coûteux : +delta d'occupation notable sur le dernier tour (anti-spam 3 tours).
 function costlyTurnMessage(turn) {
-  return [
+  return withSeverity(SEV.WARN, [
     `Tour coûteux : +${fmtK(turn.delta)} tokens de contexte (sortie ~${fmtK(turn.out)}, ${turn.req} appel${turn.req > 1 ? 's' : ''}).`,
     'Cause fréquente : Read complet ou tool_result verbeux. git grep/git diff ou lecture partielle coûtent bien moins.',
-  ].join('\n');
+  ]);
 }
 
 // Cache invalidé EN PLEIN tour (anormal) : un fichier lu par le cache a changé en session.
 function bustIntraMessage(turn) {
   const b = turn.busts.filter((x) => !x.first).slice(-1)[0] || {};
   const k = fmtK(b.cacheCreation || turn.cacheCreation);
-  return [
+  return withSeverity(SEV.ALERT, [
     `Cache invalidé EN PLEIN tour (~${k} tokens recréés) — anormal.`,
     'Cause probable : un fichier relu par le cache (CLAUDE.md, settings, gros fichier) modifié en cours de session ; il sera recréé à chaque tour suivant.',
-  ].join('\n');
+  ]);
 }
 
 // Cache expiré au 1er appel du tour (pause/TTL) : normal, signalé 1×/session.
 function pauseTtlMessage(turn) {
   const b = turn.busts.filter((x) => x.first)[0] || {};
   const k = fmtK(b.cacheCreation || turn.cacheCreation);
-  return [
+  return withSeverity(SEV.INFO, [
     `Cache expiré après une pause (~${k} tokens retokenisés au 1er appel du tour).`,
     "Normal après > ~5 min d'inactivité ; enchaîner les tours l'évite. (Signalé 1×/session.)",
-  ].join('\n');
+  ]);
 }
 
 // Confirmation factuelle après un auto-scaffold de projet neuf (point 6) — jamais
@@ -203,7 +210,7 @@ function lotClosedMessage(lot, next, prog) {
   } else {
     lines.push('Plan de lots terminé.');
   }
-  return lines.join('\n');
+  return withSeverity(SEV.INFO, lines);
 }
 
 // Réinjection minimale après compaction (SessionStart source=compact, additionalContext).
@@ -268,10 +275,10 @@ function sessionTitleMessage(title) {
 function lotCostMessage(lot, costTokens) {
   const over = (costTokens || 0) >= COST_BUDGET_TOKENS;
   const budgetK = Math.round(COST_BUDGET_TOKENS / 1000);
-  return [
+  return withSeverity(over ? SEV.ALERT : SEV.WARN, [
     `Lot « ${lot.title} » : ~${fmtK(costTokens)} tokens de sortie cumulés — ${over ? `au-delà du budget ~${budgetK}k/lot` : `en approche du budget ~${budgetK}k/lot`}.`,
     'Un lot devenu gros gagne à être redécoupé (un sous-lot livrable + commit intermédiaire, puis /fresh-session) plutôt qu\'étiré.',
-  ].join('\n');
+  ]);
 }
 
 // Preuve de clôture à l'AUTO-clôture (lot #44, étendu #55) : à l'instant où le tree redevient
@@ -282,21 +289,27 @@ function lotCostMessage(lot, costTokens) {
 // doux invitant à en poser une au prochain lot. Renvoie null si rien à dire.
 function closureProofMessage(verify, changelogMissing, noVerify) {
   const lines = [];
+  let sev = SEV.INFO;
   if (verify && verify.cmd) {
     if (verify.ok) {
       lines.push(`Verify du lot (\`${verify.cmd}\`) : OK.`);
+      // reste INFO : preuve verte.
     } else if (verify.timedOut) {
       lines.push(`Verify du lot (\`${verify.cmd}\`) : non terminée dans le délai court de l'auto-clôture — relance-la via /close-batch pour la preuve complète.`);
+      sev = SEV.WARN;
     } else {
       lines.push(`Verify du lot (\`${verify.cmd}\`) : ÉCHEC (clôture non bloquée) — à corriger avant d'enchaîner :\n  ${verify.tail}`);
+      sev = SEV.ALERT;
     }
   } else if (noVerify) {
     lines.push('Clos sans preuve : ce lot n\'avait pas de commande verify. Au prochain /scope, ajoute `--verify "…"` (si le lot est vérifiable par commande) pour une clôture prouvée.');
+    sev = SEV.WARN;
   }
   if (changelogMissing) {
     lines.push('Rappel doux : le commit de clôture ne touche pas CHANGELOG.md — un lot de retours = une entrée datée au CHANGELOG.');
+    if (sev === SEV.INFO) sev = SEV.WARN;
   }
-  return lines.length ? lines.join('\n') : null;
+  return lines.length ? withSeverity(sev, lines) : null;
 }
 
 // Palier de gaspillage franchi (lot #52) : gaspillage de relecture cumulé (relectures
@@ -311,7 +324,7 @@ function wasteBucketMessage(waste, topFiles) {
     lines.push('Principaux coupables : ' + topFiles.map((f) => `${f.path} (~${fmtK(f.waste)})`).join(', ') + '.');
   }
   lines.push('Avant de rouvrir un fichier déjà lu : git diff/git grep, ou lecture partielle (offset/limit).');
-  return lines.join('\n');
+  return withSeverity(SEV.WARN, lines);
 }
 
 // Nudge subagent (lot #52) : à haute occupation avec beaucoup de lectures, l'exploration
@@ -319,14 +332,31 @@ function wasteBucketMessage(waste, topFiles) {
 // contexte). Message VISIBLE (systemMessage stop.js — jamais réinjecté), 1×/session.
 function subagentNudgeMessage(occ, mix) {
   const k = Math.round(occ / 1000);
-  return [
+  return withSeverity(SEV.INFO, [
     `Contexte ≈ ${k}k tokens et beaucoup de lectures ce tour (${mix.fullReads}/${mix.reads} Read complets).`,
     "À cette occupation, délègue l'exploration à un subagent (outil Agent/Task) : le gros des lectures reste HORS de ce contexte, seul le résultat synthétique y revient.",
-  ].join('\n');
+  ]);
+}
+
+// Hygiène de lecture de la session (nudge VISIBLE stop.js) : part des Read complets. Advisory,
+// donc INFO. Extrait ici (jadis inline dans stop.js) pour passer par la grammaire de sévérité.
+function readHygieneMessage(mix) {
+  return withSeverity(SEV.INFO, [
+    `Cette session : ${mix.fullReads}/${mix.reads} lectures étaient des Read complets (sans offset/limit).`,
+    'Grep/git diff en amont sur les gros fichiers réduirait le coût des prochaines relectures.',
+  ]);
+}
+
+// Relectures évitables du lot courant (nudge VISIBLE stop.js) : réutilise le corps de MSG_LECTURE
+// (déjà glyphé WARN) et lui adjoint la liste des fichiers relus. Extrait ici (jadis inline) pour
+// que le nudge porte la même grammaire que les autres.
+function avoidableRereadsMessage(rereads) {
+  return MSG_LECTURE + '\nRelectures évitables ce lot : ' + rereads.join(', ') + '.';
 }
 
 // Vigie modèle réel vs préconisé (lot #42) : le modèle qui répond ce tour ne correspond pas
-// au model_hint du lot en cours. Injecté au 1er prompt du lot, 1×/session (anti-spam).
+// au model_hint du lot en cours. INJECTÉ (additionalContext user-prompt-submit) 1×/session :
+// hors grammaire de sévérité (pas de glyphe — coût de contexte, pas alerte visible).
 function modelMismatchMessage(lot, actualModel) {
   return [
     `Modèle réel (${actualModel}) ≠ modèle préconisé pour le lot en cours (« ${lot.title} » : ${lot.model_hint}).`,
@@ -339,6 +369,6 @@ module.exports = {
   occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
   compactResumeMessage, backlogResumeMessage, largeWithPlanMessage,
   costlyTurnMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
-  wasteBucketMessage, subagentNudgeMessage,
+  wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
   fmtK, statusLineText,
 };

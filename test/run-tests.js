@@ -362,6 +362,60 @@ const messages = require(path.join(PKG, 'lib', 'messages'));
 }
 ok(/\/close-batch/.test(messages.MSG_CLOTURE), 'MSG_CLOTURE nomme /close-batch');
 
+// ============ G-bis. GRAMMAIRE DE SÉVÉRITÉ DES NUDGES VISIBLES (lot #56) ============
+section('Grammaire de sévérité : lib/severity.js + glyphes des fabriques visibles');
+{
+  const sev = require(path.join(PKG, 'lib', 'severity'));
+  // -- module severity : vocabulaire, rang, format, parsing --
+  ok(sev.SEV.INFO === 'info' && sev.SEV.WARN === 'warn' && sev.SEV.ALERT === 'alert', 'severity : vocabulaire SEV');
+  ok(sev.rank(sev.SEV.ALERT) > sev.rank(sev.SEV.WARN) && sev.rank(sev.SEV.WARN) > sev.rank(sev.SEV.INFO),
+    'severity : rang croissant info < warn < alert');
+  ok(sev.rank('inconnu') === sev.rank(sev.SEV.INFO), 'severity : rang inconnu -> info (fail-open)');
+  const wrapped = sev.withSeverity(sev.SEV.WARN, ['constat', 'action']);
+  ok(wrapped.startsWith(sev.GLYPH.warn + ' constat') && /\naction$/.test(wrapped), 'severity : withSeverity préfixe la 1re ligne, garde les suivantes');
+  ok(sev.withSeverity(sev.SEV.INFO, 'x') === sev.GLYPH.info + ' x', 'severity : withSeverity accepte une chaîne');
+  // roundtrip glyphe -> sévérité (le hook de l'arbitre lot #57)
+  for (const s of ['info', 'warn', 'alert']) ok(sev.severityOf(sev.withSeverity(s, 'y')) === s, `severity : severityOf roundtrip ${s}`);
+  ok(sev.severityOf('texte nu sans glyphe') === sev.SEV.INFO, 'severity : texte non préfixé -> info');
+  ok(sev.severityOf('') === sev.SEV.INFO && sev.severityOf(null) === sev.SEV.INFO, 'severity : severityOf défensif (vide/null)');
+
+  const glyphs = new RegExp('^[' + sev.GLYPH.info + sev.GLYPH.warn + sev.GLYPH.alert + '] ');
+  // -- fabriques VISIBLES : portent un glyphe de sévérité en tête --
+  const visibles = {
+    occupancyMessage: messages.occupancyMessage(320000, 2),
+    compactionNudgeMessage: messages.compactionNudgeMessage(400000),
+    costlyTurnMessage: messages.costlyTurnMessage({ delta: 60000, out: 30000, req: 3 }),
+    bustIntraMessage: messages.bustIntraMessage({ busts: [{ first: false, cacheCreation: 12000 }], cacheCreation: 12000 }),
+    pauseTtlMessage: messages.pauseTtlMessage({ busts: [{ first: true, cacheCreation: 8000 }], cacheCreation: 8000 }),
+    lotClosedMessage: messages.lotClosedMessage({ title: 'L' }, null, { done: 1, total: 2 }),
+    lotCostMessage: messages.lotCostMessage({ title: 'L' }, 260000),
+    wasteBucketMessage: messages.wasteBucketMessage(50000, [{ path: 'a.js', waste: 30000 }]),
+    subagentNudgeMessage: messages.subagentNudgeMessage(320000, { fullReads: 4, reads: 6 }),
+    readHygieneMessage: messages.readHygieneMessage({ fullReads: 3, reads: 5 }),
+    avoidableRereadsMessage: messages.avoidableRereadsMessage(['a.js', 'b.js']),
+    MSG_CLOTURE: messages.MSG_CLOTURE,
+    MSG_LECTURE: messages.MSG_LECTURE,
+  };
+  for (const [name, txt] of Object.entries(visibles)) ok(glyphs.test(txt), `glyphe visible : ${name} porte un glyphe de sévérité`);
+
+  // -- sévérités attendues (variance par cas) --
+  ok(sev.severityOf(messages.pauseTtlMessage({ busts: [{ first: true, cacheCreation: 8000 }], cacheCreation: 8000 })) === sev.SEV.INFO, 'pauseTtl (normal) -> info');
+  ok(sev.severityOf(messages.bustIntraMessage({ busts: [{ first: false, cacheCreation: 12000 }], cacheCreation: 12000 })) === sev.SEV.ALERT, 'bustIntra (anormal) -> alert');
+  ok(sev.severityOf(messages.lotCostMessage({ title: 'L' }, 260000)) === sev.SEV.WARN, 'lotCost en approche -> warn');
+  ok(sev.severityOf(messages.lotCostMessage({ title: 'L' }, 320000)) === sev.SEV.ALERT, 'lotCost au-delà du budget -> alert');
+  ok(sev.severityOf(messages.closureProofMessage({ cmd: 'x', ok: true }, false)) === sev.SEV.INFO, 'closureProof verify OK -> info');
+  ok(sev.severityOf(messages.closureProofMessage({ cmd: 'x', ok: false, timedOut: false, tail: 'z' }, false)) === sev.SEV.ALERT, 'closureProof verify ÉCHEC -> alert');
+  ok(sev.severityOf(messages.closureProofMessage(null, true)) === sev.SEV.WARN, 'closureProof CHANGELOG manquant -> warn');
+
+  // -- FRONTIÈRE : les messages INJECTÉS (additionalContext) ne portent PAS de glyphe --
+  ok(!glyphs.test(messages.MSG_ACTIF), 'frontière : MSG_ACTIF (injecté) sans glyphe');
+  ok(!glyphs.test(messages.MSG_HANDOFF), 'frontière : MSG_HANDOFF (injecté) sans glyphe');
+  ok(!glyphs.test(messages.occupancyPromptMessage(520000, 3)), 'frontière : occupancyPromptMessage (injecté) sans glyphe');
+  ok(!glyphs.test(messages.modelMismatchMessage({ title: 'L', model_hint: 'opus' }, 'sonnet')), 'frontière : modelMismatchMessage (injecté) sans glyphe');
+  // closureProof sans rien à dire -> null (non-régression, consommé par OpenCode)
+  ok(messages.closureProofMessage(null, false) === null, 'closureProof : rien à dire -> null (préservé)');
+}
+
 // ============================ H. HYGIÈNE DE LECTURE (point 4) ============================
 section('Ratio Read-complet / recherche (point 4)');
 function toolUseLine(name, input) {

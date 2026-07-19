@@ -145,7 +145,9 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   fichiers inchangés) est surfacé aux paliers 25k/50k/100k avec le **top-3 des fichiers coupables**
   (une seule fois par palier, sur toute la vie du projet). À haute occupation avec beaucoup de
   lectures, un nudge invite à **déléguer l'exploration à un subagent** (les lectures restent hors du
-  contexte principal).
+  contexte principal). Ces rappels visibles portent un **glyphe de sévérité** (ℹ info / ⚠ warn /
+  ⛔ alert) pour lire d'un coup d'œil ce qui est normal, ce qui mérite attention et ce qui est
+  anormal.
 - **Pendant le tour** : une relecture **complète** d'un gros fichier (≥ 16 Ko) déjà lu et
   inchangé déclenche une note discrète (~60 tokens, plafonnée à 1×/fichier et 3×/session) —
   jamais de blocage, juste un rappel. Si un **résumé** du fichier est connu (lignes

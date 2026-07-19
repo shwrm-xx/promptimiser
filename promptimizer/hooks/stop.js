@@ -23,9 +23,9 @@ const { loadBacklog, doneLot, nextLot, progress, currentLot, addCost, COST_WARN_
 const occupancy = require('../lib/occupancy');
 const turnstats = require('../lib/turnstats');
 const {
-  MSG_CLOTURE, MSG_LECTURE, occupancyMessage, lotClosedMessage,
+  MSG_CLOTURE, occupancyMessage, lotClosedMessage,
   costlyTurnMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
-  wasteBucketMessage, subagentNudgeMessage,
+  wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
 } = require('../lib/messages');
 
 function main() {
@@ -44,12 +44,7 @@ function main() {
   // (a2) hygiène de lecture — indépendante du ledger, une fois par session, marche
   // même sur un projet jamais initialisé (lit le transcript brut comme (a)).
   const mix = occupancy.evaluateReadMix(input.transcript_path, sid);
-  if (mix) {
-    parts.push([
-      `Cette session : ${mix.fullReads}/${mix.reads} lectures étaient des Read complets (sans offset/limit).`,
-      'Grep/git diff en amont sur les gros fichiers réduirait le coût des prochaines relectures.',
-    ].join('\n'));
-  }
+  if (mix) parts.push(readHygieneMessage(mix));
 
   // (a2bis) nudge subagent (lot #52) — haute occupation (>= 300k) + lectures récentes :
   // suggère de déporter l'exploration hors du contexte. Anti-spam DÉDIÉ (état 'subagent'),
@@ -114,9 +109,7 @@ function main() {
       // Relectures évitables du lot (ledger context) -> note concrète (spirit de MSG_LECTURE).
       const cl = loadContextLedger(root);
       const rereads = Array.from(new Set((cl.repeated_reads || []).map((r) => r && r.path).filter(Boolean))).slice(0, 5);
-      if (rereads.length) {
-        parts.push(MSG_LECTURE + '\nRelectures évitables ce lot : ' + rereads.join(', ') + '.');
-      }
+      if (rereads.length) parts.push(avoidableRereadsMessage(rereads));
       st.closure_reminded_for_batch = true;
       saveSessionState(root, st);
     } else if (!open && st.closure_reminded_for_batch) {

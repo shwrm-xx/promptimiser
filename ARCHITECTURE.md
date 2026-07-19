@@ -58,7 +58,10 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
 4. **PreToolUse étroit** : `deny`/`ask` sur denylist destructive ancrée + whitelist large ;
    aucun `ask` sur Read/Edit (respect `acceptEdits`).
 5. **systemMessage** = canal des rappels : visible utilisateur, **non réinjecté** dans le contexte
-   du modèle, **non bloquant** (technique reprise de `context-guard.py`).
+   du modèle, **non bloquant** (technique reprise de `context-guard.py`). Les nudges de ce canal
+   portent un **glyphe de sévérité** (`lib/severity.js` : ℹ info / ⚠ warn / ⛔ alert) posé par les
+   fabriques de `lib/messages.js` — les messages `additionalContext` (instructions injectées) n'en
+   portent PAS (cf. « Grammaire de sévérité » dans Décisions).
 
 ## Flux de données
 
@@ -701,3 +704,16 @@ plusieurs sessions réelles (capture fournie par l'utilisateur, 2026-07-12).
   (skills invoqués quelques fois sur 76 sessions) fait de l'adoption le risque n°1 — aucune
   nouvelle commande sans preuve d'usage des 7 existantes ; enrichir l'existant (messages,
   champs, hooks déjà branchés) plutôt qu'élargir la surface.
+- **Grammaire de sévérité des nudges** (lot #56, epic « Coût par livrable ») : le canal
+  `systemMessage` accumule des nudges hétérogènes (occupation, coût, gaspillage, clôture, preuve…)
+  qui, concaténés par `stop.js`, forment un pavé sans hiérarchie. `lib/severity.js` centralise
+  trois niveaux (info/warn/alert), leur glyphe et leur **rang de priorité** ; les fabriques de
+  `lib/messages.js` préfixent chaque nudge VISIBLE de son glyphe (structure « constat → chiffre →
+  action »). Frontière assumée : **seuls les nudges visibles** (systemMessage / toast OpenCode)
+  portent un glyphe — les messages `additionalContext` (MSG_ACTIF, handoff, résumés, vigie modèle,
+  occupancyPrompt) sont des **instructions injectées**, pas des alertes, et un glyphe y coûterait
+  des tokens de contexte pour rien. `severityOf(texte)` reparse le glyphe : c'est le hook prévu
+  pour l'**arbitre de tour** (lot #57) qui plafonnera/triera les nudges par sévérité décroissante
+  sans re-parser la prose. Glyphes purement cosmétiques (jamais lus par une logique de contrôle) —
+  fail-open par construction. Alternative écartée : nudges structurés `{severity, text}` portés
+  jusqu'à `stop.js` — reporté au lot #57 (l'arbitre), pour garder #56 non invasif sur les hooks.

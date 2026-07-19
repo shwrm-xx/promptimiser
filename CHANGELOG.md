@@ -2,6 +2,32 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #56 — epic « Coût par livrable » : grammaire de sévérité des nudges)
+
+- `promptimizer/lib/severity.js` (**nouveau**) : grammaire centralisée des nudges VISIBLES —
+  trois niveaux `info`/`warn`/`alert`, leurs glyphes (ℹ / ⚠ / ⛔), leur rang de priorité, un
+  `withSeverity(sev, corps)` qui préfixe la 1re ligne du glyphe, et un `severityOf(texte)` qui
+  reparse le glyphe (hook prévu pour l'arbitre de tour du lot #57). Glyphes purement cosmétiques,
+  fail-open par construction.
+- `promptimizer/lib/messages.js` : les fabriques de nudges **visibles** (`systemMessage` /
+  toast OpenCode) portent désormais un glyphe de sévérité — `occupancyMessage`,
+  `compactionNudgeMessage`, `costlyTurnMessage` (⚠), `bustIntraMessage` (⛔ anormal),
+  `pauseTtlMessage` (ℹ normal), `lotClosedMessage` (ℹ), `lotCostMessage` (⚠ approche / ⛔
+  au-delà du budget), `closureProofMessage` (ℹ verify OK, ⚠ timeout/CHANGELOG, ⛔ échec),
+  `wasteBucketMessage` (⚠), `subagentNudgeMessage` (ℹ), `MSG_CLOTURE`/`MSG_LECTURE` (⚠). Deux
+  nudges jadis inline dans `stop.js` sont extraits en fabriques (`readHygieneMessage`,
+  `avoidableRereadsMessage`) pour passer par la grammaire. **Frontière assumée** : les messages
+  `additionalContext` (MSG_ACTIF, handoff, résumés, `occupancyPromptMessage`,
+  `modelMismatchMessage`) restent **sans glyphe** — instructions injectées, pas alertes.
+- `promptimizer/hooks/stop.js` : câble les deux nouvelles fabriques (remplacement des chaînes
+  inline, aucune logique changée).
+- `ARCHITECTURE.md` : invariant #5 (systemMessage) enrichi + décision « Grammaire de sévérité »
+  (frontière visible/injecté, hook `severityOf` pour l'arbitre #57, alternative écartée).
+- Tests : `test/run-tests.js` — nouvelle section G-bis (module severity : vocabulaire, rang,
+  `withSeverity`, roundtrip `severityOf` ; glyphe présent sur les 13 fabriques visibles ; variance
+  de sévérité par cas ; **frontière** — 4 messages injectés vérifiés sans glyphe ; non-régression
+  `closureProofMessage(null,false) === null`). **729 OK** (+35) / 0 · OpenCode **119 OK** / 0.
+
 ## 2026-07-19 (lot #55 — epic « Autopilote PMZ II » : transitions de lot — verify prescrit + `/model` poussé + vigie symétrique)
 
 - `promptimizer/lib/modelwatch.js` : nouvelle `hintResolvableClaude` — allow-list des marqueurs
