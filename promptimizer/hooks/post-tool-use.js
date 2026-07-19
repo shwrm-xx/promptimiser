@@ -19,13 +19,20 @@ const path = require('path');
 const { parseHookInput } = require('../lib/stdin');
 const { passThrough, postToolContext } = require('../lib/output');
 const { gitRoot, ensureLedger } = require('../lib/project');
-const { recordRead, recordModify } = require('../lib/ledger');
+const { recordRead, recordModify, getSummary } = require('../lib/ledger');
 const { maybeAdvise } = require('../lib/advisory');
 const { writeTodoSnapshot } = require('../lib/backlog');
 
 function relOf(root, fp) {
   try {
-    const r = path.relative(root, fp);
+    let r = path.relative(root, fp);
+    if (!r || r.startsWith('..')) {
+      // Le cwd peut passer par un symlink (macOS : /var → /private/var) alors que git
+      // résout le chemin réel : relativiser sur les chemins réels avant d'abandonner,
+      // sinon les clés de ledger (dont summaries, lot #53) divergent des chemins relatifs
+      // écrits dans le handoff.
+      r = path.relative(fs.realpathSync(root), fs.realpathSync(fp));
+    }
     return r && !r.startsWith('..') ? r : fp;
   } catch (_) {
     return fp;
@@ -58,11 +65,14 @@ function main() {
       stat = { bytes: st.size, mtimeMs: st.mtimeMs };
     } catch (_) { /* fichier disparu/inaccessible : coût inconnu, pas de gaspillage */ }
     const rr = recordRead(root, rel, sid, partial, stat);
+    const redundant = !!(rr && rr.waste && !rr.modifiedSince);
     const advisory = maybeAdvise({
       sessionId: sid,
       relPath: rel,
       bytes: rr && rr.bytes,
-      redundant: !!(rr && rr.waste && !rr.modifiedSince),
+      redundant,
+      // Résumé connu (lot #53) : lu seulement si la relecture est redondante (zéro I/O sinon).
+      summary: redundant ? getSummary(root, rel) : null,
     });
     if (advisory) return postToolContext(advisory);
   } else if (tool === 'Edit' || tool === 'Write') {

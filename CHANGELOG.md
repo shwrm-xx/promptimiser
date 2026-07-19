@@ -2,6 +2,30 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #53 — epic « Autopilote PMZ II » : résumés servis au lieu de la relecture, `read-ledger.summaries`)
+
+- `promptimizer/lib/ledger.js` : nouveau champ `read-ledger.summaries` (clé = chemin normalisé
+  `/`, valeur `{ text, at }`) + `seedSummaries` (texte plafonné 240 c, cap 200 entrées via
+  `capObject` étendu au rang `{ at }`), `getSummary`, `topSummaries`, `normPath`. **Purge sur
+  Edit/Write** (`recordModify`) : un fichier modifié perd son résumé (jamais de résumé périmé).
+- `promptimizer/lib/handoff.js` : `parseSummaryLines` (lignes `pmz:summary: <chemin> — <résumé>`,
+  tiret cadratin obligatoire, malformées ignorées) ; le handoff **auto** restitue les ≤ 5 résumés
+  les plus récents en lignes `pmz:summary`, émises tôt (troncature 6 000 c) — la boucle survit de
+  session en session sans relecture.
+- `promptimizer/hooks/session-start.js` : sème `summaries` depuis les lignes `pmz:summary` du
+  handoff injecté (même point d'entrée que `pmz:skip`, fail-open).
+- `promptimizer/lib/advisory.js` + `hooks/post-tool-use.js` : l'advisory de relecture redondante
+  **sert le résumé connu en 2e ligne** à la place de la relecture (`getSummary` lu seulement si
+  redondant — zéro I/O sinon). `relOf` relativise via `fs.realpathSync` quand le cwd passe par un
+  symlink (macOS `/var` → `/private/var`) — sinon les clés de ledger divergent des chemins du
+  handoff.
+- Amont : `templates/handoff-template.md`, `commands/fresh-session.md` et `commands/close-batch.md`
+  montrent le format machine `pmz:skip:`/`pmz:summary:` à écrire dans le handoff manuel.
+- `templates/read-ledger.json` : champ `summaries` ajouté au modèle.
+- Tests : +13 (section T53 — parse, séquence 2 sessions en bac à sable, advisory servie, plafond
+  5 lignes du handoff auto, round-trip trans-session, normalisation Windows, purge sur Edit,
+  caps 240 c/200 entrées) — 671 OK / 0 échec. `promptimizer/VERSION` 1.2.2 → 1.2.3.
+
 ## 2026-07-19 (lot #52 — epic « Autopilote PMZ II » : gaspillage auto-surfacé, paliers trans-session + coupables + nudge subagent)
 
 - `promptimizer/lib/ledger.js` : nouveaux paliers de gaspillage `WASTE_BUCKETS` (25k/50k/100k

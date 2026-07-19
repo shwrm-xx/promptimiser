@@ -160,7 +160,9 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   **COMPLET** (`!partial`) d'un fichier **≥ 16 Ko** déjà lu, **inchangé** (mtime identique —
   signal `waste` renvoyé par `ledger.recordRead`) et **hors `files_modified`** (garde-fou en
   plus du mtime), émet un `additionalContext` d'une ligne (~60 tokens) signalant la relecture
-  probablement redondante. PostToolUse reste strictement informatif : jamais de
+  probablement redondante — et, si un résumé du fichier est connu (`read-ledger.summaries`,
+  lot #53), le **sert en 2e ligne** à la place de la relecture (`ledger.getSummary`, lu
+  seulement quand la relecture est redondante — zéro I/O sinon). PostToolUse reste strictement informatif : jamais de
   `permissionDecision`, le `Read` est déjà exécuté. Plafonné par un état **hors-projet**
   `<sha1(session_id)>-advisory` (même convention que `occupancy.js`/`turnstats.js`) : 1×/fichier
   ET 3×/session, remis à zéro à chaque nouvelle `session_id`. Opt-out `PMZ_NO_ADVISORY=1` (ne
@@ -298,6 +300,20 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   doivent survivre en premier. Ledger vide → section omise (comportement inchangé). Champ
   `avoid_reread_notes` réutilisé, pas dupliqué. Parse raté/vide = ignoré silencieusement
   (fail-open).
+- **`pmz:summary` du handoff → `read-ledger.summaries`** (`lib/handoff.js#parseSummaryLines`,
+  `lib/ledger.js#seedSummaries/getSummary/topSummaries`, lot #53) : des lignes
+  `pmz:summary: <chemin> — <résumé>` (« — » tiret cadratin obligatoire, ligne malformée
+  ignorée) sèment `summaries` (clé = chemin **normalisé `/`** — les lignes du handoff sont
+  POSIX alors que `relOf` produit des `\` sous Windows ; texte plafonné 240 c ; cap 200
+  entrées, éviction des plus anciennes via `capObject` étendu aux entrées `{ at }`). Trois
+  débouchés : (1) l'advisory de relecture redondante sert le résumé (voir ci-dessus) ;
+  (2) le handoff **auto** restitue les ≤ 5 résumés les plus récents (`topSummaries`) en
+  lignes `pmz:summary` — la boucle survit de session en session sans relecture ; (3) le
+  modèle écrit les lignes initiales dans le handoff **manuel** (template + `/fresh-session`
+  + `/close-batch`). **Purge sur Edit/Write** (`recordModify`) : un fichier modifié perd son
+  résumé — mieux vaut aucun résumé qu'un résumé faux. `relOf` (post-tool-use) relativise
+  désormais via `fs.realpathSync` quand le cwd passe par un symlink (macOS `/var` →
+  `/private/var`) — sinon les clés de ledger divergeraient des chemins du handoff.
 
 - **Version de PMZ** (`promptimizer/VERSION`, `lib/version.js`) : entier simple (pas de semver —
   un seul mainteneur, aucune distinction major/minor/patch utile) versionné avec le package,

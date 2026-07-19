@@ -146,7 +146,10 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   contexte principal).
 - **Pendant le tour** : une relecture **complète** d'un gros fichier (≥ 16 Ko) déjà lu et
   inchangé déclenche une note discrète (~60 tokens, plafonnée à 1×/fichier et 3×/session) —
-  jamais de blocage, juste un rappel.
+  jamais de blocage, juste un rappel. Si un **résumé** du fichier est connu (lignes
+  `pmz:summary: <chemin> — <résumé>` d'un handoff, restituées de session en session dans le
+  handoff auto), la note le **sert à la place de la relecture** ; un fichier modifié perd
+  aussitôt son résumé (jamais de résumé périmé).
 - **Occupation déjà haute** : au-delà de 500k tokens, un rappel court (2 lignes) est ajouté au
   prompt suivant (plafonné 1×/palier) ; à la **reprise** d'une session déjà chargée (≥ 300k),
   un message visible (zéro token ajouté au contexte) le signale sans attendre la fin du tour.

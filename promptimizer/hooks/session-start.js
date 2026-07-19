@@ -20,8 +20,8 @@ const { gitRoot, isFullyInitialized, hasAnyCommit, carriesRules } = require('../
 const { runBootstrap, commitScaffold } = require('../lib/bootstrap');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { suggestedTitle } = require('../lib/lot');
-const { readHandoff, parseSkipPaths, markConsumed } = require('../lib/handoff');
-const { seedAvoidReread } = require('../lib/ledger');
+const { readHandoff, parseSkipPaths, parseSummaryLines, markConsumed } = require('../lib/handoff');
+const { seedAvoidReread, seedSummaries } = require('../lib/ledger');
 const { loadBacklog, currentLot, nextLot, progress, readTodoSnapshot } = require('../lib/backlog');
 const occupancy = require('../lib/occupancy');
 const {
@@ -51,6 +51,7 @@ function withHandoff(root, msg) {
     if (h && h.text) {
       markConsumed(root);
       try { seedAvoidReread(root, parseSkipPaths(h.text)); } catch (_) { /* fail-open */ }
+      try { seedSummaries(root, parseSummaryLines(h.text)); } catch (_) { /* fail-open */ }
       return msg + '\n\n' + MSG_HANDOFF + '\n\n' + h.text;
     }
     // Pas de handoff injectable (premier démarrage, notes utilisateur) : le plan de

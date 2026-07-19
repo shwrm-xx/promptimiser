@@ -8,6 +8,15 @@ const { writeAtomic, readJson } = require('./fsjson');
 const MAX_READS = 200;
 const MAX_MODIFIED = 200;
 const MAX_REPEATED = 200;
+const MAX_SUMMARIES = 200;
+const MAX_SUMMARY_CHARS = 240;
+
+// Clés de summaries normalisées avec des séparateurs `/` : les lignes pmz:summary d'un
+// handoff écrivent des chemins POSIX alors que relOf (post-tool-use) produit des `\` sous
+// Windows — sans normalisation la purge sur Edit raterait sa cible.
+function normPath(p) {
+  return String(p).split('\\').join('/');
+}
 
 // Paliers de gaspillage de relecture (tokens cumulés, trans-session) — plus fins que les
 // paliers d'occupation d'occupancy.js car le gaspillage est un signal évitable qu'on veut
@@ -55,7 +64,10 @@ function loadContextLedger(root) {
 function capObject(obj, max) {
   const keys = Object.keys(obj);
   if (keys.length <= max) return;
-  const sorted = keys.sort((a, b) => (obj[a] || 0) - (obj[b] || 0));
+  // Valeur numérique (files_read/files_modified) ou entrée { at } (summaries) : dans les
+  // deux cas on évince les plus anciennes d'abord.
+  const rank = (v) => (typeof v === 'number' ? v : (v && typeof v.at === 'number' ? v.at : 0));
+  const sorted = keys.sort((a, b) => rank(obj[a]) - rank(obj[b]));
   for (const k of sorted.slice(0, keys.length - max)) delete obj[k];
 }
 
@@ -131,6 +143,16 @@ function recordModify(root, relPath, sessionId) {
   capObject(cl.files_modified, MAX_MODIFIED);
   if (sessionId) cl.session_id = sessionId;
   writeAtomic(contextLedgerFile(root), cl);
+  // Purge du résumé : un fichier modifié rend son résumé stocké périmé — mieux vaut
+  // aucun résumé qu'un résumé faux servi à la place d'une relecture (lot #53).
+  try {
+    const rl = loadReadLedger(root);
+    const key = normPath(relPath);
+    if (rl.summaries[key]) {
+      delete rl.summaries[key];
+      writeAtomic(readLedgerFile(root), rl);
+    }
+  } catch (_) { /* fail-open */ }
 }
 
 // Top-n des fichiers historiquement les plus gaspillés (relectures complètes inchangées),
@@ -176,6 +198,52 @@ function evaluateWaste(root) {
   }
 }
 
+// Sème read-ledger.summaries à partir d'entrées [{ path, text }] (lignes `pmz:summary:`
+// du handoff) : résumé servi à la place d'une relecture. Clés normalisées `/`, texte
+// plafonné, cap 200 entrées (éviction des plus anciennes). Fail-open.
+function seedSummaries(root, entries) {
+  if (!isInitialized(root) || !Array.isArray(entries) || !entries.length) return;
+  const rl = loadReadLedger(root);
+  const now = Date.now();
+  let dirty = false;
+  for (const e of entries) {
+    if (!e || !e.path || !e.text) continue;
+    const text = String(e.text).trim().slice(0, MAX_SUMMARY_CHARS);
+    if (!text) continue;
+    rl.summaries[normPath(e.path)] = { text, at: now };
+    dirty = true;
+  }
+  if (!dirty) return;
+  capObject(rl.summaries, MAX_SUMMARIES);
+  writeAtomic(readLedgerFile(root), rl);
+}
+
+// Résumé connu pour un chemin (clé normalisée), ou null. Fail-open.
+function getSummary(root, relPath) {
+  try {
+    if (!isInitialized(root) || !relPath) return null;
+    const s = loadReadLedger(root).summaries[normPath(relPath)];
+    return s && s.text ? s.text : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// Top-n des résumés les plus récents, [{ path, text }] — restitués dans le handoff auto
+// pour que la boucle pmz:summary survive de session en session sans relecture.
+function topSummaries(root, n) {
+  try {
+    const s = loadReadLedger(root).summaries;
+    return Object.keys(s)
+      .filter((p) => s[p] && s[p].text)
+      .sort((a, b) => (s[b].at || 0) - (s[a].at || 0))
+      .slice(0, n)
+      .map((p) => ({ path: p, text: s[p].text }));
+  } catch (_) {
+    return [];
+  }
+}
+
 // Sème avoid_reread_notes à partir de chemins fournis (ex : `pmz:skip:` du handoff) —
 // actif dès le tour 1, sans attendre une 1re relecture réelle. Fail-open.
 function seedAvoidReread(root, paths) {
@@ -192,5 +260,6 @@ function seedAvoidReread(root, paths) {
 
 module.exports = {
   loadReadLedger, loadContextLedger, recordRead, recordModify, recordOccupancy, estTokens,
-  seedAvoidReread, topWaste, evaluateWaste, wasteBucketIndex, WASTE_BUCKETS, WASTE_FLOATING_STEP,
+  seedAvoidReread, seedSummaries, getSummary, topSummaries, normPath,
+  topWaste, evaluateWaste, wasteBucketIndex, WASTE_BUCKETS, WASTE_FLOATING_STEP,
 };

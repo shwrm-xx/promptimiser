@@ -23,9 +23,11 @@ function loadAdvisoryState(sessionId) {
   return st;
 }
 
-// { sessionId, relPath, bytes, redundant } -> texte advisory, ou null si rien à signaler
+// { sessionId, relPath, bytes, redundant, summary } -> texte advisory, ou null si rien à signaler
 // (non redondant, trop petit, désactivé, déjà signalé pour ce fichier, ou plafond session atteint).
-function maybeAdvise({ sessionId, relPath, bytes, redundant }) {
+// summary (lot #53) : résumé connu du fichier (read-ledger.summaries) — servi dans l'advisory
+// pour remplacer la relecture, pas seulement la signaler.
+function maybeAdvise({ sessionId, relPath, bytes, redundant, summary }) {
   if (!redundant || !relPath || !bytes || bytes < MIN_BYTES) return null;
   if (advisoryDisabled()) return null;
   const st = loadAdvisoryState(sessionId);
@@ -35,7 +37,8 @@ function maybeAdvise({ sessionId, relPath, bytes, redundant }) {
   st.count += 1;
   writeAtomic(advisoryFile(sessionId), st);
   const kb = Math.round(bytes / 1024);
-  return `Note : ${relPath} (${kb} Ko) a déjà été lu et semble inchangé — cette relecture complète est probablement redondante.`;
+  const base = `Note : ${relPath} (${kb} Ko) a déjà été lu et semble inchangé — cette relecture complète est probablement redondante.`;
+  return summary ? base + `\nRésumé connu (à utiliser à la place) : ${summary}` : base;
 }
 
 module.exports = { maybeAdvise, loadAdvisoryState, advisoryFile, MIN_BYTES, MAX_PER_SESSION };

@@ -39,4 +39,8 @@ Prochaine action recommandée :
 - ...
 
 Contrainte budget :
-- ne pas relire les fichiers suivants sauf changement :
+- ne pas relire les fichiers suivants sauf changement (format machine, semé au démarrage) :
+  pmz:skip: <chemin/depuis/la/racine>
+- résumés servables à la place d'une relecture complète (format machine, 1 ligne par
+  fichier volumineux et stable ; « — » = tiret cadratin obligatoire) :
+  pmz:summary: <chemin/depuis/la/racine> — <résumé en une phrase>

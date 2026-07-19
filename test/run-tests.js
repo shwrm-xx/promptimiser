@@ -3147,6 +3147,76 @@ section('Statusline opt-in : rendu + merge-settings (préserve tierce, retrait p
   ok(s.statusLine && s.statusLine.command === 'keep.sh', '--remove : statusLine tierce préservée');
 }
 
+// ============================ T53. RÉSUMÉS SERVIS ============================
+section('Résumés servis au lieu de la relecture (read-ledger.summaries, lot #53)');
+{
+  const ledger = require(path.join(PKG, 'lib', 'ledger'));
+  const empty = path.join(SANDBOX, 'empty.jsonl');
+  const repo = path.join(SANDBOX, 'repo-t53');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'CLAUDE.md'), 'règles'); // évite l'auto-scaffold au SessionStart
+  const big = path.join(repo, 'big.js');
+  fs.writeFileSync(big, 'x'.repeat(20000)); // >= 16 Ko : éligible advisory
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const hf = path.join(repo, '.vibe-agent', 'handoff.md');
+  const rlFile = () => path.join(repo, '.vibe-agent', 'read-ledger.json');
+  const advisoryText = (r) => { try { return JSON.parse(r.out).hookSpecificOutput.additionalContext || ''; } catch (_) { return ''; } };
+
+  // -- parseSummaryLines : ligne valide (même indentée), malformées ignorées, null → [] --
+  const parsed = handoff.parseSummaryLines('bla\n  pmz:summary: lib/a.js — sert à X\npmz:summary: malformé sans séparateur\npmz:summary:  — texte sans chemin\n');
+  ok(parsed.length === 1 && parsed[0].path === 'lib/a.js' && parsed[0].text === 'sert à X',
+    'T53 : parseSummaryLines — ligne valide parsée (chemin + texte), malformées ignorées');
+  ok(handoff.parseSummaryLines(null).length === 0, 'T53 : parseSummaryLines(null) → []');
+
+  // -- Séquence 2 sessions : lecture préalable (session A) → handoff manuel pmz:summary →
+  //    session B sème summaries → relecture redondante servie par le résumé --
+  runHook('post-tool-use.js', { tool_name: 'Read', tool_input: { file_path: big }, cwd: repo, session_id: 't53-s1' }); // sème reads[] (mtime)
+  fs.writeFileSync(hf, handoff.MANUAL_MARKER + '\n## Handoff\npmz:summary: big.js — gros module qui fait X, ne pas relire\n');
+  runHook('session-start.js', { source: 'startup', cwd: repo, session_id: 't53-s2' });
+  ok(ledger.getSummary(repo, 'big.js') === 'gros module qui fait X, ne pas relire',
+    'T53 : session-start sème read-ledger.summaries depuis les lignes pmz:summary du handoff');
+  const rAdv = runHook('post-tool-use.js', { tool_name: 'Read', tool_input: { file_path: big }, cwd: repo, session_id: 't53-s2' });
+  const tAdv = advisoryText(rAdv);
+  ok(/probablement redondante/.test(tAdv) && /Résumé connu/.test(tAdv) && /gros module qui fait X/.test(tAdv),
+    'T53 : advisory de relecture redondante sert le résumé à la place de la relecture');
+
+  // -- Purge sur Edit : un résumé périmé ne doit jamais être servi --
+  ok(ledger.getSummary(repo, 'big.js') !== null, 'T53 : résumé big.js présent avant Edit');
+  runHook('post-tool-use.js', { tool_name: 'Edit', tool_input: { file_path: big }, cwd: repo, session_id: 't53-s2' });
+  ok(ledger.getSummary(repo, 'big.js') === null, 'T53 : Edit purge le résumé du fichier modifié');
+
+  // -- Restitution dans le handoff auto : plafond 5 lignes pmz:summary --
+  ledger.seedSummaries(repo, [1, 2, 3, 4, 5, 6].map((i) => ({ path: `mod${i}.js`, text: `résumé du module ${i}` })));
+  runHook('stop.js', { session_id: 't53-s2', cwd: repo, transcript_path: empty });
+  const auto = fs.readFileSync(hf, 'utf8');
+  ok(auto.includes(handoff.AUTO_MARKER) && (auto.match(/pmz:summary:/g) || []).length === 5,
+    'T53 : handoff auto restitue les résumés, plafonnés à 5 lignes');
+
+  // -- Boucle trans-session : summaries perdus → re-semés depuis le handoff auto --
+  const fromAuto = handoff.parseSummaryLines(auto);
+  ok(fromAuto.length === 5, 'T53 : lignes du handoff auto re-parsables (round-trip format machine)');
+  const rl0 = JSON.parse(fs.readFileSync(rlFile(), 'utf8'));
+  rl0.summaries = {};
+  fs.writeFileSync(rlFile(), JSON.stringify(rl0));
+  runHook('session-start.js', { source: 'startup', cwd: repo, session_id: 't53-s3' });
+  ok(ledger.getSummary(repo, fromAuto[0].path) === fromAuto[0].text,
+    'T53 : séquence 2 sessions — résumé re-semé au démarrage depuis le handoff auto');
+
+  // -- Windows : clés normalisées / au semis ET au lookup --
+  ledger.seedSummaries(repo, [{ path: 'sub\\win.js', text: 'résumé win' }]);
+  ok(ledger.getSummary(repo, 'sub/win.js') === 'résumé win', 'T53 : semis avec \\ → clé normalisée /');
+  ok(ledger.getSummary(repo, 'sub\\win.js') === 'résumé win', 'T53 : lookup avec \\ → normalisé aussi');
+
+  // -- Caps : texte 240 caractères, 200 entrées (éviction des plus anciennes) --
+  ledger.seedSummaries(repo, [{ path: 'long.js', text: 'y'.repeat(300) }]);
+  ok((ledger.getSummary(repo, 'long.js') || '').length === 240, 'T53 : texte de résumé plafonné à 240 caractères');
+  ledger.seedSummaries(repo, Array.from({ length: 205 }, (_, i) => ({ path: `cap${i}.js`, text: 't' })));
+  const rlCap = JSON.parse(fs.readFileSync(rlFile(), 'utf8'));
+  ok(Object.keys(rlCap.summaries).length === 200, 'T53 : summaries plafonné à 200 entrées (capObject)');
+}
+
 // ============================ OC. OPENCODE ============================
 section('OpenCode — squelette plugin + install sandbox (test/run-tests-opencode.js)');
 {

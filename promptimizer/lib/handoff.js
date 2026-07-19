@@ -9,7 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const { vibeDir, git, gitStatusMeaningful, lastCommitEpoch } = require('./project');
-const { loadContextLedger, topWaste } = require('./ledger');
+const { loadContextLedger, topWaste, topSummaries } = require('./ledger');
 const { readEpic, getLotCounter } = require('./lot');
 const { summaryLines, readTodoSnapshot } = require('./backlog');
 
@@ -19,6 +19,7 @@ const MAX_INJECT_CHARS = 6000; // cap d'injection SessionStart (un handoff doit 
 const MAX_DIRTY_LINES = 15;
 const MAX_READ_LINES = 10;
 const MAX_WASTE_LINES = 3;
+const MAX_SUMMARY_LINES = 5;
 
 function handoffFile(root) {
   return path.join(vibeDir(root), 'handoff.md');
@@ -36,6 +37,24 @@ function parseSkipPaths(text) {
       const p = m[1].trim();
       if (p) out.push(p);
     }
+  }
+  return out;
+}
+
+// Extrait les entrées des lignes `pmz:summary: <chemin> — <résumé>` d'un handoff —
+// sème read-ledger.summaries pour servir le résumé à la place d'une relecture (lot #53).
+// Séparateur « — » (tiret cadratin) obligatoire ; ligne malformée ignorée (fail-open).
+function parseSummaryLines(text) {
+  if (!text) return [];
+  const out = [];
+  for (const line of text.split('\n')) {
+    const m = /pmz:summary:\s*(.+)/.exec(line);
+    if (!m) continue;
+    const idx = m[1].indexOf(' — ');
+    if (idx <= 0) continue;
+    const p = m[1].slice(0, idx).trim();
+    const t = m[1].slice(idx + 3).trim();
+    if (p && t) out.push({ path: p, text: t });
   }
   return out;
 }
@@ -138,6 +157,15 @@ function writeAutoHandoff(root) {
       for (const p of reads) lines.push(`  pmz:skip: ${p}`);
       for (const p of waste) lines.push(`  pmz:skip: ${p}`);
     }
+    // Format machine pmz:summary: <chemin> — <résumé> (lot #53) — restitue les résumés
+    // connus pour qu'ils survivent de session en session : parsés par parseSummaryLines
+    // et re-semés côté session-start.js. Même contrainte que pmz:skip : émis tôt pour
+    // survivre à la troncature 6000c de readHandoff.
+    const sums = topSummaries(root, MAX_SUMMARY_LINES);
+    if (sums.length) {
+      lines.push('- Résumés connus (à utiliser à la place d\'une relecture complète) :');
+      for (const s of sums) lines.push(`  pmz:summary: ${s.path} — ${s.text}`);
+    }
     // Avancement fonctionnel : plan de lots (backlog) + dernier état des todos.
     // Blocs omis si artefacts absents — le handoff reste purement mécanique sinon.
     const plan = summaryLines(root);
@@ -168,4 +196,4 @@ function writeAutoHandoff(root) {
   }
 }
 
-module.exports = { handoffFile, readHandoff, parseSkipPaths, markConsumed, writeAutoHandoff, AUTO_MARKER, MANUAL_MARKER };
+module.exports = { handoffFile, readHandoff, parseSkipPaths, parseSummaryLines, markConsumed, writeAutoHandoff, AUTO_MARKER, MANUAL_MARKER };
