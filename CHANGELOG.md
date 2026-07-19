@@ -2,6 +2,21 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #65 — epic « Atterrissages » : amorçage à froid, seed hot-files depuis git log)
+
+- `promptimizer/lib/project.js` : `gitHotFiles(root, limit, n)` — compte les occurrences de
+  chemins sur les 500 derniers `git log --name-only`, renvoie le top-n (défaut 15) trié par
+  fréquence décroissante `{ path, commits }`. Fail-open (`[]`) si `git log` échoue ou dépôt sans
+  historique.
+- `promptimizer/lib/ledger.js` : `seedHotFiles(root, entries)` / `hotFiles(root, n)` — sème
+  `context-ledger.hot_files` une seule fois (no-op si déjà semé ou déjà réel), lecteur fail-open.
+- `promptimizer/lib/bootstrap.js` : `runBootstrap` sème `hot_files` depuis `gitHotFiles` quand le
+  dépôt est **mûr** (`hasAnyCommit`) et que le ledger vient d'être créé (jamais un ledger déjà
+  existant) — reprenable : rejouer `/init` ne resème jamais.
+- Doc : bullet « Amorçage à froid — `hot_files` » dans ARCHITECTURE.md.
+- Tests : `node test/run-tests.js` → **836 OK · 0 échec** (+9 assertions : seed sur dépôt mûr,
+  reprise sans double-seed, dépôt neuf → vide).
+
 ## 2026-07-19 (lot #72 — epic « Atterrissages » : réinjection post-compact enrichie)
 
 - `promptimizer/lib/messages.js` : `compactResumeMessage(lot, prog, { todos, skips, decisions })`

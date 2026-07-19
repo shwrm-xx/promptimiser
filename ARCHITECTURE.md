@@ -404,6 +404,15 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   résumé — mieux vaut aucun résumé qu'un résumé faux. `relOf` (post-tool-use) relativise
   désormais via `fs.realpathSync` quand le cwd passe par un symlink (macOS `/var` →
   `/private/var`) — sinon les clés de ledger divergeraient des chemins du handoff.
+- **Amorçage à froid — `hot_files` (`lib/project.js#gitHotFiles`,
+  `lib/ledger.js#seedHotFiles/hotFiles`, `lib/bootstrap.js#runBootstrap`, lot #65)** : au
+  bootstrap (`/init` ou auto-scaffold) d'un dépôt **mûr** (`hasAnyCommit` vrai) dont le ledger
+  vient d'être créé (jamais un ledger déjà existant/vécu — condition sur `created`, pas
+  seulement `isInitialized`), `gitHotFiles` compte les occurrences de chemins sur les 500
+  derniers `git log --name-only` et sème `context-ledger.hot_files` (top 15, `{ path, commits }`
+  décroissant). `seedHotFiles` ne remplace jamais un `hot_files` non vide (semé ou accumulé en
+  session réelle) : rejouer le bootstrap est un no-op reprenable. Dépôt neuf (0 commit) ou
+  `git log` en échec → `[]`, fail-open silencieux.
 
 - **Version de PMZ** (`promptimizer/VERSION`, `lib/version.js`) : entier simple (pas de semver —
   un seul mainteneur, aucune distinction major/minor/patch utile) versionné avec le package,

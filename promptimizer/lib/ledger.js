@@ -10,6 +10,7 @@ const MAX_MODIFIED = 200;
 const MAX_REPEATED = 200;
 const MAX_SUMMARIES = 200;
 const MAX_SUMMARY_CHARS = 240;
+const MAX_HOT_FILES = 15;
 
 // Clés de summaries normalisées avec des séparateurs `/` : les lignes pmz:summary d'un
 // handoff écrivent des chemins POSIX alors que relOf (post-tool-use) produit des `\` sous
@@ -55,6 +56,7 @@ function loadContextLedger(root) {
   cl.waste_by_file = cl.waste_by_file && typeof cl.waste_by_file === 'object' ? cl.waste_by_file : {};
   cl.warnings = Array.isArray(cl.warnings) ? cl.warnings : [];
   if (!('occupancy' in cl)) cl.occupancy = null;
+  cl.hot_files = Array.isArray(cl.hot_files) ? cl.hot_files : [];
   // Palier de gaspillage franchi et persisté (trans-session, monotone croissant) : borne
   // l'alerte à 1×/palier sur toute la vie du projet, pas 1×/session (lot #52).
   cl.waste_bucket = Number.isFinite(cl.waste_bucket) ? cl.waste_bucket : 0;
@@ -273,8 +275,36 @@ function seedAvoidReread(root, paths) {
   writeAtomic(readLedgerFile(root), rl);
 }
 
+// Amorçage à froid (lot #65) : sème context-ledger.hot_files depuis [{ path, commits }]
+// (cf. project.js#gitHotFiles) au moment du bootstrap d'un dépôt mûr. N'écrase JAMAIS un
+// amorçage déjà fait ou de la donnée réelle accumulée en session — un seul seed possible
+// par ledger (garde `hot_files.length`), ce qui rend l'appel reprenable (rejouer /init sur
+// un ledger déjà amorcé ou déjà vécu est un no-op silencieux). Fail-open.
+function seedHotFiles(root, entries) {
+  if (!isInitialized(root) || !Array.isArray(entries) || !entries.length) return;
+  const cl = loadContextLedger(root);
+  if (cl.hot_files.length) return; // déjà semé ou déjà réel : on ne remplace jamais
+  cl.hot_files = entries
+    .filter((e) => e && e.path)
+    .slice(0, MAX_HOT_FILES)
+    .map((e) => ({ path: e.path, commits: e.commits || 0 }));
+  if (!cl.hot_files.length) return;
+  writeAtomic(contextLedgerFile(root), cl);
+}
+
+// Fichiers chauds connus (semés ou accumulés), [{ path, commits }]. Fail-open : [].
+function hotFiles(root, n) {
+  try {
+    const list = loadContextLedger(root).hot_files;
+    return n ? list.slice(0, n) : list.slice();
+  } catch (_) {
+    return [];
+  }
+}
+
 module.exports = {
   loadReadLedger, loadContextLedger, recordRead, recordModify, recordOccupancy, estTokens,
   seedAvoidReread, avoidRereadNotes, seedSummaries, getSummary, topSummaries, normPath,
   topWaste, evaluateWaste, wasteBucketIndex, WASTE_BUCKETS, WASTE_FLOATING_STEP,
+  seedHotFiles, hotFiles, MAX_HOT_FILES,
 };

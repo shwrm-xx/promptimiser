@@ -7,7 +7,8 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { gitRoot, vibeDir, git } = require('./project');
+const { gitRoot, vibeDir, git, hasAnyCommit, gitHotFiles } = require('./project');
+const { seedHotFiles } = require('./ledger');
 
 const TEMPLATES = path.join(__dirname, '..', 'templates');
 const FORBIDDEN = ['/', '/tmp', '/var', '/usr', '/etc', '/opt', '/Applications', '/System', '/Library', os.homedir()]
@@ -49,12 +50,20 @@ function runBootstrap(root) {
   // chaque tour. Posé avant les ledgers pour qu'ils naissent déjà ignorés.
   copyIfAbsent('vibe-gitignore', path.join(vd, '.gitignore'), created, skipped);
   copyIfAbsent('rules.yaml', path.join(vd, 'rules.yaml'), created, skipped);
-  copyIfAbsent('context-ledger.json', path.join(vd, 'context-ledger.json'), created, skipped);
+  const contextLedgerPath = path.join(vd, 'context-ledger.json');
+  copyIfAbsent('context-ledger.json', contextLedgerPath, created, skipped);
   copyIfAbsent('read-ledger.json', path.join(vd, 'read-ledger.json'), created, skipped);
   copyIfAbsent('session-state.json', path.join(vd, 'session-state.json'), created, skipped);
   copyIfAbsent('CLAUDE.md', path.join(root, 'CLAUDE.md'), created, skipped);
   copyIfAbsent('AGENTS.md', path.join(root, 'AGENTS.md'), created, skipped);
   copyIfAbsent('CHANGELOG.md', path.join(root, 'CHANGELOG.md'), created, skipped);
+
+  // Amorçage à froid (lot #65) : dépôt MÛR (historique déjà présent) et ledger fraîchement
+  // créé (jamais un ledger déjà existant/vécu) -> sème hot_files depuis git log. Repose sur
+  // seedHotFiles pour l'idempotence (no-op si déjà semé) : rejouer bootstrap est sans risque.
+  if (created.includes(contextLedgerPath) && hasAnyCommit(root)) {
+    try { seedHotFiles(root, gitHotFiles(root)); } catch (_) { /* fail-open */ }
+  }
 
   result.ok = true;
   result.created = created;

@@ -599,6 +599,7 @@ section('suggestedTitle : suffixe « (partie N) » quand un lot dépasse une ses
 // ============================ J. AUTO-SCAFFOLD PROJET NEUF (point 6) ============================
 section('Auto-scaffold sur détection de projet neuf (point 6)');
 const bootstrapLib = require(path.join(PKG, 'lib', 'bootstrap'));
+const ledgerLib = require(path.join(PKG, 'lib', 'ledger'));
 {
   // (a) repo git existant, 0 commit → session-start.js scaffold automatiquement.
   const repo = path.join(SANDBOX, 'repo-newproject');
@@ -643,6 +644,58 @@ const bootstrapLib = require(path.join(PKG, 'lib', 'bootstrap'));
   execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
   runHook('session-start.js', { source: 'startup', cwd: repo, session_id: 's-mature' });
   ok(!fs.existsSync(path.join(repo, 'CLAUDE.md')), 'projet mature sans /init → CLAUDE.md toujours NON créé automatiquement');
+}
+
+// ============================ J2. AMORÇAGE À FROID — SEED HOT-FILES (lot #65) ============================
+section('Amorçage à froid — hot-files des ledgers semés depuis git log (lot #65)');
+{
+  // (a) dépôt MÛR (plusieurs commits, un fichier touché plus souvent qu'un autre) → /init
+  // sème context-ledger.hot_files depuis git log, triés par fréquence décroissante.
+  const repo = path.join(SANDBOX, 'repo-hotfiles-mature');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'hot.js'), '1');
+  fs.writeFileSync(path.join(repo, 'cold.js'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  for (let i = 0; i < 3; i++) {
+    fs.writeFileSync(path.join(repo, 'hot.js'), String(i + 2));
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', `touch hot ${i}`]);
+  }
+  const r = bootstrapLib.runBootstrap(repo);
+  ok(r.ok === true, 'runBootstrap OK sur dépôt mûr');
+  const hf = ledgerLib.hotFiles(repo);
+  ok(hf.length >= 2, 'hot_files semé (≥ 2 fichiers vus dans git log)');
+  ok(hf[0].path === 'hot.js' && hf[0].commits === 4, 'fichier le plus modifié en tête (hot.js, 4 commits)');
+  const coldEntry = hf.find((e) => e.path === 'cold.js');
+  ok(!!coldEntry && coldEntry.commits === 1, 'fichier moins modifié présent avec son propre compte');
+}
+{
+  // (b) reprenable : rejouer runBootstrap (ledger déjà existant) ne resème pas / ne duplique pas.
+  const repo = path.join(SANDBOX, 'repo-hotfiles-resume');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.js'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  bootstrapLib.runBootstrap(repo);
+  const before = ledgerLib.hotFiles(repo);
+  ok(before.length === 1, 'hot_files semé une 1re fois');
+  ledgerLib.recordModify(repo, 'a.js', 's-hf'); // simule de la vraie activité de session
+  const r2 = bootstrapLib.runBootstrap(repo); // rejoué (ex : /init relancé)
+  ok(r2.ok === true, 'runBootstrap rejouable sans erreur');
+  const after = ledgerLib.hotFiles(repo);
+  ok(after.length === before.length, 'hot_files inchangé après un 2e bootstrap (jamais réécrasé)');
+}
+{
+  // (c) dépôt NEUF (0 commit) → rien à semer, hot_files reste vide (fail-open silencieux).
+  const repo = path.join(SANDBOX, 'repo-hotfiles-neuf');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  const r = bootstrapLib.runBootstrap(repo);
+  ok(r.ok === true, 'runBootstrap OK sur dépôt neuf (0 commit)');
+  ok(ledgerLib.hotFiles(repo).length === 0, 'hot_files vide : rien à semer sans historique');
 }
 
 // ============================ K2. SÉCURISATION DU BACKLOG (ADN) ============================

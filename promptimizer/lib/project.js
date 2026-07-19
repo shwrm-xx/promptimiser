@@ -119,6 +119,24 @@ function hasAnyCommit(root) {
   return git(['rev-parse', '--verify', 'HEAD'], root) != null;
 }
 
+// Fichiers les plus fréquemment modifiés sur les N derniers commits — utilisé pour amorcer
+// les ledgers d'un dépôt mûr (déjà de l'historique) au moment de /init (lot #65). git log
+// absent/erreur -> [] (fail-open), jamais bloquant.
+function gitHotFiles(root, limit, n) {
+  const log = git(['log', '--name-only', '--pretty=format:', '-n', String(limit || 500)], root);
+  if (!log) return [];
+  const counts = new Map();
+  for (const line of log.split('\n')) {
+    const p = line.trim();
+    if (!p) continue;
+    counts.set(p, (counts.get(p) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n || 15)
+    .map(([path, commits]) => ({ path, commits }));
+}
+
 function changelogTouched(root) {
   // CHANGELOG.md dans les changements non commités OU dans le dernier commit
   const porcelain = gitStatusPorcelain(root);
@@ -150,4 +168,5 @@ function runVerify(root, cmd, timeoutMs) {
 module.exports = {
   git, gitRoot, vibeDir, isInitialized, ensureLedger, isFullyInitialized, exists, carriesRules, detectStack,
   gitStatusPorcelain, gitStatusMeaningful, lastCommitEpoch, hasAnyCommit, changelogTouched, runVerify,
+  gitHotFiles,
 };
