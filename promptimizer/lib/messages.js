@@ -241,15 +241,42 @@ function lotClosedMessage(lot, next, prog) {
   return withSeverity(SEV.INFO, lines);
 }
 
-// Réinjection minimale après compaction (SessionStart source=compact, additionalContext).
-function compactResumeMessage(lot, prog, todos) {
-  const lines = [`Après compaction — lot en cours : « ${lot.title} » (${prog.done}/${prog.total} faits).`];
-  if (todos && todos.length) {
-    lines.push('Reste à faire (TodoWrite) : ' + todos.map((t) => t.content).join(' · '));
+// Réinjection ENRICHIE après compaction (SessionStart source=compact, additionalContext).
+// Budget explicite chiffré (COMPACT_RESUME_CAP) : on empile des blocs par priorité
+// DÉCROISSANTE et on s'arrête AVANT de dépasser le plafond — le contexte compacté a perdu le
+// plan ET la mémoire des relectures déjà faites. Ordre : lot+verify (direction + preuve de
+// clôture) → pmz:skip (ne pas relire, cœur de l'économie de contexte) → décisions/résumés
+// connus (servir au lieu de relire) → todos. Remplace la réinjection minimale ≤300 chars (#72).
+const COMPACT_RESUME_CAP = 1200;
+
+function compactResumeMessage(lot, prog, opts) {
+  const o = opts || {};
+  const todos = Array.isArray(o.todos) ? o.todos : [];
+  const skips = Array.isArray(o.skips) ? o.skips : [];
+  const decisions = Array.isArray(o.decisions) ? o.decisions : [];
+  const blocks = [`Après compaction — lot en cours : « ${lot.title} » (${prog.done}/${prog.total} faits).`];
+  if (lot.verify) blocks.push(`Preuve de clôture (verify) : ${lot.verify}`);
+  if (skips.length) {
+    blocks.push('Ne pas relire sauf changement (déjà lus / coûteux — git diff/git grep d\'abord) : ' + skips.join(' · '));
   }
-  let msg = lines.join('\n');
-  if (msg.length > 300) msg = msg.slice(0, 299) + '…';
-  return msg;
+  if (decisions.length) {
+    blocks.push('Résumés connus (utiliser au lieu de relire) :\n' + decisions.map((d) => `  ${d.path} — ${d.text}`).join('\n'));
+  }
+  if (todos.length) {
+    blocks.push('Reste à faire (TodoWrite) : ' + todos.map((t) => t.content).join(' · '));
+  }
+  // Budget explicite : empile tant que le plafond chiffré n'est pas dépassé (le 1er bloc,
+  // l'identité du lot, passe toujours ; les blocs secondaires sont rognés en bloc, jamais
+  // coupés au milieu d'un chemin).
+  const kept = [];
+  let len = 0;
+  for (const b of blocks) {
+    const add = (kept.length ? 1 : 0) + b.length;
+    if (kept.length && len + add > COMPACT_RESUME_CAP) break;
+    kept.push(b);
+    len += add;
+  }
+  return kept.join('\n');
 }
 
 // Filet SessionStart quand aucun handoff n'est injectable mais qu'un plan de lots existe.
@@ -433,7 +460,7 @@ function modelMismatchMessage(lot, actualModel) {
 module.exports = {
   MSG_ACTIF, MSG_ACTIF_SLIM, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, redZonePrescriptionMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
-  compactResumeMessage, backlogResumeMessage, largeWithPlanMessage,
+  compactResumeMessage, COMPACT_RESUME_CAP, backlogResumeMessage, largeWithPlanMessage,
   costlyTurnMessage, driftMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
   epicBilanMessage, lotClosureCardMessage,

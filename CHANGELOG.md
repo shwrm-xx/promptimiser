@@ -2,6 +2,27 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #72 — epic « Atterrissages » : réinjection post-compact enrichie)
+
+- `promptimizer/lib/messages.js` : `compactResumeMessage(lot, prog, { todos, skips, decisions })`
+  — réinjection post-compaction **enrichie** sous **budget explicite chiffré**
+  (`COMPACT_RESUME_CAP` = 1200 chars, exporté). Empile des blocs par priorité **décroissante** :
+  lot + `verify` (direction + preuve de clôture) → `pmz:skip` (ne pas relire) → résumés connus
+  (décisions) → todos, et **s'arrête avant dépassement** du plafond (rognage en bloc, jamais au
+  milieu d'un chemin ; l'identité du lot passe toujours). Remplace la réinjection minimale
+  ≤ 300 chars qui ne portait que lot + todos.
+- `promptimizer/lib/ledger.js` : `avoidRereadNotes(root, n)` — lecteur de la liste canonique
+  « ne pas relire » (`avoid_reread_notes`, tail = plus récent), pour alimenter les `skips` de la
+  réinjection. Fail-open (`[]` au moindre doute).
+- `promptimizer/hooks/session-start.js` : branche `src === 'compact'` câblée sur la version
+  enrichie — `skips` = `avoidRereadNotes(root, 5)`, `decisions` = `topSummaries(root, 3)`.
+  Silence total sans lot en cours inchangé.
+- Doc : ligne `session-start.js` du tableau des hooks + nouveau bullet « Réinjection post-compact
+  enrichie » dans [ARCHITECTURE.md](ARCHITECTURE.md).
+- Tests : `node test/run-tests.js` → **827 OK · 0 échec** (Q3 réécrit : contenu verify/skip/
+  décisions + plafond `COMPACT_RESUME_CAP` ; Q3b : plafond tenu sous forte pression de skips,
+  identité du lot préservée).
+
 ## 2026-07-19 (lot #71 — epic « Atterrissages » : prescription zone-rouge dans les hooks)
 
 - `promptimizer/lib/occupancy.js` : `evaluateRedZone(transcriptPath, sessionId, model)` — au

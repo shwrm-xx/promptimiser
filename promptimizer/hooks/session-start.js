@@ -21,7 +21,7 @@ const { runBootstrap, commitScaffold } = require('../lib/bootstrap');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { suggestedTitle } = require('../lib/lot');
 const { readHandoff, parseSkipPaths, parseSummaryLines, markConsumed } = require('../lib/handoff');
-const { seedAvoidReread, seedSummaries } = require('../lib/ledger');
+const { seedAvoidReread, seedSummaries, avoidRereadNotes, topSummaries } = require('../lib/ledger');
 const { loadBacklog, currentLot, nextLot, progress, readTodoSnapshot } = require('../lib/backlog');
 const occupancy = require('../lib/occupancy');
 const {
@@ -70,8 +70,10 @@ function main() {
   const root = gitRoot(cwd);
   if (!root) return passThrough();
 
-  // Après compaction : réinjection MINIMALE du lot en cours (≤ 300 chars). Ni MSG_ACTIF,
-  // ni handoff, ni titre — le contexte survit, seul le plan a besoin d'être rappelé.
+  // Après compaction : réinjection ENRICHIE sous budget explicite chiffré (#72). Ni MSG_ACTIF,
+  // ni handoff, ni titre — mais le contexte compacté a perdu le plan ET la mémoire des
+  // relectures : on restitue lot+verify, pmz:skip (ne pas relire), résumés connus (décisions)
+  // et todos, sans dépasser COMPACT_RESUME_CAP. Silence total sans lot en cours.
   if (src === 'compact') {
     try {
       const b = loadBacklog(root);
@@ -82,7 +84,9 @@ function main() {
         ? snap.todos.filter((t) => t.status === 'in_progress')
           .concat(snap.todos.filter((t) => t.status === 'pending').slice(0, 2))
         : [];
-      return injectContext('SessionStart', compactResumeMessage(cur, progress(b), todos));
+      const skips = avoidRereadNotes(root, 5);
+      const decisions = topSummaries(root, 3);
+      return injectContext('SessionStart', compactResumeMessage(cur, progress(b), { todos, skips, decisions }));
     } catch (_) {
       return passThrough();
     }

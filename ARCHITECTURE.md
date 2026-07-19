@@ -28,7 +28,7 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
 
 | Hook | Event / matcher | Lit (stdin) | Émet | Rôle |
 |------|-----------------|-------------|------|------|
-| `session-start.js` | SessionStart `startup\|resume\|clear\|compact` (injecte au `startup`/`clear` ; `compact` → réinjection minimale du lot en cours ≤ 300 chars ; `resume` → nudge occupation seul, voir ci-dessous) | `cwd`, `source`, `transcript_path` | `additionalContext` (startup/clear/compact) ou `systemMessage` (resume) | détecte projet, auto-scaffold si projet neuf (0 commit), sinon propose init, rappel court + titre de session suggéré + injecte le handoff de la session précédente puis le marque consommé ; sans handoff, le plan de lots sert de filet (2 lignes) ; au `resume`, si occupation ≥ 300k, `systemMessage` d'occupation (lot B5, zéro token injecté) |
+| `session-start.js` | SessionStart `startup\|resume\|clear\|compact` (injecte au `startup`/`clear` ; `compact` → réinjection **enrichie** sous budget chiffré (`COMPACT_RESUME_CAP`, #72) : lot+verify + `pmz:skip` + résumés connus + todos ; `resume` → nudge occupation seul, voir ci-dessous) | `cwd`, `source`, `transcript_path` | `additionalContext` (startup/clear/compact) ou `systemMessage` (resume) | détecte projet, auto-scaffold si projet neuf (0 commit), sinon propose init, rappel court + titre de session suggéré + injecte le handoff de la session précédente puis le marque consommé ; sans handoff, le plan de lots sert de filet (2 lignes) ; au `resume`, si occupation ≥ 300k, `systemMessage` d'occupation (lot B5, zéro token injecté) |
 | `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd`, `transcript_path` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large (anti-spam 1×/session), nudge occupation ≥ 500k en 2 lignes (anti-spam 1×/palier, lot B5), vigie modèle réel vs préconisé du lot en cours (anti-spam 1×/session, lot #42) |
 | `pre-tool-use.js` | PreToolUse `Bash` | `tool_input.command` | `permissionDecision` allow/ask/deny | sûreté commandes |
 | `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite` | `tool_input.file_path`, `tool_input.todos` | `additionalContext` (rare, advisory) + effet de bord ledgers | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite), signale une relecture complète redondante (lot B4) |
@@ -98,6 +98,18 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   tour — c'est voulu (le signal grave passe avant le bruit). Canal OpenCode inchangé : son
   `occupancy-oc.js` calcule déjà l'occupation **relative à la fenêtre** nativement (buckets en
   %), hors périmètre #70/#71.
+- **Réinjection post-compact enrichie** (`session-start.js` branche `src === 'compact'` +
+  `messages.compactResumeMessage(lot, prog, { todos, skips, decisions })`, lot #72) : après une
+  compaction le contexte survit mais a perdu le **plan** ET la **mémoire des relectures déjà
+  faites**. On restitue donc, sous un **budget explicite chiffré** (`COMPACT_RESUME_CAP` = 1200
+  chars), des blocs par priorité **décroissante** : identité du lot + `verify` (direction +
+  preuve de clôture) → `pmz:skip` (ne pas relire, cœur de l'économie de contexte) → résumés
+  connus (décisions, servis au lieu de relire) → todos. Le budget **empile bloc par bloc et
+  s'arrête avant dépassement** — le 1er bloc (identité du lot) passe toujours, les blocs
+  secondaires sont rognés **en bloc**, jamais coupés au milieu d'un chemin. Sources : `skips` =
+  `ledger.avoidRereadNotes(root, 5)` (liste canonique « ne pas relire », tail = plus récent) ;
+  `decisions` = `ledger.topSummaries(root, 3)` (`pmz:summary` connus). Silence total sans lot en
+  cours (comme avant). Remplace la réinjection minimale ≤ 300 chars.
 - **Nudges haute occupation avant/à la reprise du tour** (`user-prompt-submit.js` /
   `session-start.js`, lot B5) : distincts de l'alerte de fin de tour (`stop.js`) ci-dessus,
   volontairement **découplés** de son fichier d'état palier (`occupancy.evaluate`/

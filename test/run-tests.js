@@ -1696,15 +1696,33 @@ section('Continuité — PreCompact sauve le handoff, compact réinjecte le lot,
   ok(rPcA.code === 0 && !/Compaction manuelle/.test(rPcA.out || ''), 'PreCompact auto : aucun nudge');
   fs.existsSync(hf) && fs.unlinkSync(hf);
 
-  // Q3. SessionStart compact : réinjection minimale du lot en cours (≤ 300 chars)
+  // Q3. SessionStart compact : réinjection ENRICHIE sous budget chiffré (#72).
+  const ledgerQ = require(path.join(PKG, 'lib', 'ledger'));
+  runNode(BKLG, ['verify', '--cwd', repo, '--id', '1', '--set', 'node test/run-tests.js']);
+  ledgerQ.seedAvoidReread(repo, ['promptimizer/lib/messages.js', 'promptimizer/hooks/stop.js']);
+  ledgerQ.seedSummaries(repo, [{ path: 'promptimizer/lib/ledger.js', text: 'ledger de contexte, résumés et anti-relecture' }]);
   const rC = runHook('session-start.js', { source: 'compact', cwd: repo, session_id: 's-q2' });
   let ctxC = '';
   try { ctxC = JSON.parse(rC.out).hookSpecificOutput.additionalContext || ''; } catch (_) {}
   ok(/Après compaction/.test(ctxC) && /Lot continuité/.test(ctxC) && /1\/2|0\/2/.test(ctxC),
     'compact : lot en cours réinjecté');
-  ok(/étape active/.test(ctxC) && ctxC.length <= 300, 'compact : todos inclus, cap 300 chars');
-  ok(!/Promptimizer actif/.test(ctxC) && !/Titre de session/.test(ctxC) && !/handoff/i.test(ctxC),
-    'compact : ni MSG_ACTIF, ni titre, ni handoff (minimal)');
+  ok(/étape active/.test(ctxC), 'compact : todos inclus');
+  ok(/verify\)\s*:\s*node test\/run-tests\.js/.test(ctxC), 'compact : commande verify réinjectée');
+  ok(/Ne pas relire/.test(ctxC) && /messages\.js/.test(ctxC), 'compact : pmz:skip (ne pas relire) réinjecté');
+  ok(/Résumés connus/.test(ctxC) && /ledger de contexte/.test(ctxC), 'compact : décisions/résumés connus réinjectés');
+  ok(ctxC.length <= messages.COMPACT_RESUME_CAP, 'compact : plafond chiffré respecté (COMPACT_RESUME_CAP)');
+  ok(!/Promptimizer actif/.test(ctxC) && !/Titre de session/.test(ctxC) && !/Handoff de la session/.test(ctxC),
+    'compact : ni MSG_ACTIF, ni titre, ni handoff complet (réinjection ciblée)');
+
+  // Q3b. Budget : plafond réellement borné même avec beaucoup de skips/résumés (rognage en bloc).
+  const bigSkips = [];
+  for (let i = 0; i < 60; i++) bigSkips.push('promptimizer/lib/tres/long/chemin/fichier-' + i + '.js');
+  ledgerQ.seedAvoidReread(repo, bigSkips);
+  const rC3b = runHook('session-start.js', { source: 'compact', cwd: repo, session_id: 's-q2b' });
+  let ctxC3b = '';
+  try { ctxC3b = JSON.parse(rC3b.out).hookSpecificOutput.additionalContext || ''; } catch (_) {}
+  ok(ctxC3b.length <= messages.COMPACT_RESUME_CAP, 'compact : plafond tenu même sous forte pression de skips');
+  ok(/Après compaction/.test(ctxC3b) && /Lot continuité/.test(ctxC3b), 'compact : identité du lot toujours préservée sous plafond');
 
   // Q4. compact sans lot en cours → rien
   runNode(BKLG, ['done', '--cwd', repo, '--id', '1']);

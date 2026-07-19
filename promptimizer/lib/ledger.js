@@ -247,6 +247,18 @@ function topSummaries(root, n) {
   }
 }
 
+// Notes « ne pas relire » (liste canonique) pour la réinjection post-compact (#72). Tail =
+// plus récent (append à chaque relecture / seed pmz:skip). Fail-open : [] au moindre doute.
+function avoidRereadNotes(root, n) {
+  try {
+    const notes = loadReadLedger(root).avoid_reread_notes;
+    if (!Array.isArray(notes)) return [];
+    return n ? notes.slice(-n) : notes.slice();
+  } catch (_) {
+    return [];
+  }
+}
+
 // Sème avoid_reread_notes à partir de chemins fournis (ex : `pmz:skip:` du handoff) —
 // actif dès le tour 1, sans attendre une 1re relecture réelle. Fail-open.
 function seedAvoidReread(root, paths) {
@@ -263,6 +275,6 @@ function seedAvoidReread(root, paths) {
 
 module.exports = {
   loadReadLedger, loadContextLedger, recordRead, recordModify, recordOccupancy, estTokens,
-  seedAvoidReread, seedSummaries, getSummary, topSummaries, normPath,
+  seedAvoidReread, avoidRereadNotes, seedSummaries, getSummary, topSummaries, normPath,
   topWaste, evaluateWaste, wasteBucketIndex, WASTE_BUCKETS, WASTE_FLOATING_STEP,
 };
