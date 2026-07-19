@@ -83,6 +83,21 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   `redZoneThreshold(model)` = fenêtre × `RED_ZONE_RATIO` (0,85) — marge avant l'auto-compact du
   modèle. Lib pure, **aucun branchement hooks** dans ce lot (prescription au fil de la session :
   lot #71).
+- **Prescription zone-rouge en fin de tour** (`lib/occupancy.js: evaluateRedZone` /
+  `resyncRedZone`, `messages.js: redZonePrescriptionMessage`, câblés dans `stop.js`, lot #71) :
+  au franchissement du seuil zone-rouge (#70) — relatif à la fenêtre du modèle réel lu au
+  transcript (`modelwatch.readLastModel`, repli fenêtre prudente si absent) — `stop.js` pousse
+  la prescription la **plus grave** (`SEV.ALERT` ⛔ : clôture + handoff + session fraîche AVANT
+  de subir l'auto-compact lossy). Même politique d'anti-spam que le palier d'occupation :
+  **1× par épisode** (fichier d'état dédié `redzone`, clé `session_id`), flag **jamais**
+  redescendu sur une ligne `usage` maigre ; réarmé **uniquement** sur une vraie compaction
+  (`turn.alerts.resync` de turnstats, delta < −100k) — `resyncRedZone` est appelé dans la même
+  branche que `resyncBucket`. Fail-open dédié. Étant `ALERT`, la prescription prime et survit
+  toujours au plafond de l'arbitre de tour (#57) ; à l'inverse, sur un modèle à fenêtre étroite
+  (ou modèle non détecté → repli 200k) elle **peut évincer** un nudge `WARN` concurrent du même
+  tour — c'est voulu (le signal grave passe avant le bruit). Canal OpenCode inchangé : son
+  `occupancy-oc.js` calcule déjà l'occupation **relative à la fenêtre** nativement (buckets en
+  %), hors périmètre #70/#71.
 - **Nudges haute occupation avant/à la reprise du tour** (`user-prompt-submit.js` /
   `session-start.js`, lot B5) : distincts de l'alerte de fin de tour (`stop.js`) ci-dessus,
   volontairement **découplés** de son fichier d'état palier (`occupancy.evaluate`/

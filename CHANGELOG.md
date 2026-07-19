@@ -2,6 +2,33 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #71 — epic « Atterrissages » : prescription zone-rouge dans les hooks)
+
+- `promptimizer/lib/occupancy.js` : `evaluateRedZone(transcriptPath, sessionId, model)` — au
+  franchissement du seuil zone-rouge (#70, relatif à la fenêtre du modèle), renvoie
+  `{ occ, model, threshold, window }` et émet **1× par épisode** (fichier d'état dédié
+  `redzone`, clé `session_id`). Le flag n'est **jamais** redescendu ici (comme le palier
+  d'occupation : une ligne `usage` maigre ne doit pas respammer). `resyncRedZone(sessionId)` —
+  pendant symétrique de `resyncBucket` : efface l'état pour réarmer après une vraie compaction.
+  Fail-open dédié dans les deux.
+- `promptimizer/lib/messages.js` : `redZonePrescriptionMessage(rz)` — message **le plus grave**
+  (`SEV.ALERT` ⛔), prescrit clôture + handoff + session fraîche AVANT l'auto-compact, cite le %
+  d'occupation de la fenêtre et rappelle l'argument chiffré anti-compaction (`compactionCostLines`).
+- `promptimizer/hooks/stop.js` : câblage. Lit le modèle réel au transcript
+  (`modelwatch.readLastModel`, repli fenêtre prudente si absent), pousse la prescription en
+  `systemMessage` au franchissement (bloc `a1`), et appelle `resyncRedZone` dans la même branche
+  `alerts.resync` que `resyncBucket` (réarmement sur compaction). Étant `ALERT`, la prescription
+  survit toujours au plafond de l'arbitre de tour (#57).
+- Canal OpenCode inchangé (son `occupancy-oc.js` calcule déjà l'occupation relative à la fenêtre
+  nativement) — hors périmètre #70/#71.
+- Tests : nouvelle section V71 (`test/run-tests.js`) — franchissement, anti-spam 1×/épisode,
+  verdict relatif au modèle (180k = zone rouge sur Haiku, pas sur Sonnet), sous-seuil sans état,
+  réarmement via `resyncRedZone`, fail-open (transcript absent), repli fenêtre par défaut,
+  message ⛔, et câblage bout-en-bout via `stop.js` (émission + anti-spam). Un e2e « coût par
+  livrable » (#63) a reçu un modèle réaliste (opus) dans son transcript synthétique, sinon son
+  occ ~200k tombait en zone rouge sous le repli fenêtre défaut. Suite complète verte :
+  821 OK · 0 échec.
+
 ## 2026-07-19 (lot #70 — epic « Atterrissages » : fenêtre de modèle & seuil zone-rouge, lib)
 
 - `promptimizer/lib/occupancy.js` : nouvelle table `MODEL_WINDOWS` (modèle → fenêtre de

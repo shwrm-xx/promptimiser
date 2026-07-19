@@ -21,10 +21,11 @@ const { loadContextLedger, loadReadLedger, recordOccupancy, evaluateWaste } = re
 const { incrementLot } = require('../lib/lot');
 const { loadBacklog, doneLot, nextLot, progress, currentLot, addCost, COST_WARN_TOKENS, epicBilan } = require('../lib/backlog');
 const occupancy = require('../lib/occupancy');
+const { readLastModel } = require('../lib/modelwatch');
 const turnstats = require('../lib/turnstats');
 const { arbitrate } = require('../lib/arbiter');
 const {
-  MSG_CLOTURE, occupancyMessage, lotClosedMessage, epicBilanMessage,
+  MSG_CLOTURE, occupancyMessage, redZonePrescriptionMessage, lotClosedMessage, epicBilanMessage,
   costlyTurnMessage, driftMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
   lotClosureCardMessage,
@@ -42,6 +43,15 @@ function main() {
   if (occ && occ.crossedNew && occ.bucket > 0) {
     parts.push(occupancyMessage(occ.occupancy, occ.bucket));
   }
+
+  // (a1) ZONE ROUGE (lot #71) — prescription la PLUS grave (⛔), RELATIVE à la fenêtre du modèle
+  // courant (#70) : au franchissement du seuil (≈85 % de la fenêtre), l'auto-compact approche —
+  // on prescrit clôture + handoff + session fraîche AVANT de subir un résumé lossy. Le modèle
+  // réel est lu au transcript (même source que la vigie modèle) ; s'il est absent, repli fenêtre
+  // prudente. 1×/épisode (état 'redzone'), réarmé sur compaction plus bas. Indépendant du projet
+  // (transcript + état seuls) -> marche même hors repo. Fail-open dédié dans evaluateRedZone.
+  const rz = occupancy.evaluateRedZone(input.transcript_path, sid, readLastModel(input.transcript_path));
+  if (rz) parts.push(redZonePrescriptionMessage(rz));
 
   // (a2) hygiène de lecture — indépendante du ledger, une fois par session, marche
   // même sur un projet jamais initialisé (lit le transcript brut comme (a)).
@@ -64,8 +74,9 @@ function main() {
     if (turn.alerts.intraBust) parts.push(bustIntraMessage(turn));
     if (turn.alerts.pause) parts.push(pauseTtlMessage(turn));
     // Redescente brutale (compaction) : le palier d'occupation persisté est périmé,
-    // on le resynchronise pour réarmer les futures alertes de palier.
-    if (turn.alerts.resync) occupancy.resyncBucket(sid, turn.occ);
+    // on le resynchronise pour réarmer les futures alertes de palier ; idem pour la
+    // prescription zone-rouge (#71) — un nouveau franchissement du seuil re-prescrira.
+    if (turn.alerts.resync) { occupancy.resyncBucket(sid, turn.occ); occupancy.resyncRedZone(sid); }
   }
 
   // (a3bis) dérive de session (#62) — tendance sur plusieurs tours (coût qui grimpe +

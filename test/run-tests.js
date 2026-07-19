@@ -3173,7 +3173,9 @@ section('Coût réel par lot (agrégation cost_tokens + alerte ~300k, lot #43)')
   backlogLib.startLot(repo, lE.id);
   const sidC = 'sess-cost';
   const tC = path.join(SANDBOX, 'cost.jsonl');
-  fs.writeFileSync(tC, '');
+  // Modèle réel = opus (fenêtre 1M) : l'occ ~200k de ce scénario reste LOIN du seuil zone-rouge
+  // (850k) — la prescription #71 ne doit pas se déclencher ici et évincer l'alerte de coût.
+  fs.writeFileSync(tC, JSON.stringify({ type: 'assistant', message: { model: 'claude-opus-4-8' } }) + '\n');
   const sysMsg = (r) => { try { return JSON.parse(r.out).systemMessage || ''; } catch (_) { return ''; } };
   fs.writeFileSync(path.join(repo, 'w.txt'), 'x'); // lot ouvert (tree sale)
 
@@ -3703,6 +3705,73 @@ section('Fenêtre de contexte par modèle + seuil zone-rouge relatif (lot #70)')
   ok(occupancy.isRedZone(180000, 'claude-haiku-4-5') === true, 'isRedZone : 180k sur haiku (fenêtre 200k) -> true (au-dessus de son propre seuil)');
   ok(occupancy.isRedZone(180000, 'claude-sonnet-5') === false, 'isRedZone : 180k sur sonnet (fenêtre 1M) -> false (même occ, modèle différent)');
   ok(occupancy.isRedZone(0, 'claude-sonnet-5') === false, 'isRedZone : occupation nulle -> false');
+}
+
+// ============================ V71. PRESCRIPTION ZONE-ROUGE DANS LES HOOKS (lot #71) ============================
+section('Prescription zone-rouge : armement 1×/épisode, réarmement sur compaction, câblage stop.js (lot #71)');
+{
+  // Transcript minimal : une ligne assistant portant l'occupation (input_tokens) et, si fourni,
+  // le modèle (lu par modelwatch dans stop.js).
+  const rzT = (name, occ, model) => {
+    const message = model ? { model, usage: { input_tokens: occ } } : { usage: { input_tokens: occ } };
+    return writeTranscript(name, ['{"type":"user"}', JSON.stringify({ type: 'assistant', message })]);
+  };
+
+  // 1) Franchissement du seuil (haiku, fenêtre 200k -> seuil 170k) : prescription émise, état créé.
+  const tRz = rzT('rz-haiku.jsonl', 180000, 'claude-haiku-4-5');
+  const r1 = occupancy.evaluateRedZone(tRz, 'rz-h', 'claude-haiku-4-5');
+  ok(r1 && r1.occ === 180000 && r1.threshold === 170000 && r1.window === 200000,
+    'V71 : franchissement seuil haiku (180k ≥ 170k) -> prescription {occ, threshold, window}');
+  ok(fs.existsSync(occupancy.stateFileFor('rz-h', 'redzone')), 'V71 : fichier d\'état redzone créé');
+
+  // 2) Anti-spam : 2e appel même épisode -> null (1×/épisode/session).
+  ok(occupancy.evaluateRedZone(tRz, 'rz-h', 'claude-haiku-4-5') === null,
+    'V71 : anti-spam -> 2e appel même session/épisode = null');
+
+  // 3) Modèle-relatif : même occ (180k) NON zone-rouge sur sonnet (fenêtre 1M, seuil 850k).
+  const tRzS = rzT('rz-sonnet.jsonl', 180000, 'claude-sonnet-5');
+  ok(occupancy.evaluateRedZone(tRzS, 'rz-s', 'claude-sonnet-5') === null,
+    'V71 : 180k sur sonnet (seuil 850k) -> pas de zone rouge (relatif à la fenêtre du modèle)');
+
+  // 4) Sous le seuil -> null, aucun état écrit.
+  const tRzUnder = rzT('rz-under.jsonl', 160000, 'claude-haiku-4-5');
+  ok(occupancy.evaluateRedZone(tRzUnder, 'rz-u', 'claude-haiku-4-5') === null,
+    'V71 : sous le seuil (160k < 170k) -> null');
+  ok(!fs.existsSync(occupancy.stateFileFor('rz-u', 'redzone')), 'V71 : sous le seuil -> aucun état écrit');
+
+  // 5) Réarmement sur compaction : resyncRedZone efface l'état -> re-prescription au prochain franchissement.
+  ok(occupancy.resyncRedZone('rz-h') === true, 'V71 : resyncRedZone supprime l\'état redzone');
+  ok(!fs.existsSync(occupancy.stateFileFor('rz-h', 'redzone')), 'V71 : état redzone effacé après resync');
+  const r5 = occupancy.evaluateRedZone(tRz, 'rz-h', 'claude-haiku-4-5');
+  ok(r5 && r5.occ === 180000, 'V71 : après compaction, nouveau franchissement -> re-prescription');
+  ok(occupancy.resyncRedZone('rz-jamais') === true, 'V71 : resyncRedZone sans état préexistant -> fail-silent, pas d\'erreur');
+
+  // 6) Fail-open : transcript absent -> null, jamais d'exception.
+  ok(occupancy.evaluateRedZone(null, 'rz-x', 'claude-haiku-4-5') === null, 'V71 : transcript absent -> null (fail-open)');
+
+  // 7) Repli fenêtre prudente quand le modèle est absent (DEFAULT_WINDOW 200k, seuil 170k).
+  const tRzDef = rzT('rz-nomodel.jsonl', 175000, null);
+  const r7 = occupancy.evaluateRedZone(tRzDef, 'rz-def', null);
+  ok(r7 && r7.window === occupancy.DEFAULT_WINDOW
+      && r7.threshold === Math.floor(occupancy.DEFAULT_WINDOW * occupancy.RED_ZONE_RATIO),
+    'V71 : modèle absent -> repli fenêtre prudente, seuil = ratio × défaut');
+
+  // 8) Message : glyphe ⛔ (sévérité max) + prescription des 3 issues + % de la fenêtre.
+  const msg = messages.redZonePrescriptionMessage({ occ: 180000, model: 'claude-haiku-4-5', threshold: 170000, window: 200000 });
+  ok(msg.startsWith('⛔'), 'V71 : message zone-rouge = sévérité ALERT (⛔)');
+  ok(/ZONE ROUGE/.test(msg) && /\/close-batch/.test(msg) && /\/fresh-session/.test(msg),
+    'V71 : message prescrit clôture + session fraîche');
+  ok(/90 ?%/.test(msg), 'V71 : message cite le % d\'occupation de la fenêtre (180k/200k = 90 %)');
+
+  // 9) Câblage stop.js (cwd hors repo git -> seule la branche transcript s'exécute) : au
+  //    franchissement, systemMessage porte la prescription ⛔ ; anti-spam 1×/session.
+  const sysMsg71 = (r) => { try { return JSON.parse(r.out).systemMessage || ''; } catch (_) { return ''; } };
+  const tStop = rzT('rz-stop.jsonl', 180000, 'claude-haiku-4-5');
+  const s1 = sysMsg71(runHook('stop.js', { session_id: 'rz-stop', cwd: SANDBOX, transcript_path: tStop }));
+  ok(/ZONE ROUGE/.test(s1) && /\/fresh-session/.test(s1),
+    'V71 : stop.js émet la prescription zone-rouge en systemMessage au franchissement');
+  const s2 = sysMsg71(runHook('stop.js', { session_id: 'rz-stop', cwd: SANDBOX, transcript_path: tStop }));
+  ok(!/ZONE ROUGE/.test(s2), 'V71 : stop.js anti-spam -> pas de 2e prescription même session');
 }
 
 // ============================ OC. OPENCODE ============================

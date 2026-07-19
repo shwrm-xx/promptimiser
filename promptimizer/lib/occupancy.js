@@ -245,6 +245,42 @@ function resyncBucket(sessionId, occ) {
   }
 }
 
+// Prescription ZONE ROUGE (lot #71) : l'occupation a franchi le seuil relatif à la fenêtre du
+// modèle courant (#70) — l'auto-compact de Claude Code approche (résumé lossy subi). Émise
+// UNE SEULE FOIS par épisode (fichier d'état dédié 'redzone', clé session). Le flag n'est
+// JAMAIS redescendu ici : comme le palier d'occupation (evaluate ci-dessous), une ligne
+// `usage` maigre (fort cache_read faible) ne doit pas réarmer une prescription déjà émise et
+// respammer. Le réarmement passe par resyncRedZone(), appelé sur détection d'une VRAIE
+// compaction (delta très négatif, alerts.resync de turnstats) — même politique que
+// resyncBucket. Fail-open : au pire on resignale. Retourne { occ, model, threshold, window }
+// au franchissement, sinon null.
+function evaluateRedZone(transcriptPath, sessionId, model) {
+  if (!transcriptPath) return null;
+  const occ = readLastOccupancy(transcriptPath);
+  if (!occ || !isRedZone(occ, model)) return null;
+  const sf = stateFileFor(sessionId, 'redzone');
+  if (fs.existsSync(sf)) return null; // déjà prescrit cet épisode zone-rouge
+  try {
+    fs.writeFileSync(sf, '1');
+  } catch (_) {
+    /* fail-open : au pire on resignale */
+  }
+  return { occ, model: model || null, threshold: redZoneThreshold(model), window: windowForModel(model) };
+}
+
+// Réarme la prescription zone-rouge après une VRAIE compaction (pendant symétrique de
+// resyncBucket pour le palier) : supprime le fichier d'état 'redzone' pour qu'un nouveau
+// franchissement du seuil re-prescrive. Appelé par stop.js dans la même branche
+// alerts.resync que resyncBucket. Fail-silent.
+function resyncRedZone(sessionId) {
+  try {
+    fs.rmSync(stateFileFor(sessionId, 'redzone'), { force: true });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 // Retourne { occupancy, bucket, crossedNew } ou null si rien d'exploitable.
 function evaluate(transcriptPath, sessionId) {
   if (!transcriptPath) return null;
@@ -275,4 +311,5 @@ module.exports = {
   evaluateSubagentNudge, resyncBucket, stateFileFor,
   BUCKETS, FLOATING_STEP, STATE_DIR,
   MODEL_WINDOWS, DEFAULT_WINDOW, RED_ZONE_RATIO, windowForModel, redZoneThreshold, isRedZone,
+  evaluateRedZone, resyncRedZone,
 };

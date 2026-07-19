@@ -121,6 +121,24 @@ function compactionNudgeMessage(occ) {
   return withSeverity(SEV.WARN, lines);
 }
 
+// Prescription ZONE ROUGE (lot #71) : l'occupation a franchi le seuil relatif à la fenêtre du
+// modèle courant (#70) — l'auto-compact approche. Sévérité MAXIMALE (⛔) : c'est l'alerte de
+// contexte la plus grave, elle doit primer et survivre au plafond de l'arbitre (#57). VISIBLE
+// (systemMessage) : aucun coût de cache, on peut donc joindre l'argument chiffré. Émise 1× par
+// épisode zone-rouge (réarmée après compaction, cf. occupancy.resyncRedZone).
+function redZonePrescriptionMessage(rz) {
+  const k = Math.round(rz.occ / 1000);
+  const win = Math.round(rz.window / 1000);
+  const pct = Math.round((rz.occ / rz.window) * 100);
+  const lines = [
+    `ZONE ROUGE : contexte ≈ ${k}k / ~${win}k tokens de fenêtre (${pct}%) — l'auto-compact de Claude Code approche.`,
+    'Ne le subis pas (résumé lossy) : clôture MAINTENANT, tant que le contexte est intact.',
+    "Lot fini → /close-batch. Sinon → commit intermédiaire + /fresh-session : repart d'un handoff court, sans perte.",
+  ];
+  lines.push(...compactionCostLines(rz.occ));
+  return withSeverity(SEV.ALERT, lines);
+}
+
 // Nudge occupation HAUTE injecté dans UserPromptSubmit (coûte du contexte) — donc
 // volontairement court (2 lignes) et plafonné 1×/palier par l'appelant. INJECTÉ (additionalContext,
 // pas systemMessage) : hors grammaire de sévérité (pas de glyphe — c'est un coût de contexte, pas
@@ -414,7 +432,7 @@ function modelMismatchMessage(lot, actualModel) {
 
 module.exports = {
   MSG_ACTIF, MSG_ACTIF_SLIM, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
-  occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
+  occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, redZonePrescriptionMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
   compactResumeMessage, backlogResumeMessage, largeWithPlanMessage,
   costlyTurnMessage, driftMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
