@@ -2071,6 +2071,84 @@ section('pmz:skip parsé dans le handoff -> avoid_reread_notes semé dès le tou
   ok(ledgerT3.loadReadLedger(repo2).avoid_reread_notes.length === 0, 'T3 : rien semé sans ligne pmz:skip');
 }
 
+section('Boucle fermée anti-relecture : handoff auto au format machine (lot #51)');
+{
+  const ledger51 = require(path.join(PKG, 'lib', 'ledger'));
+  const empty = path.join(SANDBOX, 'empty.jsonl');
+
+  // T51-1. Ledger vide -> handoff auto strictement identique à aujourd'hui (aucune
+  // section pmz:skip, comportement inchangé quand rien n'a encore été lu).
+  const repoEmpty = path.join(SANDBOX, 'repo-t51-empty');
+  fs.mkdirSync(repoEmpty, { recursive: true });
+  execFileSync('git', ['init', '-q', repoEmpty]);
+  fs.writeFileSync(path.join(repoEmpty, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoEmpty, 'add', '.']);
+  execFileSync('git', ['-C', repoEmpty, 'commit', '-q', '-m', 'init']);
+  runHook('stop.js', { session_id: 't51-empty', cwd: repoEmpty, transcript_path: empty });
+  const hfEmpty = fs.readFileSync(path.join(repoEmpty, '.vibe-agent', 'handoff.md'), 'utf8');
+  ok(!/pmz:skip/.test(hfEmpty), 'T51 : ledger vide -> aucune section pmz:skip (comportement inchangé)');
+
+  // T51-2. writeAutoHandoff : lectures récentes + top gaspillage semés en pmz:skip,
+  // fichier modifié depuis le dernier commit exclu du semis.
+  const repo = path.join(SANDBOX, 'repo-t51-skip');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'read1.js'), 'a'.repeat(100));
+  fs.writeFileSync(path.join(repo, 'waste.js'), 'w'.repeat(4000));
+  fs.writeFileSync(path.join(repo, 'modified.js'), 'm'.repeat(100));
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+
+  const readFile = (name) => runHook('post-tool-use.js', {
+    tool_name: 'Read', tool_input: { file_path: path.join(repo, name) }, cwd: repo,
+  });
+  const editFile = (name) => runHook('post-tool-use.js', {
+    tool_name: 'Edit', tool_input: { file_path: path.join(repo, name) }, cwd: repo,
+  });
+
+  readFile('read1.js'); // lue une seule fois : candidate « lecture récente »
+  readFile('waste.js'); // 1re lecture : coût justifié
+  readFile('waste.js'); // 2e lecture inchangée : gaspillage réel -> waste_by_file
+  readFile('modified.js');
+  editFile('modified.js'); // modifié APRÈS le dernier commit -> à exclure du semis
+
+  runHook('stop.js', { session_id: 't51-skip', cwd: repo, transcript_path: empty });
+  const hf51 = path.join(repo, '.vibe-agent', 'handoff.md');
+  const c51 = fs.readFileSync(hf51, 'utf8');
+  // Chemins pas forcément relatifs dans ce bac à sable (symlink /var -> /private/var sur
+  // macOS) : on matche par suffixe, comme le test B1 existant (waste_by_file).
+  ok(/pmz:skip:.*read1\.js$/m.test(c51), 'T51 : lecture récente unique semée au format machine pmz:skip');
+  ok(/pmz:skip:.*waste\.js$/m.test(c51), 'T51 : top-3 waste_by_file semé en pmz:skip');
+  ok(!/modified\.js/.test(c51), 'T51 : fichier modifié depuis le dernier commit exclu du semis (files_modified)');
+
+  // T51-3. Boucle fermée bout en bout : le prochain SessionStart sème avoid_reread_notes
+  // depuis un handoff AUTO (pas seulement manuel) — read1.js n'a été lu qu'UNE fois donc
+  // n'entre jamais dans avoid_reread_notes via le mécanisme naturel de relecture répétée ;
+  // seul le semis pmz:skip du handoff auto peut l'y faire apparaître.
+  runHook('session-start.js', { source: 'startup', cwd: repo, session_id: 't51-next' });
+  const notes51 = ledger51.loadReadLedger(repo).avoid_reread_notes;
+  ok(notes51.some((p) => /read1\.js$/.test(p)), 'T51 : boucle fermée -> read1.js semé via le handoff auto au SessionStart suivant');
+  ok(!notes51.some((p) => /modified\.js$/.test(p)), 'T51 : modified.js jamais semé (exclu en amont)');
+
+  // T51-4. Troncature 6000c (readHandoff) : les lignes pmz:skip émises tôt survivent.
+  const repoTrunc = path.join(SANDBOX, 'repo-t51-trunc');
+  fs.mkdirSync(repoTrunc, { recursive: true });
+  execFileSync('git', ['init', '-q', repoTrunc]);
+  fs.writeFileSync(path.join(repoTrunc, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoTrunc, 'add', '.']);
+  execFileSync('git', ['-C', repoTrunc, 'commit', '-q', '-m', 'init']);
+  const hfTrunc = path.join(repoTrunc, '.vibe-agent', 'handoff.md');
+  const bigLines = [handoff.AUTO_MARKER, '## Handoff', '  pmz:skip: lib/keep-me.js', ''];
+  for (let i = 0; i < 400; i++) bigLines.push(`- ligne de remplissage ${i} ${'x'.repeat(30)}`);
+  fs.mkdirSync(path.dirname(hfTrunc), { recursive: true });
+  fs.writeFileSync(hfTrunc, bigLines.join('\n'));
+  ok(fs.statSync(hfTrunc).size > 6000, 'T51 : fixture de troncature > 6000c');
+  const readBack = handoff.readHandoff(repoTrunc);
+  ok(!!readBack && readBack.text.length <= 6020, 'T51 : readHandoff tronque bien à ~6000c');
+  ok(handoff.parseSkipPaths(readBack.text).includes('lib/keep-me.js'),
+    'T51 : pmz:skip émis tôt (avant les sections volumineuses) survit à la troncature 6000c');
+}
+
 // ============================ VERSION PMZ + COMMANDE ABOUT (LOT 17) ============================
 section('Version PMZ historisée + commande about');
 {

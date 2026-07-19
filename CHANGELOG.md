@@ -2,6 +2,31 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #51 — epic « Autopilote PMZ II » : boucle fermée anti-relecture, handoff auto au format machine)
+
+- `promptimizer/lib/handoff.js` (`writeAutoHandoff`) : la section « Ne pas relire sauf
+  changement » du handoff **auto** (écrit à chaque tour par `stop.js`) passe du format libre
+  (`- <chemin>`, jamais parsé) au format machine `pmz:skip: <chemin>` — déjà reconnu par
+  `parseSkipPaths`/`seedAvoidReread` mais jusqu'ici réservé aux handoffs **manuels**
+  (`/fresh-session`, `/close-batch`). Boucle fermée : chaque fin de tour sème désormais
+  `avoid_reread_notes` au SessionStart suivant, sans action de l'assistant.
+- Ajout du top-3 des fichiers historiquement gaspillés (`lib/ledger.js#topWaste`, nouveau —
+  relectures complètes inchangées) à la liste semée : le gaspillage déjà mesuré par
+  `/check-context` devient un signal modèle-visible injecté d'office au tour 1.
+- Exclusion : un chemin modifié **depuis le dernier commit** (`project.js#lastCommitEpoch`
+  comparé à `files_modified`) n'est jamais semé — `files_modified` n'est jamais purgé (FIFO 200),
+  l'utiliser brut aurait exclu « tout fichier modifié depuis toujours ».
+- Ordre d'émission : les lignes `pmz:skip` sortent juste après la ligne epic/branche, **avant**
+  les blocs volumineux (plan de lots, todos, working tree) — `readHandoff` tronque à 6000
+  caractères avant le parse, ces lignes doivent survivre en premier.
+- Ledger vide → section omise, comportement strictement inchangé (pas de régression pour un
+  projet neuf).
+- `test/run-tests.js` : +7 assertions dédiées (format machine, top gaspillage, exclusion
+  modifié-depuis-commit, boucle fermée bout en bout via SessionStart, survie à la troncature
+  6000c). Suite complète verte (646 OK) ainsi que `run-tests-opencode.js` (108 OK, inchangé — le
+  portage OC réutilise le même `lib/handoff.js`).
+- **VERSION** `1.2.0 → 1.2.1` + rebuild `dist/marketplace` (`build-plugin.js`).
+
 ## 2026-07-18 (fix — id de part d'injection compatible OpenCode ≥ 1.18.3)
 
 - `opencode/plugin/impl/index.js` : la part synthétique d'injection de contexte (`chat.message`)

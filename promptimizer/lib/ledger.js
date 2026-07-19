@@ -113,6 +113,20 @@ function recordModify(root, relPath, sessionId) {
   writeAtomic(contextLedgerFile(root), cl);
 }
 
+// Top-n des fichiers historiquement les plus gaspillés (relectures complètes inchangées),
+// pour semer un signal anti-relecture dès le tour 1 (handoff auto). [{ path, waste }].
+function topWaste(root, n) {
+  try {
+    const wb = loadContextLedger(root).waste_by_file;
+    return Object.keys(wb)
+      .sort((a, b) => (wb[b] || 0) - (wb[a] || 0))
+      .slice(0, n)
+      .map((p) => ({ path: p, waste: wb[p] }));
+  } catch (_) {
+    return [];
+  }
+}
+
 // Sème avoid_reread_notes à partir de chemins fournis (ex : `pmz:skip:` du handoff) —
 // actif dès le tour 1, sans attendre une 1re relecture réelle. Fail-open.
 function seedAvoidReread(root, paths) {
@@ -127,4 +141,4 @@ function seedAvoidReread(root, paths) {
   writeAtomic(readLedgerFile(root), rl);
 }
 
-module.exports = { loadReadLedger, loadContextLedger, recordRead, recordModify, recordOccupancy, estTokens, seedAvoidReread };
+module.exports = { loadReadLedger, loadContextLedger, recordRead, recordModify, recordOccupancy, estTokens, seedAvoidReread, topWaste };

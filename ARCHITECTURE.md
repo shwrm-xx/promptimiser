@@ -255,21 +255,30 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
 - **Handoff de session** (`.vibe-agent/handoff.md`, `lib/handoff.js`) : UN fichier, **écrasé à
   chaque fin de tour** par `stop.js` (jamais cumulé — pas de bloat). Deux origines distinguées
   par marqueur en 1re ligne : `<!-- pmz:handoff:auto -->` (mécanique : epic/lot, branche,
-  dernier commit, plan de lots x/y + lot en cours + suivants, dernières todos,
-  working tree filtré, fichiers récemment lus à ne pas relire) et
-  `<!-- pmz:handoff:manual -->` (riche, écrit par l'assistant via `/fresh-session` ou
-  `/close-batch` — jamais écrasé par l'auto tant qu'il n'est pas consommé). Au SessionStart
-  suivant (`startup`/`clear` uniquement, jamais `resume`/`compact`), le handoff est **injecté**
-  (cap 6 000 caractères) puis **marqué consommé** (manuel → auto, l'auto reprend la main). Un
-  fichier sans marqueur PMZ (notes utilisateur) n'est ni écrasé ni injecté. La détection de
-  « lot ouvert » de `stop.js` utilise `gitStatusMeaningful` (porcelain **sans** `.vibe-agent/`) :
-  le churn ledgers/handoff ne compte pas comme lot ouvert et ne bloque pas sa clôture.
+  dernier commit, section `pmz:skip` (voir ci-dessous), plan de lots x/y + lot en cours +
+  suivants, dernières todos, working tree filtré) et `<!-- pmz:handoff:manual -->` (riche, écrit
+  par l'assistant via `/fresh-session` ou `/close-batch` — jamais écrasé par l'auto tant qu'il
+  n'est pas consommé). Au SessionStart suivant (`startup`/`clear` uniquement, jamais
+  `resume`/`compact`), le handoff est **injecté** (cap 6 000 caractères) puis **marqué consommé**
+  (manuel → auto, l'auto reprend la main). Un fichier sans marqueur PMZ (notes utilisateur) n'est
+  ni écrasé ni injecté. La détection de « lot ouvert » de `stop.js` utilise
+  `gitStatusMeaningful` (porcelain **sans** `.vibe-agent/`) : le churn ledgers/handoff ne compte
+  pas comme lot ouvert et ne bloque pas sa clôture.
 - **`pmz:skip` du handoff → `avoid_reread_notes`** (`lib/handoff.js#parseSkipPaths`,
-  `lib/ledger.js#seedAvoidReread`, lot T3) : un handoff manuel peut lister des chemins à ne pas
-  relire via des lignes `pmz:skip: <chemin>` ; `withHandoff` (`session-start.js`) les sème dans
-  `avoid_reread_notes` (read-ledger) au moment de l'injection — l'advisory anti-relecture est
-  actif dès le tour 1, sans attendre une 1re relecture réelle pour l'alimenter. Champ réutilisé,
-  pas dupliqué. Parse raté/vide = ignoré silencieusement (fail-open).
+  `lib/ledger.js#seedAvoidReread`, lot T3 ; boucle fermée lot #51) : des lignes `pmz:skip:
+  <chemin>` sèment `avoid_reread_notes` (read-ledger) dès l'injection du handoff au SessionStart
+  suivant — actif dès le tour 1, sans attendre une 1re relecture réelle. Un handoff **manuel**
+  peut lister ces chemins à la main ; l'auto (`writeAutoHandoff`) les **génère lui-même** à
+  chaque tour à partir de deux sources mesurées : les fichiers lus le plus récemment
+  (`files_read`) et le top-3 des plus gaspillés (`lib/ledger.js#topWaste`, relectures complètes
+  inchangées — le gaspillage mesuré devient signal modèle-visible sans action manuelle). Les deux
+  excluent les chemins modifiés **depuis le dernier commit** (`files_modified` filtré par
+  `lastCommitEpoch` — `files_modified` brut n'est jamais purgé et daterait « modifié depuis
+  toujours »). Émises juste après la ligne epic/branche, **avant** les blocs volumineux
+  (plan/todos/working tree) : `readHandoff` tronque à 6 000 caractères avant le parse, ces lignes
+  doivent survivre en premier. Ledger vide → section omise (comportement inchangé). Champ
+  `avoid_reread_notes` réutilisé, pas dupliqué. Parse raté/vide = ignoré silencieusement
+  (fail-open).
 
 - **Version de PMZ** (`promptimizer/VERSION`, `lib/version.js`) : entier simple (pas de semver —
   un seul mainteneur, aucune distinction major/minor/patch utile) versionné avec le package,

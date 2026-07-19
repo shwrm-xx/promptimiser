@@ -8,8 +8,8 @@
 // Un fichier sans marqueur PMZ (notes utilisateur) n'est ni écrasé ni injecté.
 const fs = require('fs');
 const path = require('path');
-const { vibeDir, git, gitStatusMeaningful } = require('./project');
-const { loadContextLedger } = require('./ledger');
+const { vibeDir, git, gitStatusMeaningful, lastCommitEpoch } = require('./project');
+const { loadContextLedger, topWaste } = require('./ledger');
 const { readEpic, getLotCounter } = require('./lot');
 const { summaryLines, readTodoSnapshot } = require('./backlog');
 
@@ -18,6 +18,7 @@ const MANUAL_MARKER = '<!-- pmz:handoff:manual -->';
 const MAX_INJECT_CHARS = 6000; // cap d'injection SessionStart (un handoff doit rester court)
 const MAX_DIRTY_LINES = 15;
 const MAX_READ_LINES = 10;
+const MAX_WASTE_LINES = 3;
 
 function handoffFile(root) {
   return path.join(vibeDir(root), 'handoff.md');
@@ -78,6 +79,30 @@ function recentReads(root) {
   }
 }
 
+// Exclut les chemins modifiés depuis le dernier commit (travail en cours, pas du bruit à
+// éviter) — files_modified n'est jamais purgé (FIFO 200), l'utiliser brut daterait
+// l'exclusion à « modifié depuis toujours ». lastCommitMs null (pas de commit) -> no-op.
+function excludeRecentlyModified(root, paths, lastCommitMs) {
+  if (!paths.length || lastCommitMs == null) return paths;
+  try {
+    const fm = loadContextLedger(root).files_modified;
+    return paths.filter((p) => !(fm[p] && fm[p] > lastCommitMs));
+  } catch (_) {
+    return paths;
+  }
+}
+
+// Candidats à semer en `pmz:skip:` : lectures récentes + top-3 historiquement gaspillé
+// (relectures complètes inchangées), dédupliqués, fichiers modifiés depuis le dernier
+// commit exclus des deux.
+function skipCandidates(root, lastCommitMs) {
+  const reads = excludeRecentlyModified(root, recentReads(root), lastCommitMs);
+  const seen = new Set(reads);
+  const waste = excludeRecentlyModified(root, topWaste(root, MAX_WASTE_LINES).map((e) => e.path), lastCommitMs)
+    .filter((p) => !seen.has(p));
+  return { reads, waste };
+}
+
 // Écrit le handoff auto (dernier état connu). Refuse d'écraser un handoff manuel
 // non consommé ou un fichier sans marqueur PMZ. Fail-silent.
 function writeAutoHandoff(root) {
@@ -89,7 +114,9 @@ function writeAutoHandoff(root) {
     const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'], root) || '?';
     const last = git(['log', '-1', '--format=%h %s'], root) || 'aucun commit';
     const dirty = gitStatusMeaningful(root);
-    const reads = recentReads(root);
+    const lastCommitSec = lastCommitEpoch(root);
+    const lastCommitMs = lastCommitSec == null ? null : lastCommitSec * 1000;
+    const { reads, waste } = skipCandidates(root, lastCommitMs);
     const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
 
     const lines = [
@@ -103,6 +130,14 @@ function writeAutoHandoff(root) {
       `- Epic / lot en cours : « ${readEpic(root)} » — lot ${getLotCounter(root) + 1}`,
       `- Branche : ${branch} — dernier commit : ${last}`,
     ];
+    // Format machine pmz:skip: <chemin> — parsé par parseSkipPaths et semé dès le tour 1
+    // (seedAvoidReread côté session-start.js). Émis AVANT les blocs volumineux ci-dessous :
+    // readHandoff tronque à 6000c avant le parse, ces lignes doivent survivre en premier.
+    if (reads.length || waste.length) {
+      lines.push('- Ne pas relire sauf changement (déjà lus récemment ou historiquement coûteux — git diff/git grep ou lecture partielle d\'abord) :');
+      for (const p of reads) lines.push(`  pmz:skip: ${p}`);
+      for (const p of waste) lines.push(`  pmz:skip: ${p}`);
+    }
     // Avancement fonctionnel : plan de lots (backlog) + dernier état des todos.
     // Blocs omis si artefacts absents — le handoff reste purement mécanique sinon.
     const plan = summaryLines(root);
@@ -125,10 +160,6 @@ function writeAutoHandoff(root) {
       if (dirty.length > MAX_DIRTY_LINES) lines.push(`  - … +${dirty.length - MAX_DIRTY_LINES} autres`);
     } else {
       lines.push('- Working tree : propre (lot précédent commité)');
-    }
-    if (reads.length) {
-      lines.push('- Ne pas relire sauf changement (déjà lus récemment — git diff/git grep d\'abord) :');
-      for (const p of reads) lines.push(`  - ${p}`);
     }
     fs.writeFileSync(f, lines.join('\n') + '\n');
     return true;
