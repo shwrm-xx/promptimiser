@@ -23,10 +23,11 @@ const { loadBacklog, doneLot, nextLot, progress, currentLot, addCost, COST_WARN_
 const occupancy = require('../lib/occupancy');
 const { readLastModel } = require('../lib/modelwatch');
 const turnstats = require('../lib/turnstats');
+const loopwatch = require('../lib/loopwatch');
 const { arbitrate } = require('../lib/arbiter');
 const {
   MSG_CLOTURE, occupancyMessage, redZonePrescriptionMessage, lotClosedMessage, epicBilanMessage,
-  costlyTurnMessage, driftMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
+  costlyTurnMessage, driftMessage, loopingCommandMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
   closureWithDraftMessage, lotClosureCardMessage,
 } = require('../lib/messages');
@@ -85,6 +86,13 @@ function main() {
   // Indépendant du projet (transcript + état seuls) -> marche même hors repo.
   const drift = turnstats.evaluateDrift(sid);
   if (drift) parts.push(driftMessage(drift));
+
+  // (a3quater) vigie des tours en boucle (#69) — la même commande Bash a échoué en rafale
+  // (>= 3 fois d'affilée, boucle encore ouverte) : nudge « change d'approche » plutôt que
+  // laisser relancer. Anti-spam par commande (1×/session·commande) et fail-open dédiés dans
+  // evaluateLoop. Indépendant du projet (transcript + état seuls) -> marche même hors repo.
+  const loop = loopwatch.evaluateLoop(input.transcript_path, sid);
+  if (loop) parts.push(loopingCommandMessage(loop));
 
   // (b) clôture — dans tout repo git (ledger auto-créé, jamais de confirmation requise).
   const root = gitRoot(cwd);

@@ -3985,6 +3985,98 @@ section('Prescription zone-rouge : armement 1×/épisode, réarmement sur compac
   ok(!/ZONE ROUGE/.test(s2), 'V71 : stop.js anti-spam -> pas de 2e prescription même session');
 }
 
+// ============================ V69. VIGIE DES TOURS EN BOUCLE (lot #69) ============================
+section('Vigie des tours en boucle : commande Bash qui échoue en rafale -> nudge (lot #69)');
+{
+  const loopwatch = require(path.join(PKG, 'lib', 'loopwatch'));
+  const use69 = (id, cmd) => JSON.stringify({ type: 'assistant',
+    message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Bash', input: { command: cmd } }] } });
+  const res69 = (id, err) => JSON.stringify({ type: 'user',
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, is_error: !!err, content: err ? 'Exit code 1' : 'ok' }] } });
+
+  // 1) 3 échecs d'affilée de la même commande, diagnostics intercalés (une AUTRE commande
+  //    réussit entre deux relances) : la série tient, la boucle est détectée.
+  const tLoop = writeTranscript('loop-3fails.jsonl', [
+    use69('u1', 'npm test'), res69('u1', true),
+    use69('d1', 'ls -la'), res69('d1', false), // diagnostic intercalé : ne casse pas la série
+    use69('u2', 'npm  test'), res69('u2', true), // espaces multiples : normalisé -> même commande
+    use69('u3', 'npm test'), res69('u3', true),
+  ]);
+  const l1 = loopwatch.scanTailForLoop(tLoop);
+  ok(l1 && l1.cmd === 'npm test' && l1.fails === 3,
+    'V69 : 3 échecs consécutifs (espaces normalisés, diagnostics intercalés) -> boucle {cmd, fails:3}');
+
+  // 2) Un succès de la MÊME commande remet sa série à zéro : 2 échecs + succès + 1 échec -> rien.
+  const tReset = writeTranscript('loop-reset.jsonl', [
+    use69('r1', 'npm test'), res69('r1', true),
+    use69('r2', 'npm test'), res69('r2', true),
+    use69('r3', 'npm test'), res69('r3', false),
+    use69('r4', 'npm test'), res69('r4', true),
+  ]);
+  ok(loopwatch.scanTailForLoop(tReset) === null, 'V69 : un succès remet la série à zéro -> pas de boucle');
+
+  // 3) Boucle RÉSOLUE (3 échecs puis succès final) : nudger après coup serait du bruit.
+  const tSolved = writeTranscript('loop-solved.jsonl', [
+    use69('s1', 'npm test'), res69('s1', true),
+    use69('s2', 'npm test'), res69('s2', true),
+    use69('s3', 'npm test'), res69('s3', true),
+    use69('s4', 'npm test'), res69('s4', false),
+  ]);
+  ok(loopwatch.scanTailForLoop(tSolved) === null, 'V69 : boucle résolue (succès final) -> null');
+
+  // 4) Sous le seuil (2 échecs) ou éparpillé sur des commandes différentes -> rien.
+  const tUnder = writeTranscript('loop-under.jsonl', [
+    use69('a1', 'cmd A'), res69('a1', true), use69('a2', 'cmd A'), res69('a2', true),
+    use69('b1', 'cmd B'), res69('b1', true), use69('b2', 'cmd B'), res69('b2', true),
+  ]);
+  ok(loopwatch.scanTailForLoop(tUnder) === null,
+    'V69 : 2 échecs par commande (< seuil de 3) -> pas de boucle, même avec 4 échecs au total');
+
+  // 5) evaluateLoop : nudge au 1er appel, anti-spam au 2e ; une AUTRE commande en boucle
+  //    plus tard re-nudge (anti-spam par commande, pas par session entière).
+  const e1 = loopwatch.evaluateLoop(tLoop, 'sess-loop');
+  ok(e1 && e1.cmd === 'npm test' && e1.fails === 3, 'V69 : evaluateLoop -> {cmd, fails} au 1er passage');
+  ok(loopwatch.evaluateLoop(tLoop, 'sess-loop') === null, 'V69 : anti-spam -> 2e passage même commande = null');
+  const tLoop2 = writeTranscript('loop-other-cmd.jsonl', [
+    use69('u1', 'npm test'), res69('u1', true), use69('u2', 'npm test'), res69('u2', true),
+    use69('u3', 'npm test'), res69('u3', true),
+    use69('c1', 'make build'), res69('c1', true), use69('c2', 'make build'), res69('c2', true),
+    use69('c3', 'make build'), res69('c3', true), use69('c4', 'make build'), res69('c4', true),
+  ]);
+  const e2 = loopwatch.evaluateLoop(tLoop2, 'sess-loop');
+  ok(e2 && e2.cmd === 'make build' && e2.fails === 4,
+    'V69 : nouvelle commande en boucle (4 > 3 échecs de npm test déjà signalés) -> son propre nudge');
+
+  // 6) Fail-open : transcript absent, ligne JSON pourrie, tool_result orphelin -> jamais d'exception.
+  ok(loopwatch.evaluateLoop(null, 'sess-loop-x') === null, 'V69 : transcript absent -> null (fail-open)');
+  const tDirty = writeTranscript('loop-dirty.jsonl', [
+    '{"type":"assistant","message":{"content":[{"type":"tool_use"', // JSON tronqué
+    res69('orphelin', true), // résultat sans tool_use connu (autre outil / hors fenêtre)
+    use69('z1', 'npm test'), res69('z1', true),
+  ]);
+  ok(loopwatch.scanTailForLoop(tDirty) === null,
+    'V69 : lignes pourries et tool_result orphelins tolérés, 1 seul échec réel -> null');
+
+  // 7) Message : sévérité ⚠, compte d'échecs, commande longue tronquée à l'affichage.
+  const m1 = messages.loopingCommandMessage({ cmd: 'npm test', fails: 3 });
+  ok(m1.startsWith('⚠') && /`npm test`/.test(m1) && /3 fois d'affilée/.test(m1),
+    'V69 : message = ⚠ + commande + nombre d\'échecs');
+  ok(/subagent/.test(m1) && /1×\/session par commande/.test(m1),
+    'V69 : message prescrit le changement d\'approche + annonce son anti-spam');
+  const longCmd = 'x'.repeat(200);
+  const m2 = messages.loopingCommandMessage({ cmd: longCmd, fails: 5 });
+  ok(m2.indexOf('…') !== -1 && m2.indexOf(longCmd) === -1, 'V69 : commande > 80 chars tronquée à l\'affichage');
+
+  // 8) Câblage stop.js (cwd hors repo git -> seule la branche transcript s'exécute) :
+  //    nudge au 1er Stop, anti-spam au 2e.
+  const sysMsg69 = (r) => { try { return JSON.parse(r.out).systemMessage || ''; } catch (_) { return ''; } };
+  const s1 = sysMsg69(runHook('stop.js', { session_id: 'loop-stop', cwd: SANDBOX, transcript_path: tLoop }));
+  ok(/Commande en boucle/.test(s1) && /npm test/.test(s1),
+    'V69 : stop.js émet le nudge de boucle en systemMessage');
+  const s2 = sysMsg69(runHook('stop.js', { session_id: 'loop-stop', cwd: SANDBOX, transcript_path: tLoop }));
+  ok(!/Commande en boucle/.test(s2), 'V69 : stop.js anti-spam -> pas de 2e nudge même session/commande');
+}
+
 // ============================ OC. OPENCODE ============================
 section('OpenCode — squelette plugin + install sandbox (test/run-tests-opencode.js)');
 {

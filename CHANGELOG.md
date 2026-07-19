@@ -2,6 +2,28 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #69 — epic « Atterrissages » : vigie des tours en boucle)
+
+- `promptimizer/lib/loopwatch.js` (nouveau) : détecte une commande **Bash relancée en rafale
+  alors qu'elle échoue** — scan fenêtré du tail du transcript (1,5 Mo, même méthode que
+  `scanTailForReadMix`), série d'échecs **par commande** normalisée en espaces (`is_error`
+  incrémente, succès remet à zéro ; les diagnostics intercalés entre deux relances ne cassent
+  pas la série). Nudge seulement si la série atteint **3 échecs d'affilée** ET que la boucle
+  est **encore ouverte** (dernier résultat = échec ; résolue toute seule → silence). Anti-spam
+  **par commande** (état `<sha1>-loops.json`) : une 2e commande en boucle mérite son nudge, la
+  même ne re-nudge jamais. Fail-open total, indépendant du projet.
+- `promptimizer/lib/messages.js` : `loopingCommandMessage` — nudge ⚠ WARN « change d'approche
+  plutôt que de relancer » (lire l'erreur en entier, hypothèse différente, ou débogage déporté
+  en subagent), commande tronquée à 80 caractères à l'affichage.
+- `promptimizer/hooks/stop.js` : branche (a3quater) après le détecteur de dérive — fail-open
+  dédié dans `evaluateLoop`, marche même hors repo git.
+- Doc : ligne `stop.js` du tableau des hooks + section vigie dédiée dans ARCHITECTURE.md ;
+  README (comportement en fin de tour).
+- Tests : `node test/run-tests.js` → **881 OK · 0 échec** (+14 assertions V69 : détection,
+  reset sur succès, boucle résolue, sous-seuil, normalisation, anti-spam par commande,
+  fail-open lignes pourries/orphelines, message, intégration stop.js en bac à sable). Smoke
+  réel du hook confirmé en dossier temporaire (systemMessage ⚠ au 1er Stop, silence au 2e).
+
 ## 2026-07-19 (lot #68 — epic « Atterrissages » : brouillon CHANGELOG servi)
 
 - `promptimizer/lib/messages.js` : `closureWithDraftMessage(lot, files, dateStr)` — le rappel

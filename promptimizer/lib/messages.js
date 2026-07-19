@@ -194,6 +194,19 @@ function driftMessage(drift) {
   ]);
 }
 
+// Vigie des tours en boucle (#69) : la même commande Bash échoue en rafale — le modèle
+// insiste au lieu de changer d'approche, chaque relance repaye le contexte + l'erreur.
+const LOOP_CMD_DISPLAY_MAX = 80;
+function loopingCommandMessage(loop) {
+  let cmd = String((loop && loop.cmd) || '');
+  if (cmd.length > LOOP_CMD_DISPLAY_MAX) cmd = cmd.slice(0, LOOP_CMD_DISPLAY_MAX - 1) + '…';
+  const n = (loop && loop.fails) || 0;
+  return withSeverity(SEV.WARN, [
+    `Commande en boucle : \`${cmd}\` vient d'échouer ${n} fois d'affilée.`,
+    'Relancer ne changera rien : lis le message d\'erreur en entier et teste une hypothèse différente, ou déporte le débogage dans un subagent (contexte principal préservé). (Signalé 1×/session par commande.)',
+  ]);
+}
+
 // Cache invalidé EN PLEIN tour (anormal) : un fichier lu par le cache a changé en session.
 function bustIntraMessage(turn) {
   const b = turn.busts.filter((x) => !x.first).slice(-1)[0] || {};
@@ -490,7 +503,7 @@ module.exports = {
   MSG_ACTIF, MSG_ACTIF_SLIM, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, redZonePrescriptionMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
   compactResumeMessage, COMPACT_RESUME_CAP, backlogResumeMessage, largeWithPlanMessage,
-  costlyTurnMessage, driftMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
+  costlyTurnMessage, driftMessage, loopingCommandMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
   closureWithDraftMessage, epicBilanMessage, lotClosureCardMessage,
   fmtK, statusLineText,

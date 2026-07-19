@@ -145,7 +145,8 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   fichiers inchangés) est surfacé aux paliers 25k/50k/100k avec le **top-3 des fichiers coupables**
   (une seule fois par palier, sur toute la vie du projet). À haute occupation avec beaucoup de
   lectures, un nudge invite à **déléguer l'exploration à un subagent** (les lectures restent hors du
-  contexte principal). Ces rappels visibles portent un **glyphe de sévérité** (ℹ info / ⚠ warn /
+  contexte principal). Une commande qui **échoue en rafale** (≥ 3 fois d'affilée, relancée telle
+  quelle) déclenche un nudge « change d'approche plutôt que de relancer » (1×/session par commande). Ces rappels visibles portent un **glyphe de sévérité** (ℹ info / ⚠ warn /
   ⛔ alert) pour lire d'un coup d'œil ce qui est normal, ce qui mérite attention et ce qui est
   anormal. Quand un tour en déclenche trop, un **arbitre** n'en garde que les 3 plus sévères
   (ordre de lecture préservé) — pas de pavé qui noie le signal important.
