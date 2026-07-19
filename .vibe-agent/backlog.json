@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 73,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-19T19:29:44.556Z",
+  "updated_at": "2026-07-19T19:30:02.092Z",
   "lots": [
     {
       "id": 1,
@@ -1357,18 +1357,18 @@
       "id": 72,
       "title": "Réinjection post-compact enrichie",
       "scope": "SessionStart(compact) réinjecte sous budget explicite : lot en cours + décisions/verify récents + pmz:skip — remplace la réinjection minimale ≤300 chars actuelle, sans dépasser un plafond chiffré.",
-      "status": "in_progress",
+      "status": "done",
       "model_hint": "opus",
       "effort_hint": "medium",
       "epic": "Atterrissages",
       "verify": "tests verts (contenu, plafond de taille, silence sans backlog) ; node test/run-tests.js vert",
-      "closed_commit": null,
-      "closed_at": null,
+      "closed_commit": "f30195f",
+      "closed_at": "2026-07-19T19:30:02.091Z",
       "closed_session_id": null,
       "closed_occupancy": null,
       "cost_tokens": 0,
       "started_at": "2026-07-19T19:22:24.903Z",
-      "lot_number": null,
+      "lot_number": 89,
       "note": null,
       "session_touches": 1
     }
