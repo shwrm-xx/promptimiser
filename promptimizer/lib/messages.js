@@ -166,6 +166,16 @@ function costlyTurnMessage(turn) {
   ]);
 }
 
+// Dérive de session (#62) : sur une fenêtre de tours, le coût de contexte grimpe ET
+// le cache rend moins -> prescrit la clôture plutôt que de continuer à payer l'accumulé.
+function pct(x) { return `${Math.round((x || 0) * 100)}%`; }
+function driftMessage(drift) {
+  return withSeverity(SEV.WARN, [
+    `Dérive de session sur ${drift.turns} tours : le coût de contexte monte (~${fmtK(drift.avgDeltaOld)} → ~${fmtK(drift.avgDeltaNew)}/tour) pendant que le cache rend moins (${pct(drift.avgHitOld)} → ${pct(drift.avgHitNew)}).`,
+    'Signe qu\'il vaut mieux clôturer le lot et repartir sur une session fraîche que continuer à payer le contexte accumulé (/close-batch puis /fresh-session).',
+  ]);
+}
+
 // Cache invalidé EN PLEIN tour (anormal) : un fichier lu par le cache a changé en session.
 function bustIntraMessage(turn) {
   const b = turn.busts.filter((x) => !x.first).slice(-1)[0] || {};
@@ -406,7 +416,7 @@ module.exports = {
   MSG_ACTIF, MSG_ACTIF_SLIM, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
   compactResumeMessage, backlogResumeMessage, largeWithPlanMessage,
-  costlyTurnMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
+  costlyTurnMessage, driftMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
   epicBilanMessage, lotClosureCardMessage,
   fmtK, statusLineText,

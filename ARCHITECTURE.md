@@ -32,7 +32,7 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
 | `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd`, `transcript_path` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large (anti-spam 1×/session), nudge occupation ≥ 500k en 2 lignes (anti-spam 1×/palier, lot B5), vigie modèle réel vs préconisé du lot en cours (anti-spam 1×/session, lot #42) |
 | `pre-tool-use.js` | PreToolUse `Bash` | `tool_input.command` | `permissionDecision` allow/ask/deny | sûreté commandes |
 | `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite` | `tool_input.file_path`, `tool_input.todos` | `additionalContext` (rare, advisory) + effet de bord ledgers | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite), signale une relecture complète redondante (lot B4) |
-| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), hygiène de lecture, **nudge subagent** à haute occupation + lectures (lot #52), **palier de gaspillage auto-surfacé** avec top-3 coupables (`waste_bucket` persisté, lot #52), rappel de clôture nommant les skills, incrémente le compteur de lot, agrège le coût réel du lot en cours (`cost_tokens`) et alerte à l'approche du budget ~300k avec proposition de redécoupage (lot #43), auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, exécute la `verify` du lot à l'auto-clôture (timeout court `VERIFY_AUTOCLOSE_MS`, résultat visible, jamais bloquant) + rappel doux si le commit de clôture ne touche pas `CHANGELOG.md` (lot #44), **plafonne les nudges du tour par sévérité** (`lib/arbiter.js`, ≤ 3, lot #57), écrit le handoff auto (écrasé à chaque tour) |
+| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), **détecteur de dérive de session** (coût↑ + hitRate↓ sur 6 tours → prescrit la clôture, lot #62), hygiène de lecture, **nudge subagent** à haute occupation + lectures (lot #52), **palier de gaspillage auto-surfacé** avec top-3 coupables (`waste_bucket` persisté, lot #52), rappel de clôture nommant les skills, incrémente le compteur de lot, agrège le coût réel du lot en cours (`cost_tokens`) et alerte à l'approche du budget ~300k avec proposition de redécoupage (lot #43), auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, exécute la `verify` du lot à l'auto-clôture (timeout court `VERIFY_AUTOCLOSE_MS`, résultat visible, jamais bloquant) + rappel doux si le commit de clôture ne touche pas `CHANGELOG.md` (lot #44), **plafonne les nudges du tour par sévérité** (`lib/arbiter.js`, ≤ 3, lot #57), écrit le handoff auto (écrasé à chaque tour) |
 | `pre-compact.js` | PreCompact `manual\|auto` | `cwd`, `trigger`, `transcript_path` | `systemMessage` (manual) ou — (auto : effet de bord handoff seul) | sauve le handoff auto (plan de lots + todos compris) AVANT compaction ; la réinjection minimale se fait au SessionStart(compact). Sur `manual` (/compact), ajoute un rappel **chiffré** visible : compacter ≈ réécriture de l'occupation en cache-write (×1,25) + résumé lossy, vs clôture + handoff (~8k) — TTL prudent, aucun prix en dur (lot T1). `auto` reste silencieux (compaction subie) |
 
 ### Invariants NON négociables
@@ -96,6 +96,17 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   aucune alerte parasite) ; un `delta < -100k` (compaction) → `occupancy.resyncBucket` réécrit le
   palier persisté pour réarmer les alertes. Miroir compact `context-ledger.json.occupancy`
   (`{last, at, delta_last_turn, session}`, last-writer-wins assumé — la mesure fine reste hors-projet).
+- **Détecteur de dérive de session** (`lib/turnstats.js: evaluateDrift`, lot #62) : au-delà du tour
+  isolé, cherche une **tendance** sur les 6 derniers tours *exploitables* (delta ET hitRate connus —
+  les tours baseline/compaction sont écartés). Chaque tour persiste désormais son hitRate (`h`) dans
+  `turns.json`. On compare la moitié récente (3 tours) à l'ancienne (3 tours) : **dérive** = le delta
+  d'occupation moyen grimpe (récent ≥ 1,3× l'ancien **et** ≥ 15k) **ET** le hitRate moyen chute
+  (≥ 8 points). Les deux conditions sont requises : un tour ponctuellement cher (déjà couvert par
+  « tour coûteux ») ou une seule pause de cache ne déclenchent pas. `systemMessage` **WARN** qui
+  **prescrit la clôture** (`/close-batch` puis `/fresh-session`). Anti-spam dédié (`<sha1>-drift`,
+  `{lastDriftTurn}`) : au plus 1 nudge par fenêtre de 6 tours. Fail-open (aucun état → `null`).
+  Appelé par `stop.js` **après** `computeTurn` (lit l'historique qu'il vient d'écrire), indépendant
+  du projet (transcript + état seuls → marche hors repo).
 - **Hygiène de lecture** (`lib/occupancy.js: evaluateReadMix`) : même principe (lit le transcript
   brut, fenêtre fixe 1,5 Mo, aucune dépendance au ledger), tally les blocs `tool_use` récents pour
   détecter une majorité de `Read` sans `offset`/`limit` face aux recherches (`Grep`/`Glob`/`grep`

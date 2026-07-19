@@ -2033,6 +2033,88 @@ section('Métrologie par tour (turnstats : delta, anti-spam, baseline, resync, b
   const r6 = ts.computeTurn(t6, 'ts-intra');
   ok(r6.busts.length === 1 && r6.busts[0].first === false, 'B2 : bust 2e requête -> first=false (intra-tour)');
   ok(r6.alerts.intraBust === true && r6.alerts.pause === false, 'B2 : bust intra -> alerte intraBust');
+
+  // 6) hitRate persisté par tour dans turns[] (support de la dérive #62).
+  const t7 = tsPath('ts7.jsonl');
+  stop(t7, usageLine(2000, 98000, 0, 100), 'ts-h');   // baseline occ 100k, h=null
+  stop(t7, usageLine(2000, 108000, 0, 100), 'ts-h');  // occ 110k, h=108k/110k
+  const stH = require(path.join(PKG, 'lib', 'fsjson')).readJson(occupancy.stateFileFor('ts-h', 'turns.json'), null);
+  ok(stH && stH.turns[0].h === null, 'B2 : tour baseline -> h null persisté');
+  ok(stH && Math.abs(stH.turns[1].h - 108000 / 110000) < 1e-9, 'B2 : hitRate du tour persisté dans turns[]');
+}
+
+// ============================ #62. DÉTECTEUR DE DÉRIVE DE SESSION ============================
+section('Détecteur de dérive de session (turnstats.evaluateDrift : tendance + anti-spam)');
+{
+  const ts = require(path.join(PKG, 'lib', 'turnstats'));
+  const { driftMessage } = require(path.join(PKG, 'lib', 'messages'));
+  const tsPath = (n) => path.join(SANDBOX, n);
+  const stop = (file, line, sid) => { fs.appendFileSync(file, line + '\n'); return ts.computeTurn(file, sid); };
+  // Tour ancien : petit delta (+10k), cache excellent. Tour récent : gros delta (+30k), cache dégradé.
+  const older = (occ) => usageLine(2000, occ - 2000, 0, 100);                 // hitRate ~0.98
+  const newer = (occ) => usageLine(Math.round(occ * 0.3), Math.round(occ * 0.7), 0, 100); // hitRate 0.7
+
+  // 1) Pas assez de tours exploitables -> pas de verdict.
+  const d1 = tsPath('drift1.jsonl');
+  stop(d1, older(100000), 'd-few'); // baseline
+  stop(d1, older(110000), 'd-few');
+  stop(d1, older(120000), 'd-few');
+  ok(ts.evaluateDrift('d-few') === null, '#62 : < 6 tours exploitables -> pas de dérive');
+
+  // 2) Coût qui grimpe ET cache qui se dégrade sur la fenêtre -> dérive détectée.
+  const d2 = tsPath('drift2.jsonl');
+  stop(d2, older(100000), 'd-hit');           // baseline (d/h null, écarté)
+  stop(d2, older(110000), 'd-hit');           // older[0] +10k
+  stop(d2, older(120000), 'd-hit');           // older[1] +10k
+  stop(d2, older(130000), 'd-hit');           // older[2] +10k
+  stop(d2, newer(160000), 'd-hit');           // newer[0] +30k, hit 0.7
+  stop(d2, newer(190000), 'd-hit');           // newer[1] +30k, hit 0.7
+  stop(d2, newer(220000), 'd-hit');           // newer[2] +30k, hit 0.7
+  const drift = ts.evaluateDrift('d-hit');
+  ok(drift && drift.turns === 6, '#62 : coût↑ + cache↓ sur 6 tours -> dérive détectée');
+  ok(drift && Math.round(drift.avgDeltaOld) === 10000 && Math.round(drift.avgDeltaNew) === 30000,
+    '#62 : deltas moyens ancien/récent = 10k/30k');
+  ok(drift && drift.avgHitOld > 0.9 && Math.abs(drift.avgHitNew - 0.7) < 1e-9,
+    '#62 : hitRate moyen ancien > 0.9, récent = 0.7');
+  // Message : WARN, prescrit la clôture.
+  const msg = driftMessage(drift);
+  ok(/Dérive de session/.test(msg) && /close-batch/.test(msg), '#62 : message prescrit la clôture');
+
+  // 3) Anti-spam : ré-appel immédiat muet (cooldown), puis réarmement après DRIFT_COOLDOWN
+  //    tours en rejouant le motif de dérive (fenêtre = 3 tours calmes + 3 tours qui dérivent).
+  ok(ts.evaluateDrift('d-hit') === null, '#62 anti-spam : 2e appel immédiat muet (cooldown)');
+  stop(d2, older(230000), 'd-hit'); // +10k, cache excellent
+  stop(d2, older(240000), 'd-hit'); // +10k
+  stop(d2, older(250000), 'd-hit'); // +10k
+  stop(d2, newer(280000), 'd-hit'); // +30k, cache dégradé
+  stop(d2, newer(310000), 'd-hit'); // +30k
+  stop(d2, newer(340000), 'd-hit'); // +30k (DRIFT_COOLDOWN tours écoulés depuis la 1re alerte)
+  ok(ts.evaluateDrift('d-hit') !== null, '#62 anti-spam : réalerte après DRIFT_COOLDOWN tours');
+
+  // 4) Coût qui grimpe MAIS cache stable (haut) -> pas de dérive (les 2 conditions requises).
+  const d3 = tsPath('drift3.jsonl');
+  stop(d3, older(100000), 'd-nohitdrop'); // baseline
+  stop(d3, older(110000), 'd-nohitdrop');
+  stop(d3, older(120000), 'd-nohitdrop');
+  stop(d3, older(130000), 'd-nohitdrop');
+  stop(d3, older(160000), 'd-nohitdrop'); // +30k mais cache toujours excellent
+  stop(d3, older(190000), 'd-nohitdrop');
+  stop(d3, older(220000), 'd-nohitdrop');
+  ok(ts.evaluateDrift('d-nohitdrop') === null, '#62 : coût↑ mais cache stable -> pas de dérive');
+
+  // 5) Cache qui se dégrade MAIS coût plat -> pas de dérive.
+  const d4 = tsPath('drift4.jsonl');
+  stop(d4, older(100000), 'd-flatcost');  // baseline
+  stop(d4, older(110000), 'd-flatcost');  // +10k
+  stop(d4, older(120000), 'd-flatcost');  // +10k
+  stop(d4, older(130000), 'd-flatcost');  // +10k
+  stop(d4, newer(140000), 'd-flatcost');  // +10k, cache dégradé
+  stop(d4, newer(150000), 'd-flatcost');  // +10k
+  stop(d4, newer(160000), 'd-flatcost');  // +10k
+  ok(ts.evaluateDrift('d-flatcost') === null, '#62 : cache↓ mais coût plat -> pas de dérive');
+
+  // 6) Fail-open : session inconnue (aucun état) -> null, jamais d'exception.
+  ok(ts.evaluateDrift('d-unknown-sid') === null, '#62 : session sans historique -> null (fail-open)');
 }
 
 // ============================ B4. ADVISORY INTRA-TOUR (relecture redondante) ============================

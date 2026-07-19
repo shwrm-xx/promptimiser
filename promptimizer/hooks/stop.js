@@ -25,7 +25,7 @@ const turnstats = require('../lib/turnstats');
 const { arbitrate } = require('../lib/arbiter');
 const {
   MSG_CLOTURE, occupancyMessage, lotClosedMessage, epicBilanMessage,
-  costlyTurnMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
+  costlyTurnMessage, driftMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
   lotClosureCardMessage,
 } = require('../lib/messages');
@@ -67,6 +67,13 @@ function main() {
     // on le resynchronise pour réarmer les futures alertes de palier.
     if (turn.alerts.resync) occupancy.resyncBucket(sid, turn.occ);
   }
+
+  // (a3bis) dérive de session (#62) — tendance sur plusieurs tours (coût qui grimpe +
+  // cache qui se dégrade) : prescrit la clôture. Lit l'historique que computeTurn vient
+  // d'écrire (donc APRÈS lui) ; anti-spam et fail-open dédiés dans evaluateDrift.
+  // Indépendant du projet (transcript + état seuls) -> marche même hors repo.
+  const drift = turnstats.evaluateDrift(sid);
+  if (drift) parts.push(driftMessage(drift));
 
   // (b) clôture — dans tout repo git (ledger auto-créé, jamais de confirmation requise).
   const root = gitRoot(cwd);

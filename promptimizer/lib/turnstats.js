@@ -17,8 +17,19 @@ const RESYNC_DELTA = -100000;            // delta < -100k = compaction probable 
 const BASELINE_WINDOW = 2 * 1024 * 1024; // fenêtre de repli quand l'offset est inutilisable
 const MAX_TURNS = 40;                    // FIFO d'historique (~2-4 KB max)
 
+// Détecteur de dérive de session (#62). Une session « dérive » quand le contexte
+// coûte de plus en plus par tour (delta d'occ qui grimpe) ET que le cache rend de
+// moins en moins (hitRate qui se dégrade) sur une fenêtre de tours — signe qu'il
+// vaut mieux clôturer et repartir frais que continuer à payer le contexte accumulé.
+const DRIFT_WINDOW = 6;                   // N derniers tours EXPLOITABLES jugés (2 moitiés de 3)
+const DRIFT_COST_RATIO = 1.3;            // moitié récente >= 1.3× la moitié ancienne (delta moyen)
+const DRIFT_MIN_DELTA = 15000;           // ... mais seulement si le delta moyen récent est notable
+const DRIFT_HIT_DROP = 0.08;             // hitRate moyen : chute >= 8 points entre les 2 moitiés
+const DRIFT_COOLDOWN = DRIFT_WINDOW;     // au plus 1 nudge / fenêtre (anti-spam persisté)
+
 function turnsFile(sid) { return stateFileFor(sid, 'turns.json'); }
 function ttlFile(sid) { return stateFileFor(sid, 'ttl'); }
+function driftFile(sid) { return stateFileFor(sid, 'drift'); }
 
 function parseUsage(line) {
   if (!line || line.indexOf('"usage"') === -1) return null;
@@ -150,7 +161,8 @@ function computeTurn(transcriptPath, sid) {
   const resync = delta != null && delta < RESYNC_DELTA;
 
   // Persistance : offset AVANCÉ à la fin du fichier courant + historique FIFO.
-  const turns = st.turns.concat([{ d: delta, o: out, at: Date.now() }]);
+  // `h` = hitRate du tour (null si baseline) : requis par evaluateDrift (#62).
+  const turns = st.turns.concat([{ d: delta, o: out, h: hitRate, at: Date.now() }]);
   if (turns.length > MAX_TURNS) turns.splice(0, turns.length - MAX_TURNS);
   writeAtomic(turnsFile(sid), {
     offset: size,
@@ -167,7 +179,60 @@ function computeTurn(transcriptPath, sid) {
   };
 }
 
+// Détecteur de dérive (#62). Lit l'historique persisté par computeTurn (donc à
+// appeler APRÈS lui, une fois le tour courant écrit) et cherche une tendance sur
+// les DRIFT_WINDOW derniers tours EXPLOITABLES (delta ET hitRate connus). On compare
+// la moitié récente à la moitié ancienne : dérive = le coût de contexte grimpe
+// (delta moyen récent >= DRIFT_COST_RATIO× l'ancien, et notable) ET le cache se
+// dégrade (hitRate moyen récent en baisse d'au moins DRIFT_HIT_DROP). Anti-spam
+// dédié (état 'drift', cooldown en tours). Fail-silent : renvoie null au moindre doute.
+function evaluateDrift(sid) {
+  let st;
+  try {
+    st = loadTurnState(sid);
+  } catch (_) {
+    return null;
+  }
+  // On ne juge que les tours mesurés (baseline/compaction -> d ou h null : écartés).
+  const usable = st.turns.filter((t) => t && typeof t.d === 'number' && typeof t.h === 'number');
+  if (usable.length < DRIFT_WINDOW) return null;
+
+  const win = usable.slice(-DRIFT_WINDOW);
+  const half = DRIFT_WINDOW / 2;
+  const older = win.slice(0, half);
+  const newer = win.slice(half);
+  const avg = (arr, key) => arr.reduce((s, t) => s + t[key], 0) / arr.length;
+  const avgDeltaOld = avg(older, 'd');
+  const avgDeltaNew = avg(newer, 'd');
+  const avgHitOld = avg(older, 'h');
+  const avgHitNew = avg(newer, 'h');
+
+  // Coût qui grimpe : ratio seulement défini sur une base ancienne positive ; garde
+  // absolu pour ne pas alerter sur une hausse relative de tours minuscules.
+  const costRising = avgDeltaOld > 0
+    && avgDeltaNew >= DRIFT_COST_RATIO * avgDeltaOld
+    && avgDeltaNew >= DRIFT_MIN_DELTA;
+  // Cache qui se dégrade : hitRate moyen en baisse franche.
+  const hitDropping = (avgHitOld - avgHitNew) >= DRIFT_HIT_DROP;
+  if (!costRising || !hitDropping) return null;
+
+  // Anti-spam : au plus 1 nudge par fenêtre de tours (cooldown persisté).
+  const turnCount = st.turnCount;
+  let lastDrift = -DRIFT_COOLDOWN;
+  const dfCur = readJson(driftFile(sid), null);
+  if (dfCur && typeof dfCur.lastDriftTurn === 'number') lastDrift = dfCur.lastDriftTurn;
+  if (turnCount - lastDrift < DRIFT_COOLDOWN) return null;
+  writeAtomic(driftFile(sid), { lastDriftTurn: turnCount });
+
+  return {
+    turns: DRIFT_WINDOW,
+    avgDeltaOld, avgDeltaNew,
+    avgHitOld, avgHitNew,
+  };
+}
+
 module.exports = {
-  computeTurn,
+  computeTurn, evaluateDrift,
   COSTLY_DELTA, COSTLY_COOLDOWN, BUST_OCC_MIN, BUST_CACHE_RATIO, RESYNC_DELTA, MAX_TURNS,
+  DRIFT_WINDOW, DRIFT_COST_RATIO, DRIFT_MIN_DELTA, DRIFT_HIT_DROP, DRIFT_COOLDOWN,
 };

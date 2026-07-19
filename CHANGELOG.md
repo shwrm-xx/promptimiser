@@ -2,6 +2,24 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #62 — epic « Coût par livrable » : détecteur de dérive de session)
+
+- `promptimizer/lib/turnstats.js` : nouveau `evaluateDrift(sid)` — au-delà du tour isolé, détecte
+  une **tendance de dérive** sur les 6 derniers tours *exploitables* (moitié récente vs ancienne) :
+  le coût de contexte moyen grimpe (delta récent ≥ 1,3× l'ancien **et** ≥ 15k) **ET** le hitRate
+  moyen chute (≥ 8 pts). Les deux conditions sont requises (pas de faux positif sur un tour
+  ponctuellement cher). Chaque tour persiste désormais son hitRate (`h`) dans `turns.json`.
+  Anti-spam dédié (`<sha1>-drift`, cooldown 6 tours) ; fail-open (aucun état → `null`).
+- `promptimizer/lib/messages.js` : `driftMessage` — `systemMessage` **WARN** qui prescrit la
+  clôture (`/close-batch` puis `/fresh-session`), avec coût moyen ancien→récent et hitRate
+  ancien→récent.
+- `promptimizer/hooks/stop.js` : câblage (a3bis) — `evaluateDrift` appelé **après** `computeTurn`
+  (lit l'historique qu'il vient d'écrire), indépendant du projet (marche hors repo).
+- `ARCHITECTURE.md` : puce dédiée + mention dans la ligne du tableau `stop.js`.
+- Tests : +12 cas (`test/run-tests.js`) — persistance `h`, détection coût↑+cache↓, anti-spam
+  (cooldown + réarmement), non-déclenchement si une seule condition, fail-open. 781/781 verts.
+  Rendu réel vérifié en sandbox (hook `stop.js` bout-en-bout, hors repo).
+
 ## 2026-07-19 (lot #61 — epic « Coût par livrable » : courbe de session dans /budget)
 
 - `promptimizer/scripts/audit-context.js` : `/budget` restitue désormais la **courbe des tours**
