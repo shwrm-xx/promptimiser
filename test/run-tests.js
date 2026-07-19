@@ -4185,6 +4185,67 @@ section('Vigie de dette git non commitée : diff significatif qui grossit sans c
   ok(/Dette git/.test(s3), 'V73 : stop.js émet le nudge de dette au 3e tour sans commit');
 }
 
+// ============================ V74. GOUVERNANCE DU CLAUDE.MD (lot #74) ============================
+section('Gouvernance du CLAUDE.md : absent ou hypertrophié -> nudge 1×/session (lot #74)');
+{
+  const claudemd = require(path.join(PKG, 'lib', 'claudemd'));
+  const mkDir = (name) => {
+    const d = path.join(SANDBOX, name);
+    fs.mkdirSync(d, { recursive: true });
+    return d;
+  };
+
+  // -- Absent : nudge {kind:'missing'}, puis silence le reste de la session --
+  const proj = mkDir('proj-v74');
+  const r1 = claudemd.evaluate(proj, 'sess-v74');
+  ok(r1 && r1.kind === 'missing', 'V74 : CLAUDE.md absent -> {kind:missing}');
+  ok(claudemd.evaluate(proj, 'sess-v74') === null, 'V74 : déjà signalé -> null (1×/session)');
+  const r1b = claudemd.evaluate(proj, 'sess-v74-bis');
+  ok(r1b && r1b.kind === 'missing', 'V74 : autre session -> re-signale (marqueur par session)');
+
+  // -- Sain : null, et AUCUN marqueur posé (un bloat plus tard dans la session reste signalé) --
+  const proj2 = mkDir('proj-v74-sain');
+  fs.writeFileSync(path.join(proj2, 'CLAUDE.md'), '# Règles projet\ncourt et stable\n');
+  ok(claudemd.evaluate(proj2, 'sess-v74-sain') === null, 'V74 : CLAUDE.md sain -> null');
+  fs.writeFileSync(path.join(proj2, 'CLAUDE.md'), 'x'.repeat(claudemd.CLAUDEMD_MAX_BYTES + 1));
+  const r2 = claudemd.evaluate(proj2, 'sess-v74-sain');
+  ok(r2 && r2.kind === 'bloated', 'V74 : sain n\'a pas consommé le marqueur -> le bloat suivant nudge encore');
+
+  // -- Hypertrophié : bytes + tokensApprox ; au seuil exact -> sain --
+  const proj3 = mkDir('proj-v74-gros');
+  fs.writeFileSync(path.join(proj3, 'CLAUDE.md'), 'x'.repeat(12 * 1024));
+  const r3 = claudemd.evaluate(proj3, 'sess-v74-gros');
+  ok(r3 && r3.kind === 'bloated' && r3.bytes === 12 * 1024 && r3.tokensApprox === 3072,
+    'V74 : > seuil -> {kind:bloated, bytes, tokensApprox=bytes/4}');
+  const proj4 = mkDir('proj-v74-seuil');
+  fs.writeFileSync(path.join(proj4, 'CLAUDE.md'), 'x'.repeat(claudemd.CLAUDEMD_MAX_BYTES));
+  ok(claudemd.evaluate(proj4, 'sess-v74-seuil') === null, 'V74 : taille = seuil exact -> sain (strictement >)');
+
+  // -- Fail-open : root null -> null, jamais d'exception --
+  ok(claudemd.evaluate(null, 'sess-v74-null') === null, 'V74 : root null -> null (fail-open)');
+
+  // -- Messages : missing = ℹ INFO (propose /init), bloated = ⚠ WARN (Ko + tokens) --
+  const mm = messages.claudeMdMessage({ kind: 'missing' });
+  ok(mm.startsWith('ℹ'), 'V74 : message « absent » = sévérité INFO (ℹ)');
+  ok(/\/init/.test(mm) && /1×\/session/.test(mm), 'V74 : message « absent » propose /init et annonce le 1×/session');
+  const mb = messages.claudeMdMessage({ kind: 'bloated', bytes: 12 * 1024, tokensApprox: 3072 });
+  ok(mb.startsWith('⚠'), 'V74 : message « hypertrophié » = sévérité WARN (⚠)');
+  ok(/12 Ko/.test(mb) && /3k tokens/.test(mb), 'V74 : message « hypertrophié » chiffre Ko et tokens');
+  ok(/ARCHITECTURE\.md/.test(mb), 'V74 : message « hypertrophié » prescrit le déport vers la doc du dépôt');
+
+  // -- Câblage stop.js : repo git sans CLAUDE.md -> nudge au 1er Stop, silence au 2e --
+  const repoW = path.join(SANDBOX, 'repo-v74-stop');
+  fs.mkdirSync(repoW, { recursive: true });
+  execFileSync('git', ['init', '-q', repoW]);
+  const empT74 = path.join(SANDBOX, 'empty-v74.jsonl');
+  fs.writeFileSync(empT74, '');
+  const sysMsg74 = (r) => { try { return JSON.parse(r.out).systemMessage || ''; } catch (_) { return ''; } };
+  const w1 = sysMsg74(runHook('stop.js', { session_id: 'v74-stop', cwd: repoW, transcript_path: empT74 }));
+  ok(/Pas de CLAUDE\.md projet/.test(w1), 'V74 : stop.js émet le nudge « absent » au 1er tour');
+  const w2 = sysMsg74(runHook('stop.js', { session_id: 'v74-stop', cwd: repoW, transcript_path: empT74 }));
+  ok(!/Pas de CLAUDE\.md projet/.test(w2), 'V74 : 2e tour, même session -> plus de nudge CLAUDE.md');
+}
+
 // ============================ OC. OPENCODE ============================
 section('OpenCode — squelette plugin + install sandbox (test/run-tests-opencode.js)');
 {

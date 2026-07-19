@@ -149,7 +149,9 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   quelle) déclenche un nudge « change d'approche plutôt que de relancer » (1×/session par commande).
   Un **diff non commité qui grossit** sur plusieurs tours sans commit déclenche un rappel « commit
   (ou clôture) maintenant » — le travail non versionné est exposé à la perte et finit en commit
-  monstre (anti-spam par palier ; réarmé au commit). Ces rappels visibles portent un **glyphe de sévérité** (ℹ info / ⚠ warn /
+  monstre (anti-spam par palier ; réarmé au commit). Un **CLAUDE.md projet absent ou hypertrophié**
+  (> 10 Ko, rechargé à chaque session) déclenche un nudge « créer / dégraisser » (1×/session).
+  Ces rappels visibles portent un **glyphe de sévérité** (ℹ info / ⚠ warn /
   ⛔ alert) pour lire d'un coup d'œil ce qui est normal, ce qui mérite attention et ce qui est
   anormal. Quand un tour en déclenche trop, un **arbitre** n'en garde que les 3 plus sévères
   (ordre de lecture préservé) — pas de pavé qui noie le signal important.

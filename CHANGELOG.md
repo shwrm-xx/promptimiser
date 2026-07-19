@@ -2,6 +2,24 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-19 (lot #74 — epic « Vigies & signal » : gouvernance du CLAUDE.md)
+
+- `promptimizer/lib/claudemd.js` (nouveau) : vigie du CLAUDE.md projet, rechargé dans le contexte
+  à **chaque session** — les deux extrêmes coûtent. **Absent** → `{kind:'missing'}` ;
+  **hypertrophié** (> `CLAUDEMD_MAX_BYTES` = 10 Ko ≈ 2,5k tokens) → `{kind:'bloated', bytes,
+  tokensApprox}` (≈ octets/4). Anti-spam **1×/session** (marqueur d'état) posé **seulement quand un
+  nudge part** : un CLAUDE.md sain ne consomme rien, un fichier qui enfle en cours de session reste
+  signalé. Distinct de `MSG_NON_INIT` (projet jamais initialisé) : couvre le repo déjà vivant.
+- `promptimizer/lib/messages.js` : `claudeMdMessage` — « absent » = ℹ INFO (propose `/init`, socle
+  après confirmation) ; « hypertrophié » = ⚠ WARN chiffré (Ko + tokens), prescrit le dégraissage
+  (garder le stable/non-greppable, déporter le volatil vers ARCHITECTURE.md/README.md, lier plutôt
+  que dupliquer).
+- `promptimizer/hooks/stop.js` : branche (b0bis) dans `if (root)` ; fail-open dédié dans la lib.
+- Doc : ARCHITECTURE.md (tableau hooks + section vigie dédiée) et README.md (comportement en fin de tour).
+- Tests : `node test/run-tests.js` → **916 OK · 0 échec** (+15 assertions V74 : absent, 1×/session,
+  re-signale par session, sain sans marqueur puis bloat signalé, seuil exact exclu, fail-open root
+  null, messages INFO/WARN chiffrés, câblage stop.js 1er tour puis silence).
+
 ## 2026-07-19 (lot #73 — epic « Vigies & signal » : vigie de dette git non commitée)
 
 - `promptimizer/lib/gitdebt.js` (nouveau) : signal de **tendance** distinct du rappel de clôture

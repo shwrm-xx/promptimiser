@@ -25,10 +25,11 @@ const { readLastModel } = require('../lib/modelwatch');
 const turnstats = require('../lib/turnstats');
 const loopwatch = require('../lib/loopwatch');
 const gitdebt = require('../lib/gitdebt');
+const claudemd = require('../lib/claudemd');
 const { arbitrate } = require('../lib/arbiter');
 const {
   MSG_CLOTURE, occupancyMessage, redZonePrescriptionMessage, lotClosedMessage, epicBilanMessage,
-  costlyTurnMessage, driftMessage, loopingCommandMessage, gitDebtMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
+  costlyTurnMessage, driftMessage, loopingCommandMessage, gitDebtMessage, claudeMdMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
   closureWithDraftMessage, lotClosureCardMessage,
 } = require('../lib/messages');
@@ -141,6 +142,12 @@ function main() {
     // `dirty` (pas de 2e git status). Anti-spam par palier + fail-open dédiés dans evaluate.
     const debt = gitdebt.evaluate(root, sid, dirty);
     if (debt) parts.push(gitDebtMessage(debt));
+
+    // (b0bis) vigie de gouvernance du CLAUDE.md (#74) — absent (chaque session repart sans
+    // règles) ou hypertrophié (> seuil d'octets, repayé à chaque session) : nudge créer /
+    // dégraisser. 1×/session ; anti-spam + fail-open dédiés dans claudemd.evaluate.
+    const cgov = claudemd.evaluate(root, sid);
+    if (cgov) parts.push(claudeMdMessage(cgov));
 
     if (open && !st.closure_reminded_for_batch) {
       // Brouillon CHANGELOG servi (lot #68) : le rappel de clôture embarque une entrée

@@ -220,6 +220,23 @@ function gitDebtMessage(debt) {
   ]);
 }
 
+// Gouvernance du CLAUDE.md (#74) : rechargé à chaque session, les deux extrêmes coûtent —
+// absent, chaque session repart sans règles projet ; hypertrophié, son poids est repayé
+// à chaque session et recréation de cache.
+function claudeMdMessage(res) {
+  if (res && res.kind === 'bloated') {
+    const ko = Math.round((res.bytes || 0) / 1024);
+    return withSeverity(SEV.WARN, [
+      `CLAUDE.md hypertrophié : ~${ko} Ko (~${fmtK(res.tokensApprox)} tokens rechargés dans le contexte à CHAQUE session).`,
+      'Propose à l\'utilisateur de le dégraisser : garder les règles stables et non-greppables, déplacer le détail volatil vers la doc du dépôt (ARCHITECTURE.md, README.md) et lier plutôt que dupliquer. (Signalé 1×/session.)',
+    ]);
+  }
+  return withSeverity(SEV.INFO, [
+    'Pas de CLAUDE.md projet : chaque session repart sans règles (mêmes rappels et relectures à chaque fois).',
+    'Propose à l\'utilisateur d\'en créer un minimal (règles stables, commandes de vérif, discipline de lot) — /init pose le socle après confirmation. (Signalé 1×/session.)',
+  ]);
+}
+
 // Cache invalidé EN PLEIN tour (anormal) : un fichier lu par le cache a changé en session.
 function bustIntraMessage(turn) {
   const b = turn.busts.filter((x) => !x.first).slice(-1)[0] || {};
@@ -516,7 +533,7 @@ module.exports = {
   MSG_ACTIF, MSG_ACTIF_SLIM, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, redZonePrescriptionMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
   compactResumeMessage, COMPACT_RESUME_CAP, backlogResumeMessage, largeWithPlanMessage,
-  costlyTurnMessage, driftMessage, loopingCommandMessage, gitDebtMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
+  costlyTurnMessage, driftMessage, loopingCommandMessage, gitDebtMessage, claudeMdMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
   closureWithDraftMessage, epicBilanMessage, lotClosureCardMessage,
   fmtK, statusLineText,
