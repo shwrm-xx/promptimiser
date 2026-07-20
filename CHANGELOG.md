@@ -2,6 +2,33 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-20 (lot #77 — epic « Vagues parallèles » : registre de vague `fleet.json`)
+
+Deuxième brique de la décision D3. Le fichier d'état partagé d'une vague parallèle existe ; il
+reste **inerte** tant qu'aucun lot n'y est inscrit.
+
+- `promptimizer/lib/fleet.js` (nouveau) : lecture/écriture de `.vibe-agent/fleet.json` (JSON plat
+  via `lib/fsjson`, zéro dépendance). `loadFleet` normalise défensivement (fichier absent / JSON
+  corrompu / lot sans `session_owner` → vague inerte, `active:false`, **fail-open**, jamais
+  d'exception). Écritures atomiques (temp+rename) et mutations **par lot** — `upsertLot`
+  (inscription/MàJ idempotente par id), `setLotState` (`in_flight`→`ready`→`reintegrated`),
+  `setIntegrationHead` (tête de la branche d'intégration, futur déclencheur de rebase),
+  `removeLot` (une vague vidée redevient inerte), `lotForSession`. `fleetLines(root, sessionId)`
+  produit les lignes **courtes** d'injection (< 10 lignes : périmètre exclusif + branche + tête
+  d'intégration + nb de lots sœurs), vides hors vague ou pour une session non inscrite.
+- `promptimizer/hooks/session-start.js` : au **startup/clear** uniquement, injection des lignes
+  fleet **si** la session courante tient un lot en vol (helper `withFleet`, fail-open — message
+  inchangé au moindre doute). Aucun token injecté hors vague.
+- `test/run-tests.js` : section lot #77 (9 groupes) — inerte par défaut, JSON corrompu fail-open,
+  `upsert` (idempotence par id), `lotForSession`, `setLotState`/`setIntegrationHead`, `fleetLines`
+  (< 10 lignes, périmètre + tête + sœurs, silence pour non-propriétaire), `removeLot` (vidage →
+  inerte), lot sans `session_owner` écarté. Suite verte : 982 OK.
+
+Non couvert (lots suivants) : l'**écriture** par les sessions filles (inscription, transitions),
+le verdict de périmètre PreToolUse (#78), le calcul de vague `pmz:parallelize` (#79) et la
+réintégration (#80). Le plugin installé v1.3.0 ignore encore ces champs → redéploiement requis
+avant la 1ʳᵉ vague réelle.
+
 ## 2026-07-20 (lot #76 — epic « Vagues parallèles » : schéma backlog v2, périmètres & coexistence)
 
 Première brique de la décision D3. Le plan de lots peut désormais porter les métadonnées de

@@ -23,6 +23,7 @@ const { suggestedTitle } = require('../lib/lot');
 const { readHandoff, parseSkipPaths, parseSummaryLines, markConsumed } = require('../lib/handoff');
 const { seedAvoidReread, seedSummaries, avoidRereadNotes, topSummaries } = require('../lib/ledger');
 const { loadBacklog, currentLot, nextLot, progress, readTodoSnapshot } = require('../lib/backlog');
+const { fleetLines } = require('../lib/fleet');
 const occupancy = require('../lib/occupancy');
 const {
   MSG_ACTIF, MSG_ACTIF_SLIM, MSG_NON_INIT, MSG_HANDOFF, sessionTitleMessage, autoInitMessage,
@@ -58,6 +59,18 @@ function withHandoff(root, msg) {
     // lots sert de filet minimal pour ne pas repartir sans objectif.
     const fb = backlogFallback(root);
     return fb ? msg + '\n\n' + fb : msg;
+  } catch (_) {
+    return msg;
+  }
+}
+
+// Ajoute au message injecté les lignes COURTES de la vague parallèle si CETTE session tient
+// un lot en vol (cf. lib/fleet.fleetLines). Silencieux (msg inchangé) hors vague ou tant que
+// la session n'est pas inscrite — fail-open au moindre doute.
+function withFleet(root, sessionId, msg) {
+  try {
+    const lines = fleetLines(root, sessionId);
+    return lines.length ? msg + '\n\n' + lines.join('\n') : msg;
   } catch (_) {
     return msg;
   }
@@ -131,7 +144,7 @@ function main() {
     }
     st.session_start_reminded = true;
     saveSessionState(root, st);
-    return injectContext('SessionStart', withHandoff(root, msg));
+    return injectContext('SessionStart', withFleet(root, input.session_id || null, withHandoff(root, msg)));
   }
   // Non initialisé, et uniquement au vrai démarrage (l'état n'est pas persistable
   // hors projet initialisé).

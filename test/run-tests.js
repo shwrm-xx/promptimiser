@@ -4442,6 +4442,72 @@ section('backlog v2 — schéma perimeter/depends_on + coexistence multi-in_prog
   ok(backlogLib.loadBacklog(repoC).lots[0].session_owner === 'sess-cli', 'CLI start : session_owner persisté');
 }
 
+section('fleet — registre de vague fleet.json + injection SessionStart (lib/fleet.js, lot #77)');
+{
+  const fleet = require(path.join(PKG, 'lib', 'fleet'));
+  const repoF = path.join(SANDBOX, 'repo-fleet');
+  fs.mkdirSync(path.join(repoF, '.vibe-agent'), { recursive: true });
+  const ffile = path.join(repoF, '.vibe-agent', 'fleet.json');
+
+  // F1. Inerte par défaut : pas de fichier -> active:false, aucune ligne d'injection
+  let f = fleet.loadFleet(repoF);
+  ok(f.active === false && f.lots.length === 0, 'fleet : absent -> vague inerte (active:false)');
+  ok(fleet.fleetLines(repoF, 'sX').length === 0, 'fleet : pas de fleet -> aucune ligne injectée');
+
+  // F2. JSON corrompu -> fail-open, vague inerte (jamais d'exception)
+  fs.writeFileSync(ffile, '{ ceci n est pas du json');
+  f = fleet.loadFleet(repoF);
+  ok(f.active === false && f.lots.length === 0, 'fleet : JSON corrompu -> inerte (fail-open)');
+  ok(fleet.fleetLines(repoF, 'sX').length === 0, 'fleet : JSON corrompu -> aucune ligne injectée');
+  fs.rmSync(ffile);
+
+  // F3. upsert : inscription d'un lot -> active + persistance atomique
+  ok(fleet.upsertLot(repoF, { id: 1, session_owner: 'sA', perimeter: ['lib/a'], branch: 'lot-1' }) === true,
+    'fleet.upsertLot : inscription OK');
+  f = fleet.loadFleet(repoF);
+  ok(f.active === true && f.lots.length === 1 && f.lots[0].session_owner === 'sA', 'fleet : lot inscrit -> vague active');
+  ok(f.lots[0].state === 'in_flight', 'fleet : état par défaut = in_flight');
+
+  // F4. upsert idempotent par id (met à jour, ne duplique pas) + ajout d'un 2e lot
+  fleet.upsertLot(repoF, { id: 1, session_owner: 'sA', perimeter: ['lib/a', 'lib/c'], branch: 'lot-1' });
+  fleet.upsertLot(repoF, { id: 2, session_owner: 'sB', perimeter: ['lib/b'], branch: 'lot-2' });
+  f = fleet.loadFleet(repoF);
+  ok(f.lots.length === 2, 'fleet.upsertLot : upsert par id (pas de doublon) + 2e lot');
+  ok(JSON.stringify(f.lots.find((l) => l.id === 1).perimeter) === JSON.stringify(['lib/a', 'lib/c']),
+    'fleet.upsertLot : périmètre mis à jour sur ré-upsert');
+
+  // F5. lotForSession : match par owner
+  ok(fleet.lotForSession(repoF, 'sB').id === 2, 'fleet.lotForSession : match par session_owner');
+  ok(fleet.lotForSession(repoF, 'sZ') === null, 'fleet.lotForSession : owner inconnu -> null');
+
+  // F6. setLotState + setIntegrationHead
+  ok(fleet.setLotState(repoF, 2, 'ready') === true, 'fleet.setLotState : transition OK');
+  ok(fleet.setLotState(repoF, 2, 'bogus') === false, 'fleet.setLotState : état inconnu refusé');
+  ok(fleet.setLotState(repoF, 99, 'ready') === false, 'fleet.setLotState : lot inconnu -> false');
+  fleet.setIntegrationHead(repoF, 'abc1234', 'integration');
+  f = fleet.loadFleet(repoF);
+  ok(f.lots.find((l) => l.id === 2).state === 'ready', 'fleet : état ready persisté');
+  ok(f.integration_head === 'abc1234' && f.integration_branch === 'integration', 'fleet : tête d\'intégration persistée');
+
+  // F7. fleetLines : session propriétaire -> lignes courtes (périmètre + tête + sœurs), <10 lignes
+  const lines = fleet.fleetLines(repoF, 'sA');
+  ok(lines.length > 0 && lines.length < 10, 'fleet.fleetLines : non vide et < 10 lignes (coût de contexte)');
+  ok(lines.some((l) => /Périmètre EXCLUSIF/.test(l) && /lib\/a/.test(l)), 'fleet.fleetLines : périmètre exclusif présent');
+  ok(lines.some((l) => /Tête d'intégration/.test(l) && /integration@abc1234/.test(l)), 'fleet.fleetLines : tête d\'intégration présente');
+  ok(lines.some((l) => /sœur/.test(l)), 'fleet.fleetLines : mention des lots sœurs');
+  ok(fleet.fleetLines(repoF, 'sZ').length === 0, 'fleet.fleetLines : session non-propriétaire -> [] (silencieux)');
+
+  // F8. removeLot : vidage -> redevient inerte
+  ok(fleet.removeLot(repoF, 1) === true && fleet.removeLot(repoF, 2) === true, 'fleet.removeLot : retrait OK');
+  ok(fleet.loadFleet(repoF).active === false, 'fleet : vague vidée -> inerte');
+  ok(fleet.removeLot(repoF, 1) === false, 'fleet.removeLot : lot déjà absent -> false');
+
+  // F9. entrée sans propriétaire rejetée au chargement (fail-safe : inattribuable)
+  fs.writeFileSync(ffile, JSON.stringify({ version: 1, lots: [{ id: 5, perimeter: ['lib/x'] }, { id: 6, session_owner: 'sC' }] }));
+  f = fleet.loadFleet(repoF);
+  ok(f.lots.length === 1 && f.lots[0].id === 6, 'fleet.loadFleet : lot sans session_owner écarté');
+}
+
 // ============================ OC. OPENCODE ============================
 section('OpenCode — squelette plugin + install sandbox (test/run-tests-opencode.js)');
 {

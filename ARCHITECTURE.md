@@ -242,6 +242,26 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   `lib/perimeter.js` (normalisation + `disjoint`, matching **conservateur** au niveau des préfixes
   statiques ; l'appartenance d'un fichier à un périmètre = lot #78). `reconcile` préserve une
   vague valide (coexistence 2 à 2) mais répare tout multi-`in_progress` invalide.
+- **Registre de vague — `fleet.json`** (lot #77, épic « Vagues parallèles », 2ᵉ brique de
+  [D3](docs/decisions/D3-parallelisation-gouvernee.md)) : `.vibe-agent/fleet.json` est l'état
+  **partagé** d'une vague — le handoff commun (pas de duplication du handoff par session). Géré
+  par `lib/fleet.js` (JSON plat via `lib/fsjson`, zéro dépendance). Une entrée par lot en vol :
+  `{ id, session_owner, branch, worktree, perimeter, state }` où `state ∈ in_flight | ready |
+  reintegrated` ; plus, au niveau vague, `wave_id` et la **tête de la branche d'intégration**
+  (`integration_branch` + `integration_head`, dont l'avance est le futur déclencheur de rebase).
+  **Inerte par défaut** : sans fichier, `loadFleet().active === false` et les sessions restent
+  autonomes (mono-session inchangé). **Fail-open absolu** : fichier absent / JSON corrompu / lot
+  sans `session_owner` → vague désactivée, jamais d'exception (un fleet cassé rend la session
+  autonome, il ne la gêne jamais). Mutations **par lot** (`upsertLot`/`setLotState`/`removeLot`/
+  `setIntegrationHead`) en lecture-modification-écriture atomique (temp+rename) pour réduire les
+  fenêtres de course ; la perte-de-MàJ résiduelle est assumée au palier 2 (lancement manuel).
+  `session-start.js` injecte, **au startup/clear seulement**, les lignes **courtes** de
+  `fleetLines(root, sessionId)` (périmètre exclusif + branche + tête d'intégration + nb de lots
+  sœurs, `< 10` lignes) — et **uniquement** si la session tient un lot en vol ; sinon silence
+  total. Le hook installé v1.3.0 **ignore** ces champs : sans impact tant qu'aucune vague n'est
+  posée, mais la 1ʳᵉ vague réelle exigera un redéploiement du plugin. L'écriture par les sessions
+  (inscription, transitions), le verdict de périmètre PreToolUse et le calcul de vague viennent
+  aux lots #78–#80.
 - **Ledgers projet** (`.vibe-agent/{read,context}-ledger.json`) : auto-créés par
   `ensureLedger` (tout hook qui touche au projet) puis maintenus par `post-tool-use.js`
   (atomique `tmp`+`rename`, cap FIFO). Servent l'advisory `/check-context`. Granularité
