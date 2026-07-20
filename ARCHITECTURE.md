@@ -332,6 +332,35 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   (sauvegarde horodatée de `settings.json` puis retrait ciblé des SEULES entrées en conflit,
   reste préservé intact) — OpenCode/Codex restent à traiter manuellement (formats tiers).
   Commande `/pmz:rtk [status|enable|disable|migrate]` → `scripts/rtk.js`.
+- **Métrologie honnête des gains RTK** (lot #83, 3ᵉ brique de l'epic « Bridge RTK ») :
+  `lib/rtk-metrics.js` rattache au lot clos une mesure du travail confié à RTK, **avec son niveau
+  de preuve** — jamais une valeur inventée (contrainte cardinale du lot). Trois niveaux :
+  (1) **`measured`** = chiffres issus de RTK lui-même (sorties brutes vs transmises → économie
+  réelle + ratio) ; couture **branchée mais DORMANTE** — `computeLotGain` accepte un objet
+  `rtkStats` pré-calculé, mais PMZ **ne devine pas** le contrat CLI d'un `rtk stats` inconnu
+  (inventer un format serait inventer une valeur) : réservé à un contrat RTK défini.
+  (2) **`local`** = ce qui est prouvable aujourd'hui sans RTK — un **compteur local monotone**
+  (`PMZ_STATE_DIR/rtk-metrics.json`, survit aux updates) des commandes **effectivement réécrites**
+  + le volume de commande **livré** (tokens estimés du texte transmis). **Aucun `tokens_saved`
+  ici** : la compression opère sur la SORTIE terminale, invisible du hook — on ne prétend donc à
+  aucune économie. (3) **rien** : aucune activité RTK sur le lot → aucun champ écrit, rien
+  d'affiché. **Attribution par lot** = delta du compteur (spec §11 : `snapshot_clôture −
+  snapshot_démarrage`) : `pre-tool-use.js` incrémente le compteur **uniquement** quand une
+  réécriture est réellement livrée (rare, default OFF) ; `backlog.startLot` fige le snapshot de
+  démarrage sur le lot (`integrations.command_optimizer.snapshot_start`, transitoire),
+  `backlog.doneLot` calcule le delta et **fige le gain final** (le snapshot transitoire est retiré ;
+  aucun champ si le delta est nul). Le champ **`integrations` est optionnel et rétro-compatible** :
+  les lots legacy sans lui restent lus sans crash, et un lot clos sans activité RTK n'écrit rien
+  (choix assumé, **divergent de la suggestion `evidence: unavailable` de la spec §11** : « rien »
+  est préféré au bruit, RTK étant default OFF → la quasi-totalité des clôtures n'a pas d'activité).
+  **Imprécision assumée** : en vague parallèle (plusieurs `in_progress`), le compteur global ne
+  sait pas imputer une réécriture à un lot précis — d'où le nom `local` (preuve faible, étiquetée).
+  **Bilan de clôture** (`scripts/close-batch.js`) : bloc « Gain RTK » calculé **en direct** depuis
+  le snapshot de démarrage + le compteur courant (le lot n'est pas encore clos), via
+  `rtk-metrics.gainLines` ; rien si aucune preuve. **Export** (`backlog.exportCsv/Markdown`) :
+  4 colonnes dérivées ajoutées — `command_optimizer_provider`, `command_tokens_saved`
+  (mesuré seulement), `command_saving_ratio` (mesuré seulement), `command_evidence` — vides pour
+  un lot sans métrologie.
 - **Plan de vagues — `pmz:parallelize`** (lot #79, 4ᵉ brique de
   [D3](docs/decisions/D3-parallelisation-gouvernee.md)) : `backlog.planWaves(b)` (fonction
   **pure** : ne lit/écrit rien, ne lance rien) calcule un plan de vagues parallèles à partir des

@@ -5228,6 +5228,126 @@ section('Bridge RTK — statut, activation persistée, conflits sur 3 canaux (lo
     'DOUBLE CANAL: stateFile() résout un chemin quel que soit le canal d\'install (repose sur claude-dir.stateDir())');
 }
 
+// ============================ RTK3. MÉTROLOGIE HONNÊTE DES GAINS (lot #83) ============================
+section('Bridge RTK — métrologie honnête des gains + bilan de clôture (lot #83)');
+{
+  const rtkMetrics = require(path.join(PKG, 'lib', 'rtk-metrics'));
+  const backlog = require(path.join(PKG, 'lib', 'backlog'));
+  const { fmtK } = require(path.join(PKG, 'lib', 'messages'));
+
+  // État isolé DÉDIÉ (le compteur monotone vit sous PMZ_STATE_DIR) : ne pas polluer les autres
+  // sections RTK qui partagent le STATE global.
+  const METRIC_STATE = path.join(SANDBOX, 'rtk-metrics-state');
+  fs.mkdirSync(METRIC_STATE, { recursive: true });
+  const withState = (fn) => {
+    const prev = process.env.PMZ_STATE_DIR;
+    process.env.PMZ_STATE_DIR = METRIC_STATE;
+    try { return fn(); } finally { process.env.PMZ_STATE_DIR = prev; }
+  };
+
+  // -- Compteur local monotone --
+  withState(() => {
+    ok(rtkMetrics.snapshot().commands === 0, 'métrologie: compteur vierge → 0 commande');
+    rtkMetrics.recordRewrite('rtk npm test');
+    rtkMetrics.recordRewrite('rtk build');
+    const s = rtkMetrics.snapshot();
+    ok(s.commands === 2 && s.delivered_tokens > 0, 'métrologie: recordRewrite incrémente commandes + tokens livrés');
+  });
+
+  // -- computeLotGain : les 4 issues (measured / local / pas de baseline / pas d'activité) --
+  withState(() => {
+    const base = rtkMetrics.snapshot();
+    const gMeasured = rtkMetrics.computeLotGain({ start: base, rtkStats: { raw_tokens: 51000, delivered_tokens: 9200 } });
+    ok(gMeasured && gMeasured.evidence === 'measured' && gMeasured.tokens_saved_estimated === 41800 && gMeasured.saving_ratio === 0.82,
+      'métrologie: rtkStats fournis → niveau « measured » (économie + ratio calculés)');
+    rtkMetrics.recordRewrite('rtk grep -rn foo .');
+    const gLocal = rtkMetrics.computeLotGain({ start: base });
+    ok(gLocal && gLocal.evidence === 'local' && gLocal.commands === 1 && !('tokens_saved_estimated' in gLocal),
+      'métrologie: sans rtkStats mais delta > 0 → niveau « local » (commandes réécrites, JAMAIS d\'économie inventée)');
+    ok(rtkMetrics.computeLotGain({}) === null, 'métrologie: aucun snapshot de démarrage → null (jamais de valeur inventée)');
+    ok(rtkMetrics.computeLotGain({ start: rtkMetrics.snapshot() }) === null, 'métrologie: baseline mais 0 réécriture pendant le lot → null (rien)');
+  });
+
+  // -- gainLines : mesuré / local / rien --
+  {
+    const lm = rtkMetrics.gainLines({ provider: 'rtk', evidence: 'measured', raw_tokens_estimated: 51000, delivered_tokens_estimated: 9200, tokens_saved_estimated: 41800, saving_ratio: 0.82 }, fmtK);
+    ok(lm.length && /82 %/.test(lm.join('\n')) && /mesuré/.test(lm[0]), 'métrologie: gainLines « measured » chiffre l\'économie + le %');
+    const ll = rtkMetrics.gainLines({ provider: 'rtk', evidence: 'local', commands: 3, delivered_tokens_estimated: 40 }, fmtK);
+    ok(ll.length && /compteur local/.test(ll[0]) && /3/.test(ll.join('\n')) && !/%/.test(ll.join('\n')),
+      'métrologie: gainLines « local » affiche le compteur SANS % d\'économie');
+    ok(rtkMetrics.gainLines(null, fmtK).length === 0 && rtkMetrics.gainLines({}, fmtK).length === 0,
+      'métrologie: gainLines sans preuve → [] (rien à afficher)');
+  }
+
+  // -- backlog : snapshot au démarrage → gain figé à la clôture ; propre si aucune activité --
+  withState(() => {
+    const repo = path.join(SANDBOX, 'repo-rtk-metrics');
+    fs.mkdirSync(repo, { recursive: true });
+    execFileSync('git', ['init', '-q', repo]);
+    backlog.addLot(repo, 'Lot métrologie', 'scope', 'opus', 'Bridge RTK', null, 'medium');
+    const id = backlog.loadBacklog(repo).lots[0].id;
+    backlog.startLot(repo, id, null);
+    const started = backlog.loadBacklog(repo).lots[0];
+    ok(started.integrations && started.integrations.command_optimizer && started.integrations.command_optimizer.snapshot_start,
+      'backlog: startLot fige un snapshot de démarrage du compteur');
+    rtkMetrics.recordRewrite('rtk npm run build');
+    rtkMetrics.recordRewrite('rtk lint');
+    backlog.doneLot(repo, id, 'abc1234');
+    const closed = backlog.loadBacklog(repo).lots[0];
+    const co = closed.integrations && closed.integrations.command_optimizer;
+    ok(co && co.evidence === 'local' && co.commands === 2 && !('snapshot_start' in co),
+      'backlog: doneLot fige le gain « local » (delta) et retire le snapshot transitoire');
+    ok(!/snapshot_start/.test(fs.readFileSync(backlog.backlogFile(repo), 'utf8')),
+      'backlog: aucun snapshot_start ne fuit dans le fichier persisté');
+
+    // Lot SANS activité RTK : integrations retiré (rien, pas de bruit)
+    backlog.addLot(repo, 'Lot sans RTK', 's', 'opus', 'Bridge RTK', null, 'low');
+    const id2 = backlog.loadBacklog(repo).lots.find((l) => l.title === 'Lot sans RTK').id;
+    backlog.startLot(repo, id2, null);
+    backlog.doneLot(repo, id2, 'def5678');
+    const closed2 = backlog.loadBacklog(repo).lots.find((l) => l.id === id2);
+    ok(closed2.integrations === undefined, 'backlog: lot clos sans réécriture RTK → aucun champ integrations (rien)');
+  });
+
+  // -- Rétro-compatibilité : un lot legacy sans le champ reste lisible --
+  {
+    const repo = path.join(SANDBOX, 'repo-rtk-legacy');
+    fs.mkdirSync(path.join(repo, '.vibe-agent'), { recursive: true });
+    fs.writeFileSync(path.join(repo, '.vibe-agent', 'backlog.json'),
+      JSON.stringify({ version: 1, next_id: 5, lots: [{ id: 4, title: 'Legacy', status: 'done', closed_commit: 'aaa' }] }));
+    const b = backlog.loadBacklog(repo);
+    ok(b.lots.length === 1 && b.lots[0].integrations === undefined,
+      'backlog: lot legacy sans integrations → lu sans crash, champ absent');
+  }
+
+  // -- Export : colonnes RTK présentes ; mesuré chiffré, local sans économie, legacy vide --
+  {
+    const b = { lots: [
+      { id: 1, title: 'M', status: 'done', integrations: { command_optimizer: { provider: 'rtk', evidence: 'measured', raw_tokens_estimated: 51000, delivered_tokens_estimated: 9200, tokens_saved_estimated: 41800, saving_ratio: 0.82 } } },
+      { id: 2, title: 'L', status: 'done', integrations: { command_optimizer: { provider: 'rtk', evidence: 'local', commands: 3, delivered_tokens_estimated: 40 } } },
+      { id: 3, title: 'Legacy', status: 'done' },
+    ] };
+    const csv = backlog.exportCsv(b).split('\n');
+    ok(/command_optimizer_provider,command_tokens_saved,command_saving_ratio,command_evidence$/.test(csv[0]),
+      'export: 4 colonnes RTK ajoutées en fin d\'en-tête');
+    ok(/rtk,41800,0\.82,measured$/.test(csv[1]), 'export: lot mesuré → économie + ratio + evidence chiffrés');
+    ok(/rtk,,,local$/.test(csv[2]), 'export: lot local → provider+evidence remplis, économie/ratio VIDES (jamais inventés)');
+    ok(/^3,Legacy,done,.*,,,,$/.test(csv[3]), 'export: lot legacy → 4 colonnes RTK vides');
+  }
+
+  // -- Hook end-to-end : une réécriture appliquée incrémente le compteur monotone --
+  withState(() => {
+    const before = rtkMetrics.snapshot().commands;
+    const r = runHook('pre-tool-use.js',
+      { tool_name: 'Bash', tool_input: { command: 'git status' } },
+      { PATH: rtkDir + path.delimiter + process.env.PATH, PMZ_RTK_ENABLE: '1', RTK_TEST_MODE: 'rewrite', PMZ_STATE_DIR: METRIC_STATE });
+    let j = null; try { j = JSON.parse(r.out); } catch (_) { /* null */ }
+    const applied = j && j.hookSpecificOutput && j.hookSpecificOutput.updatedInput;
+    ok(applied, 'hook: réécriture appliquée (pré-condition du comptage)');
+    ok(rtkMetrics.snapshot().commands === before + 1, 'hook: une réécriture livrée → compteur monotone +1');
+  });
+}
+
 // ============================ OC. OPENCODE ============================
 section('OpenCode — squelette plugin + install sandbox (test/run-tests-opencode.js)');
 {

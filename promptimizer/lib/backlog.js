@@ -10,6 +10,45 @@ const { writeAtomic, readJson } = require('./fsjson');
 const { getLotCounter, incrementLot } = require('./lot');
 const perimeterLib = require('./perimeter');
 
+// --- integrations.command_optimizer (métrologie RTK, lot #83) — OPTIONNEL et rétro-compatible ---
+// Un lot legacy (sans le champ) reste lisible : la normalisation renvoie `undefined` s'il n'y a
+// rien de valide → JSON.stringify supprime la clé, le backlog reste propre. On ne fabrique JAMAIS
+// de valeur : on ne fait que sanitiser des nombres/chaînes déjà présents.
+function numOrNull(v) {
+  return Number.isFinite(v) && v >= 0 ? Math.round(v) : null;
+}
+function normalizeCmdOptimizer(co) {
+  if (!co || typeof co !== 'object') return undefined;
+  const out = {};
+  // snapshot transitoire (posé par startLot, retiré à la clôture) — préservé entre deux saves.
+  if (co.snapshot_start && typeof co.snapshot_start === 'object') {
+    const s = co.snapshot_start;
+    out.snapshot_start = {
+      commands: numOrNull(s.commands) || 0,
+      delivered_tokens: numOrNull(s.delivered_tokens) || 0,
+    };
+  }
+  if (co.evidence === 'measured' || co.evidence === 'local') {
+    out.provider = typeof co.provider === 'string' ? co.provider : 'rtk';
+    out.evidence = co.evidence;
+    if (co.evidence === 'measured') {
+      out.raw_tokens_estimated = numOrNull(co.raw_tokens_estimated) || 0;
+      out.delivered_tokens_estimated = numOrNull(co.delivered_tokens_estimated) || 0;
+      out.tokens_saved_estimated = numOrNull(co.tokens_saved_estimated) || 0;
+      out.saving_ratio = Number.isFinite(co.saving_ratio) ? co.saving_ratio : 0;
+    } else {
+      out.commands = numOrNull(co.commands) || 0;
+      out.delivered_tokens_estimated = numOrNull(co.delivered_tokens_estimated) || 0;
+    }
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+function normalizeIntegrations(x) {
+  if (!x || typeof x !== 'object') return undefined;
+  const co = normalizeCmdOptimizer(x.command_optimizer);
+  return co ? { command_optimizer: co } : undefined;
+}
+
 const MAX_LOTS_OPEN = 20; // lots todo+in_progress ; au-delà c'est un Jira, refus doux
 const MAX_TITLE = 80;
 const MAX_SCOPE = 400;
@@ -105,6 +144,8 @@ function loadBacklog(root) {
       perimeter: perimeterLib.normalize(l.perimeter),
       depends_on: normalizeDepends(l.depends_on, l.id),
       session_owner: l.session_owner ? trunc(l.session_owner, MAX_OWNER) : null,
+      // Métrologie RTK par lot (lot #83) — optionnel, absent des lots legacy (clé droppée si vide).
+      integrations: normalizeIntegrations(l.integrations),
     }));
   const maxId = lots.reduce((m, l) => Math.max(m, l.id), 0);
   return {
@@ -249,6 +290,13 @@ function startLot(root, id, sessionOwner) {
   lot.status = 'in_progress';
   lot.started_at = now();
   lot.session_touches = 0; // (re)départ = repart de « partie 1 » (pas de suffixe)
+  // Métrologie RTK (lot #83) : fige le snapshot du compteur au démarrage → le delta à la
+  // clôture (doneLot) est le travail confié à RTK PENDANT ce lot. Best-effort : au pire pas
+  // de snapshot → niveau de preuve « rien » à la clôture (jamais de valeur inventée).
+  try {
+    const snap = require('./rtk-metrics').snapshot();
+    lot.integrations = { command_optimizer: { snapshot_start: snap } };
+  } catch (_) { /* fail-open : lot sans métrologie */ }
   return saveBacklog(root, b) ? lot : null;
 }
 
@@ -304,6 +352,17 @@ function doneLot(root, id, commitSha, lotNumber, sessionId, occupancy) {
   lot.closed_session_id = sessionId || null;
   lot.closed_occupancy = Number.isFinite(occupancy) ? occupancy : null;
   lot.lot_number = Number.isFinite(lotNumber) ? lotNumber : incrementLot(root);
+  // Métrologie RTK (lot #83) : fige le gain = delta(compteur) depuis le snapshot de démarrage.
+  // Le snapshot transitoire est remplacé par l'objet gain FINAL, ou retiré si aucune preuve
+  // (aucune réécriture pendant le lot, ou pas de snapshot de démarrage) — « rien si aucune donnée ».
+  try {
+    const rtkMetrics = require('./rtk-metrics');
+    const start = lot.integrations && lot.integrations.command_optimizer
+      && lot.integrations.command_optimizer.snapshot_start;
+    const gain = rtkMetrics.computeLotGain({ start: start || null });
+    if (gain) lot.integrations = { command_optimizer: gain };
+    else delete lot.integrations;
+  } catch (_) { delete lot.integrations; }
   return saveBacklog(root, b) ? lot : null;
 }
 
@@ -618,7 +677,22 @@ function reconcile(root) {
   return { fixed, warnings };
 }
 
-const EXPORT_COLUMNS = ['id', 'title', 'status', 'epic', 'model_hint', 'effort_hint', 'verify', 'cost_tokens', 'closed_commit', 'closed_at'];
+// Colonnes d'export. Les 4 dernières (lot #83) dérivent de integrations.command_optimizer :
+// vides pour un lot sans métrologie RTK (legacy ou sans activité) — jamais de valeur inventée.
+const EXPORT_COLUMNS = ['id', 'title', 'status', 'epic', 'model_hint', 'effort_hint', 'verify', 'cost_tokens', 'closed_commit', 'closed_at',
+  'command_optimizer_provider', 'command_tokens_saved', 'command_saving_ratio', 'command_evidence'];
+
+// Valeur d'une colonne d'export pour un lot : colonnes dérivées RTK d'abord, sinon champ brut.
+function exportCell(l, col) {
+  const co = l.integrations && l.integrations.command_optimizer;
+  switch (col) {
+    case 'command_optimizer_provider': return co && co.evidence ? (co.provider || '') : '';
+    case 'command_tokens_saved': return co && co.evidence === 'measured' ? co.tokens_saved_estimated : '';
+    case 'command_saving_ratio': return co && co.evidence === 'measured' ? co.saving_ratio : '';
+    case 'command_evidence': return co && co.evidence ? co.evidence : '';
+    default: return l[col];
+  }
+}
 
 function csvField(v) {
   const s = v == null ? '' : String(v);
@@ -629,7 +703,7 @@ function csvField(v) {
 // tableur externe (reporting, coût par livrable). Toujours tous les lots, y compris abandonnés.
 function exportCsv(b) {
   const lines = [EXPORT_COLUMNS.join(',')];
-  for (const l of b.lots) lines.push(EXPORT_COLUMNS.map((c) => csvField(l[c])).join(','));
+  for (const l of b.lots) lines.push(EXPORT_COLUMNS.map((c) => csvField(exportCell(l, c))).join(','));
   return lines.join('\n');
 }
 
@@ -637,7 +711,7 @@ function exportCsv(b) {
 function exportMarkdown(b) {
   const header = `| ${EXPORT_COLUMNS.join(' | ')} |`;
   const sep = `| ${EXPORT_COLUMNS.map(() => '---').join(' | ')} |`;
-  const rows = b.lots.map((l) => `| ${EXPORT_COLUMNS.map((c) => String(l[c] == null ? '' : l[c]).replace(/\|/g, '\\|')).join(' | ')} |`);
+  const rows = b.lots.map((l) => `| ${EXPORT_COLUMNS.map((c) => { const v = exportCell(l, c); return String(v == null ? '' : v).replace(/\|/g, '\\|'); }).join(' | ')} |`);
   return [header, sep, ...rows].join('\n');
 }
 

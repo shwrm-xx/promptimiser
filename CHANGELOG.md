@@ -2,6 +2,37 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-20 — lot #83 « Métrologie honnête des gains RTK + bilan de clôture » (epic « Bridge RTK »)
+
+Troisième brique de l'epic « Bridge RTK » : le lot clos peut désormais afficher le gain confié à
+RTK **avec son niveau de preuve** — et **rien** si aucune donnée. Règle cardinale : jamais de
+valeur inventée.
+
+- `promptimizer/lib/rtk-metrics.js` (nouveau) : compteur local monotone sous
+  `PMZ_STATE_DIR/rtk-metrics.json` (`{ commands, delivered_tokens }`, survit aux updates du
+  plugin). `computeLotGain()` rend 3 niveaux de preuve : **`measured`** (économie réelle + ratio,
+  à partir d'un objet `rtkStats` fourni — couture **branchée mais dormante** : on ne devine pas le
+  contrat CLI d'un `rtk stats` inconnu), **`local`** (commandes réécrites + tokens de commande
+  livrés, SANS `tokens_saved` — la compression opère sur la sortie terminale, invisible du hook),
+  ou **null** (aucune activité → rien). `gainLines()` = bilan lisible, `[]` si aucune preuve.
+- `promptimizer/hooks/pre-tool-use.js` : incrémente le compteur **uniquement** quand une
+  réécriture est réellement livrée (best-effort strict, jamais bloquant).
+- `promptimizer/lib/backlog.js` : champ `integrations.command_optimizer` **optionnel et
+  rétro-compatible** (lots legacy lus sans crash, clé absente si vide). `startLot` fige le snapshot
+  de démarrage (transitoire) ; `doneLot` calcule le delta et fige le gain final (snapshot retiré ;
+  **aucun champ si delta nul**). Export CSV/MD : 4 colonnes dérivées ajoutées
+  (`command_optimizer_provider`, `command_tokens_saved`, `command_saving_ratio`,
+  `command_evidence`), vides pour un lot sans métrologie.
+- `promptimizer/scripts/close-batch.js` + `scripts/audit-batch.js` : bloc « Gain RTK » dans le
+  bilan de clôture, calculé **en direct** (snapshot de démarrage + compteur courant, le lot n'étant
+  pas encore clos) ; rien si aucune preuve.
+- **Divergence assumée vs spec §11** : la spec suggère `evidence: unavailable` en l'absence de
+  snapshot ; on préfère **ne rien écrire/afficher** (RTK étant default OFF, la quasi-totalité des
+  clôtures n'a pas d'activité → « rien » évite le bruit). Documenté dans `ARCHITECTURE.md`.
+- Tests : +20 assertions (`test/run-tests.js`, section RTK3) — compteur, 4 issues de
+  `computeLotGain`, `gainLines`, round-trip backlog (snapshot→gain figé, propre si nul),
+  rétro-compat legacy, colonnes d'export, hook end-to-end. Suite : **1154 OK · 0 échec**.
+
 ## 2026-07-20 — lot #82 « /pmz:rtk : activation guidée + détection de conflit (3 canaux) » (epic « Bridge RTK »)
 
 Deuxième brique de l'epic « Bridge RTK » : statut fiable du bridge (5 états), activation/

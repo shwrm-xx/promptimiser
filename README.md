@@ -213,7 +213,9 @@ redémarre Claude Code : les matchers de hooks ne s'appliquent qu'à la réinsta
   défaut**. Opt-in en exportant `PMZ_RTK_ENABLE=1` (et en ayant `rtk` installé) — PMZ fait alors
   transiter les commandes Bash **jugées sûres** par `rtk rewrite`, la sécurité PMZ restant
   prioritaire (une commande dangereuse n'est jamais réécrite). Sans la variable, aucun surcoût.
-  (Activation guidée et diagnostic à venir dans une prochaine version.)
+  Activation guidée + diagnostic via `/pmz:rtk [status|enable|disable|migrate]`. À la clôture d'un
+  lot, le bilan affiche le **gain RTK avec son niveau de preuve** (compteur local de commandes
+  réécrites, ou rien si aucune activité — jamais de valeur inventée).
 - Les hooks sont chargés au **démarrage** de Claude Code : après (dés)installation, **redémarre**
   l'app pour appliquer les changements.
 

@@ -16,6 +16,7 @@ const { parseHookInput } = require('../lib/stdin');
 const { preToolDecision, preToolUpdatedInput, passThrough } = require('../lib/output');
 const { classify } = require('../lib/bash-guard');
 const { rewriteCommand } = require('../lib/optimizer');
+const { recordRewrite } = require('../lib/rtk-metrics');
 const { findFleetRoot, loadFleet, lotForSession, requestExtension } = require('../lib/fleet');
 const { memberVerdict, toRelPosix } = require('../lib/perimeter');
 
@@ -74,6 +75,10 @@ function main() {
       // commande dangereuse via réécriture. On préserve les autres champs de tool_input (timeout,
       // description, run_in_background) : updatedInput remplace l'objet, ne le fusionne pas.
       if (classify(rw.rewrittenCommand) === null) {
+        // Métrologie honnête (lot #83) : compte la réécriture EFFECTIVEMENT livrée (compteur
+        // local monotone). Best-effort strict — jamais bloquant, l'échec de mesure n'empêche
+        // pas la livraison de la commande.
+        try { recordRewrite(rw.rewrittenCommand); } catch (_) { /* fail-open */ }
         return preToolUpdatedInput(
           Object.assign({}, input.tool_input, { command: rw.rewrittenCommand })
         );

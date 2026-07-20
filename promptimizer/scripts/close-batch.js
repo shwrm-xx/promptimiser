@@ -7,6 +7,23 @@ const { runVerify } = require('../lib/project');
 const { VERIFY_CLOSE_MS } = require('../lib/timeouts');
 const { parseCwd } = require('../lib/cli');
 const { fmtK } = require('../lib/messages');
+const rtkMetrics = require('../lib/rtk-metrics');
+
+// Bloc « Gain RTK » du bilan de clôture (lot #83). Le lot n'est pas encore clos ici → on calcule
+// le gain EN DIRECT depuis le snapshot de démarrage figé sur le lot + l'état courant du compteur.
+// Rien à afficher si aucune preuve (pas de snapshot, aucune réécriture) — jamais de valeur inventée.
+function rtkGainBlock(cur) {
+  try {
+    const co = cur && cur.integrations && cur.integrations.command_optimizer;
+    const start = co && co.snapshot_start ? co.snapshot_start : null;
+    // co déjà finalisé (lot rouvert/clos) OU calcul en direct depuis le snapshot de démarrage.
+    const gain = (co && co.evidence) ? co : rtkMetrics.computeLotGain({ start });
+    const lines = rtkMetrics.gainLines(gain, fmtK);
+    return lines.length ? `\n${lines.join('\n')}\n` : '';
+  } catch (_) {
+    return '';
+  }
+}
 
 function yn(v) { return v ? 'oui' : 'non'; }
 
@@ -64,7 +81,7 @@ Checklist :
 - CHANGELOG mis à jour : ${changelog}
 - Commit fait : ${commit}
 - Non vérifié explicitement listé : à confirmer
-${backlogBlock}${trailerBlock(bl && bl.current)}
+${backlogBlock}${rtkGainBlock(bl && bl.current)}${trailerBlock(bl && bl.current)}
 ## Économie de contexte
 
 - lectures évitées : voir .vibe-agent/read-ledger.json
