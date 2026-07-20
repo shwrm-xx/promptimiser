@@ -22,7 +22,10 @@ function backlogSummary(root) {
         id: cur.id, title: cur.title, verify: cur.verify || null,
         model_hint: cur.model_hint || null, effort_hint: cur.effort_hint || null, cost_tokens: cur.cost_tokens || 0,
       } : null,
-      next: nxt ? { id: nxt.id, title: nxt.title } : null,
+      next: nxt ? {
+        id: nxt.id, title: nxt.title,
+        model_hint: nxt.model_hint || null, effort_hint: nxt.effort_hint || null,
+      } : null,
     };
   } catch (_) {
     return null;

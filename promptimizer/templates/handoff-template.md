@@ -20,7 +20,7 @@ Dette restante :
 - ...
 
 Prochaine action recommandée :
-- ...
+- ... (lot suivant + son tag modèle/effort, ex. « #N « titre » [modèle : sonnet · effort medium] »)
 
 Contrainte budget :
 - ne pas relire les fichiers suivants sauf changement (format machine, semé au démarrage) :

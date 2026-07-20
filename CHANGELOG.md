@@ -2,6 +2,22 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-20 (fix — reco de modèle du lot suivant dans le handoff/close-batch)
+
+La checklist de `/close-batch` nommait le lot suivant à reprendre dans le handoff mais
+omettait son tag modèle/effort — le repreneur devait regrepper le backlog pour savoir
+quel modèle basculer via `/model`.
+
+- `promptimizer/scripts/audit-batch.js` : `backlogSummary().next` porte désormais
+  `model_hint`/`effort_hint` (comme `current`).
+- `promptimizer/scripts/close-batch.js` : la ligne « Lot suivant à reprendre dans le
+  handoff » affiche son tag `[modèle : X · effort Y]` (`modelEffortTag`, lib/backlog.js)
+  et rappelle de le reporter dans le handoff.
+- `promptimizer/commands/close-batch.md`, `promptimizer/commands/fresh-session.md`,
+  `promptimizer/templates/handoff-template.md` : le champ « Prochaine action
+  recommandée » doit désormais nommer le lot suivant **et** son modèle préconisé —
+  jamais l'un sans l'autre.
+
 ## 2026-07-20 (lot #80 — epic « Vagues parallèles » : pmz:reintegrate + vigies de vague)
 
 Cinquième et dernière brique de la décision D3 (principe **P3** : réintégration en pipeline,

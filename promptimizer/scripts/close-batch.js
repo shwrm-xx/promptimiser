@@ -2,6 +2,7 @@
 'use strict';
 // Checklist de clôture (format spec). Pré-rempli via audit-batch quand détectable.
 const { compute } = require('./audit-batch');
+const { modelEffortTag } = require('../lib/backlog');
 const { runVerify } = require('../lib/project');
 const { VERIFY_CLOSE_MS } = require('../lib/timeouts');
 const { parseCwd } = require('../lib/cli');
@@ -49,7 +50,7 @@ function main() {
 - Avancement : ${bl.done}/${bl.total} faits${bl.current ? ` — en cours : #${bl.current.id} « ${bl.current.title} »` : ' — aucun lot en cours'}
 - Périmètre conforme au lot du backlog : à confirmer (dévié → node ${PMZ_BASE}/scripts/backlog.js note --id N --note "…")${verifyLine}
 - Après le commit : node ${PMZ_BASE}/scripts/backlog.js done --id ${bl.current ? bl.current.id : 'N'} (SHA du HEAD pris automatiquement ; le hook Stop le fait aussi tout seul)${bl.next ? `
-- Lot suivant à reprendre dans le handoff : #${bl.next.id} « ${bl.next.title} »` : ''}
+- Lot suivant à reprendre dans le handoff : #${bl.next.id} « ${bl.next.title} »${modelEffortTag(bl.next)} — reporter ce tag modèle/effort dans le handoff (champ « Prochaine action recommandée »)` : ''}
 ` : '';
   const out = `## Clôture du lot
 

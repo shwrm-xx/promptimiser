@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 81,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-20T09:53:36.899Z",
+  "updated_at": "2026-07-20T12:06:36.674Z",
   "lots": [
     {
       "id": 1,
@@ -21,7 +21,10 @@
       "started_at": null,
       "lot_number": null,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 2,
@@ -40,7 +43,10 @@
       "started_at": null,
       "lot_number": null,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 3,
@@ -59,7 +65,10 @@
       "started_at": null,
       "lot_number": null,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 4,
@@ -78,7 +87,10 @@
       "started_at": null,
       "lot_number": null,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 5,
@@ -97,7 +109,10 @@
       "started_at": null,
       "lot_number": null,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 6,
@@ -116,7 +131,10 @@
       "started_at": null,
       "lot_number": null,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 7,
@@ -135,7 +153,10 @@
       "started_at": null,
       "lot_number": null,
       "note": "Reconstruit depuis git le 2026-07-10 — backlog.json avait disparu ; lots à venir non récupérables.",
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 8,
@@ -154,7 +175,10 @@
       "started_at": null,
       "lot_number": 1,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 9,
@@ -173,7 +197,10 @@
       "started_at": "2026-07-10T22:20:14.976Z",
       "lot_number": 2,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 10,
@@ -192,7 +219,10 @@
       "started_at": "2026-07-10T22:30:36.028Z",
       "lot_number": 3,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 11,
@@ -211,7 +241,10 @@
       "started_at": "2026-07-11T06:47:57.152Z",
       "lot_number": 4,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 12,
@@ -230,7 +263,10 @@
       "started_at": "2026-07-11T06:56:38.694Z",
       "lot_number": 5,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 13,
@@ -249,7 +285,10 @@
       "started_at": "2026-07-11T11:59:38.438Z",
       "lot_number": 8,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 14,
@@ -268,7 +307,10 @@
       "started_at": "2026-07-11T12:15:01.690Z",
       "lot_number": 8,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 15,
@@ -287,7 +329,10 @@
       "started_at": "2026-07-11T12:33:20.088Z",
       "lot_number": 9,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 16,
@@ -306,7 +351,10 @@
       "started_at": "2026-07-11T14:58:21.215Z",
       "lot_number": 10,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 17,
@@ -325,7 +373,10 @@
       "started_at": null,
       "lot_number": 11,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 18,
@@ -344,7 +395,10 @@
       "started_at": "2026-07-11T15:32:59.900Z",
       "lot_number": 14,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 19,
@@ -363,7 +417,10 @@
       "started_at": "2026-07-11T17:51:31.653Z",
       "lot_number": 16,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 20,
@@ -382,7 +439,10 @@
       "started_at": "2026-07-11T23:08:16.326Z",
       "lot_number": 9,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 21,
@@ -401,7 +461,10 @@
       "started_at": "2026-07-12T08:12:44.816Z",
       "lot_number": 11,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 22,
@@ -420,7 +483,10 @@
       "started_at": null,
       "lot_number": 13,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 23,
@@ -439,7 +505,10 @@
       "started_at": null,
       "lot_number": 15,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 24,
@@ -458,7 +527,10 @@
       "started_at": null,
       "lot_number": 17,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 25,
@@ -477,7 +549,10 @@
       "started_at": "2026-07-12T08:58:57.944Z",
       "lot_number": 19,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 26,
@@ -496,7 +571,10 @@
       "started_at": null,
       "lot_number": 21,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 27,
@@ -515,7 +593,10 @@
       "started_at": null,
       "lot_number": 23,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 28,
@@ -534,7 +615,10 @@
       "started_at": "2026-07-12T09:50:47.116Z",
       "lot_number": 25,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 29,
@@ -553,7 +637,10 @@
       "started_at": null,
       "lot_number": 27,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 30,
@@ -572,7 +659,10 @@
       "started_at": null,
       "lot_number": 29,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 31,
@@ -591,7 +681,10 @@
       "started_at": null,
       "lot_number": 30,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 32,
@@ -610,7 +703,10 @@
       "started_at": null,
       "lot_number": 32,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 33,
@@ -629,7 +725,10 @@
       "started_at": null,
       "lot_number": 34,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 34,
@@ -648,7 +747,10 @@
       "started_at": "2026-07-12T11:36:09.986Z",
       "lot_number": 36,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 35,
@@ -667,7 +769,10 @@
       "started_at": "2026-07-12T11:40:10.133Z",
       "lot_number": 37,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 36,
@@ -686,7 +791,10 @@
       "started_at": "2026-07-12T12:50:33.192Z",
       "lot_number": 39,
       "note": null,
-      "session_touches": 1
+      "session_touches": 1,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 37,
@@ -705,7 +813,10 @@
       "started_at": "2026-07-12T13:35:53.113Z",
       "lot_number": 40,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 38,
@@ -724,7 +835,10 @@
       "started_at": "2026-07-14T10:40:52.000Z",
       "lot_number": 42,
       "note": null,
-      "session_touches": 1
+      "session_touches": 1,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 39,
@@ -743,7 +857,10 @@
       "started_at": null,
       "lot_number": 44,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 40,
@@ -762,7 +879,10 @@
       "started_at": "2026-07-12T14:20:20.944Z",
       "lot_number": 41,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 41,
@@ -781,7 +901,10 @@
       "started_at": "2026-07-14T11:19:26.504Z",
       "lot_number": 45,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 42,
@@ -800,7 +923,10 @@
       "started_at": "2026-07-14T11:30:07.394Z",
       "lot_number": 47,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 43,
@@ -819,7 +945,10 @@
       "started_at": null,
       "lot_number": 49,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 44,
@@ -838,7 +967,10 @@
       "started_at": "2026-07-14T12:14:33.067Z",
       "lot_number": 51,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 45,
@@ -857,7 +989,10 @@
       "started_at": null,
       "lot_number": 53,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 46,
@@ -876,7 +1011,10 @@
       "started_at": "2026-07-14T20:08:24.900Z",
       "lot_number": 18,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 47,
@@ -895,7 +1033,10 @@
       "started_at": "2026-07-18T18:31:46.906Z",
       "lot_number": 56,
       "note": null,
-      "session_touches": 1
+      "session_touches": 1,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 48,
@@ -914,7 +1055,10 @@
       "started_at": null,
       "lot_number": 57,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 49,
@@ -933,7 +1077,10 @@
       "started_at": "2026-07-18T19:34:12.873Z",
       "lot_number": 59,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 50,
@@ -952,7 +1099,10 @@
       "started_at": null,
       "lot_number": 61,
       "note": "Écart assumé vs 'fait quand' : model_hint gardé en ALIAS (sonnet/opus), PAS ids OpenCode — .vibe-agent partagé avec Claude Code, un id OpenCode casserait la vigie CC. Résolution locale côté vigie (hi…",
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 51,
@@ -971,7 +1121,10 @@
       "started_at": "2026-07-18T23:38:11.226Z",
       "lot_number": 63,
       "note": null,
-      "session_touches": 2
+      "session_touches": 2,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 52,
@@ -990,7 +1143,10 @@
       "started_at": "2026-07-19T07:52:03.920Z",
       "lot_number": 65,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 53,
@@ -1009,7 +1165,10 @@
       "started_at": null,
       "lot_number": 66,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 54,
@@ -1028,7 +1187,10 @@
       "started_at": null,
       "lot_number": 68,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 55,
@@ -1047,7 +1209,10 @@
       "started_at": "2026-07-19T08:35:37.905Z",
       "lot_number": 69,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 56,
@@ -1066,7 +1231,10 @@
       "started_at": "2026-07-19T13:52:16.500Z",
       "lot_number": 70,
       "note": null,
-      "session_touches": 1
+      "session_touches": 1,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 57,
@@ -1085,7 +1253,10 @@
       "started_at": null,
       "lot_number": 71,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 58,
@@ -1104,7 +1275,10 @@
       "started_at": "2026-07-19T14:50:34.464Z",
       "lot_number": 73,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 59,
@@ -1123,7 +1297,10 @@
       "started_at": "2026-07-19T14:56:06.727Z",
       "lot_number": 75,
       "note": null,
-      "session_touches": 1
+      "session_touches": 1,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 60,
@@ -1142,7 +1319,10 @@
       "started_at": "2026-07-19T15:16:24.005Z",
       "lot_number": 76,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 61,
@@ -1161,7 +1341,10 @@
       "started_at": "2026-07-19T15:35:47.581Z",
       "lot_number": 78,
       "note": null,
-      "session_touches": 2
+      "session_touches": 2,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 62,
@@ -1180,7 +1363,10 @@
       "started_at": null,
       "lot_number": 80,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 63,
@@ -1199,7 +1385,10 @@
       "started_at": "2026-07-19T16:31:57.622Z",
       "lot_number": 82,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 64,
@@ -1218,7 +1407,10 @@
       "started_at": null,
       "lot_number": null,
       "note": "Redécoupé en 3 sous-lots : fenêtre modèle/seuil zone-rouge (lib), prescription zone-rouge (hooks), réinjection post-compact enrichie.",
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 65,
@@ -1237,7 +1429,10 @@
       "started_at": "2026-07-19T19:45:28.754Z",
       "lot_number": 90,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 66,
@@ -1256,7 +1451,10 @@
       "started_at": "2026-07-19T20:07:31.105Z",
       "lot_number": 92,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 67,
@@ -1275,7 +1473,10 @@
       "started_at": "2026-07-19T20:22:02.594Z",
       "lot_number": 94,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 68,
@@ -1294,7 +1495,10 @@
       "started_at": "2026-07-19T20:32:53.039Z",
       "lot_number": 96,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 69,
@@ -1313,7 +1517,10 @@
       "started_at": "2026-07-19T20:45:43.918Z",
       "lot_number": 98,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 70,
@@ -1332,7 +1539,10 @@
       "started_at": "2026-07-19T17:11:24.421Z",
       "lot_number": 85,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 71,
@@ -1351,7 +1561,10 @@
       "started_at": null,
       "lot_number": 87,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 72,
@@ -1370,7 +1583,10 @@
       "started_at": "2026-07-19T19:22:24.903Z",
       "lot_number": 89,
       "note": null,
-      "session_touches": 1
+      "session_touches": 1,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 73,
@@ -1389,7 +1605,10 @@
       "started_at": "2026-07-19T21:02:06.195Z",
       "lot_number": 100,
       "note": null,
-      "session_touches": 1
+      "session_touches": 1,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 74,
@@ -1408,7 +1627,10 @@
       "started_at": "2026-07-19T21:18:33.306Z",
       "lot_number": 102,
       "note": null,
-      "session_touches": 1
+      "session_touches": 1,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 75,
@@ -1427,7 +1649,10 @@
       "started_at": "2026-07-19T21:34:04.569Z",
       "lot_number": 103,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 76,
@@ -1446,7 +1671,10 @@
       "started_at": "2026-07-20T06:47:40.480Z",
       "lot_number": 21,
       "note": null,
-      "session_touches": 1
+      "session_touches": 1,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 77,
@@ -1465,7 +1693,10 @@
       "started_at": "2026-07-20T07:36:47.037Z",
       "lot_number": 22,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 78,
@@ -1484,7 +1715,10 @@
       "started_at": null,
       "lot_number": 25,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 79,
@@ -1503,26 +1737,32 @@
       "started_at": null,
       "lot_number": 27,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     },
     {
       "id": 80,
       "title": "pmz:reintegrate + vigies de vague",
       "scope": "fait quand : merge pipeline dans l'ordre du graphe avec gate verify à chaque étape ; changelog agrégé ; signal de rebase écrit dans fleet.json ; notification OS opt-in « lot prêt / vague close »",
-      "status": "todo",
+      "status": "done",
       "model_hint": "opus",
       "effort_hint": "high",
       "epic": "Vagues parallèles",
       "verify": "node test/run-tests.js",
-      "closed_commit": null,
-      "closed_at": null,
+      "closed_commit": "124de19",
+      "closed_at": "2026-07-20T12:06:36.669Z",
       "closed_session_id": null,
       "closed_occupancy": null,
       "cost_tokens": 0,
       "started_at": null,
-      "lot_number": null,
+      "lot_number": 29,
       "note": null,
-      "session_touches": 0
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null
     }
   ]
 }

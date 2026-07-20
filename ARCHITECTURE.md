@@ -495,6 +495,14 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   `effort_hint`/`cost_tokens` sur `d.backlog.current` (`scripts/audit-batch.js:
   backlogSummary`, étendu à cet effet — absents du résumé initial qui ne portait que
   `id`/`title`/`verify`).
+- **Tag modèle du lot suivant reporté au handoff** (`scripts/close-batch.js`, fix 2026-07-20) :
+  `backlogSummary().next` (`scripts/audit-batch.js`) porte aussi `model_hint`/`effort_hint` — la
+  ligne « Lot suivant à reprendre dans le handoff » de la checklist affiche son tag
+  `modelEffortTag` (`lib/backlog.js`) au lieu du seul id/titre. `/close-batch.md`,
+  `/fresh-session.md` et `templates/handoff-template.md` exigent désormais que le champ
+  « Prochaine action recommandée » du handoff manuel nomme le lot suivant **et** son modèle
+  préconisé, jamais l'un sans l'autre (le handoff auto le faisait déjà via `summaryLines` —
+  seul le chemin manuel avait le trou).
 - **Export du plan de lots** (`backlog.js export --format csv|md`, `lib/backlog.js: exportCsv`/
   `exportMarkdown`, lot #60) : sortie brute de tous les lots (colonnes fixes : id, title,
   status, epic, model_hint, effort_hint, verify, cost_tokens, closed_commit, closed_at),
