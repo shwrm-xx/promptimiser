@@ -1773,7 +1773,7 @@
       "effort_hint": "high",
       "epic": "Bridge RTK",
       "verify": "node test/run-tests.js",
-      "closed_commit": "ddfc121",
+      "closed_commit": "b68e1aa",
       "closed_at": "2026-07-20T14:05:05.685Z",
       "closed_session_id": null,
       "closed_occupancy": null,
