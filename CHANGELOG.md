@@ -2,6 +2,30 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-20 (lot #76 — epic « Vagues parallèles » : schéma backlog v2, périmètres & coexistence)
+
+Première brique de la décision D3. Le plan de lots peut désormais porter les métadonnées de
+parallélisation, inertes tant qu'aucune vague n'est active.
+
+- `promptimizer/lib/perimeter.js` (nouveau) : normalisation de globs (`normalize` — trim, POSIX,
+  dédup, caps) et test de disjonction (`disjoint`) entre deux périmètres — matching conservateur
+  au niveau des préfixes statiques (granularité dossier, cf. D3), zéro dépendance. Périmètre vide
+  ⇒ jamais disjoint ; `*` chevauche tout. Le test d'appartenance d'un fichier (verdict PreToolUse)
+  est laissé au lot #78.
+- `promptimizer/lib/backlog.js` : le schéma d'un lot porte `perimeter`, `depends_on` (ids, self
+  exclu, dédup, capé) et `session_owner` (round-trip dans `loadBacklog`, posables via `addLot`
+  et les nouveaux `setPerimeter`/`setDepends`). `startLot(root, id, sessionOwner)` gagne un
+  régime **fleet** : plusieurs lots `in_progress` coexistent **ssi** sessions distinctes +
+  périmètres disjoints ; sans owner (ou lot sans périmètre) le comportement historique est
+  strictement préservé (un seul en cours). `reconcile` préserve une vague valide et répare tout
+  multi-`in_progress` invalide (helpers `canCoexist`/`pairwiseCoexist`).
+- `promptimizer/scripts/backlog.js` : `add --perimeter "a,b" --depends "5,6"` et `start --owner
+  <session>` ; les champs sont réaffichés dans `add`/`start`/`show`.
+- `test/run-tests.js` : 2 sections (lot #76) — `lib/perimeter.js` (normalisation, disjonction,
+  cas conteneur/contenu, périmètre vide, `*`) et backlog v2 (round-trip, régime classique intact,
+  coexistence fleet, même session/périmètre chevauchant → rétrogradation, fleet sans périmètre →
+  classique, `reconcile` vague valide vs invalide, CLI). Suite verte : 957 OK.
+
 ## 2026-07-20 (décision D3 — parallélisation gouvernée des lots, paliers 2 & 3)
 
 - `docs/decisions/D3-parallelisation-gouvernee.md` (nouveau) : **GO palier 2** (N sessions filles

@@ -8,6 +8,7 @@ const path = require('path');
 const { vibeDir, ensureLedger, git } = require('./project');
 const { writeAtomic, readJson } = require('./fsjson');
 const { getLotCounter, incrementLot } = require('./lot');
+const perimeterLib = require('./perimeter');
 
 const MAX_LOTS_OPEN = 20; // lots todo+in_progress ; au-delà c'est un Jira, refus doux
 const MAX_TITLE = 80;
@@ -16,6 +17,8 @@ const MAX_MODEL_HINT = 40; // préconisation de modèle par lot (ex. « sonnet �
 const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh']; // effort de raisonnement par lot, cf. --effort
 const MAX_EPIC = 60; // label d'epic optionnel du lot, cf. .vibe-agent/epic (lib/lot.js)
 const MAX_VERIFY = 150; // commande shell de preuve de clôture, exécutée par /close-batch avant done
+const MAX_OWNER = 80; // id de session propriétaire d'un lot en cours (mode fleet, cf. D3)
+const MAX_DEPENDS = 20; // ids de lots dont ce lot dépend (ordre de réintégration, cf. D3)
 const MAX_NOTE = 200;
 const MAX_TODOS = 30;
 const MAX_TODO_CHARS = 120;
@@ -44,6 +47,22 @@ function trunc(s, n) {
 
 function now() {
   return new Date().toISOString();
+}
+
+// Normalise la liste des dépendances d'un lot (ids d'autres lots — ordre de réintégration,
+// cf. D3) : entiers finis, self exclu, dédoublonnés, capé. Entrée non-array → [].
+function normalizeDepends(deps, selfId) {
+  if (!Array.isArray(deps)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const d of deps) {
+    const n = Number(d);
+    if (!Number.isFinite(n) || n === selfId || seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+    if (out.length >= MAX_DEPENDS) break;
+  }
+  return out;
 }
 
 // Normalisation défensive : fichier absent/corrompu/champ invalide → backlog vide valide.
@@ -78,6 +97,14 @@ function loadBacklog(root) {
       // (incrémenté par touchLot, cf. lib/lot.js:suggestedTitle) — alimente le suffixe
       // « (partie N) » du titre de session quand un lot dépasse une session.
       session_touches: Number.isFinite(l.session_touches) ? l.session_touches : 0,
+      // --- Parallélisation gouvernée (décision D3, palier 2) — inertes sans fleet actif ---
+      // perimeter : globs de chemins que ce lot a le droit de modifier (périmètre exclusif).
+      // depends_on : ids de lots dont il dépend (ordre de réintégration / calcul de vagues).
+      // session_owner : id de la session qui « tient » ce lot pendant qu'il est en cours ;
+      //   posé par startLot en mode fleet, autorise plusieurs lots in_progress à coexister.
+      perimeter: perimeterLib.normalize(l.perimeter),
+      depends_on: normalizeDepends(l.depends_on, l.id),
+      session_owner: l.session_owner ? trunc(l.session_owner, MAX_OWNER) : null,
     }));
   const maxId = lots.reduce((m, l) => Math.max(m, l.id), 0);
   return {
@@ -124,8 +151,9 @@ function openCount(b) {
 }
 
 // null si titre vide, plan déjà au cap, ou effort fourni mais hors énum (refus doux,
-// c'est au CLI de l'expliquer).
-function addLot(root, title, scope, modelHint, epic, verify, effortHint) {
+// c'est au CLI de l'expliquer). perimeter/dependsOn (optionnels, trailing) : parallélisation
+// gouvernée (D3) — vides par défaut, donc lot séquentiel classique.
+function addLot(root, title, scope, modelHint, epic, verify, effortHint, perimeter, dependsOn) {
   const t = trunc(title, MAX_TITLE);
   if (!t) return null;
   if (effortHint && !EFFORT_LEVELS.includes(effortHint)) return null;
@@ -149,9 +177,32 @@ function addLot(root, title, scope, modelHint, epic, verify, effortHint) {
     lot_number: null,
     note: null,
     session_touches: 0,
+    perimeter: perimeterLib.normalize(perimeter),
+    depends_on: normalizeDepends(dependsOn, b.next_id),
+    session_owner: null,
   };
   b.lots.push(lot);
   b.next_id += 1;
+  return saveBacklog(root, b) ? lot : null;
+}
+
+// Édite le périmètre (globs) d'un lot existant — posé après coup par pmz:parallelize (lot #79)
+// ou à la main. Remplace intégralement (pas d'ajout incrémental). null si lot introuvable/clos.
+function setPerimeter(root, id, globs) {
+  const b = loadBacklog(root);
+  const lot = findLot(b, id);
+  if (!lot || lot.status === 'done' || lot.status === 'dropped') return null;
+  lot.perimeter = perimeterLib.normalize(globs);
+  return saveBacklog(root, b) ? lot : null;
+}
+
+// Édite les dépendances (ids de lots) d'un lot existant. Remplace intégralement.
+// null si lot introuvable/clos.
+function setDepends(root, id, deps) {
+  const b = loadBacklog(root);
+  const lot = findLot(b, id);
+  if (!lot || lot.status === 'done' || lot.status === 'dropped') return null;
+  lot.depends_on = normalizeDepends(deps, lot.id);
   return saveBacklog(root, b) ? lot : null;
 }
 
@@ -167,13 +218,33 @@ function setVerify(root, id, verify) {
   return saveBacklog(root, b) ? lot : null;
 }
 
-// Invariant souple : au plus un in_progress — start rétrograde les autres en todo.
-function startLot(root, id) {
+// Deux lots en cours peuvent-ils coexister (mode fleet, D3) ? Oui ssi ils appartiennent à des
+// sessions DISTINCTES (owner non nul de part et d'autre, différents) ET ont des périmètres
+// DISJOINTS. Sinon ils se marcheraient dessus — un seul doit rester en cours.
+function canCoexist(a, b) {
+  if (!a.session_owner || !b.session_owner || a.session_owner === b.session_owner) return false;
+  return perimeterLib.disjoint(a.perimeter, b.perimeter);
+}
+
+// Démarre un lot. Deux régimes :
+//  - Classique (sessionOwner absent, OU lot sans périmètre) : au plus un in_progress — les
+//    autres rétrogradent en todo. C'est le comportement historique, strictement préservé.
+//  - Fleet (sessionOwner fourni ET lot avec périmètre, cf. D3) : les autres lots en cours qui
+//    PEUVENT coexister (autre session + périmètre disjoint) restent en cours ; seuls ceux qui
+//    entreraient en conflit rétrogradent. Permet N lots in_progress d'une même vague.
+function startLot(root, id, sessionOwner) {
   const b = loadBacklog(root);
   const lot = findLot(b, id);
   if (!lot || lot.status === 'done' || lot.status === 'dropped') return null;
+  const owner = sessionOwner ? trunc(sessionOwner, MAX_OWNER) : null;
+  lot.session_owner = owner;
+  const fleet = !!owner && lot.perimeter.length > 0;
   for (const l of b.lots) {
-    if (l.status === 'in_progress' && l.id !== lot.id) { l.status = 'todo'; l.started_at = null; }
+    if (l.status !== 'in_progress' || l.id === lot.id) continue;
+    if (fleet && canCoexist(l, lot)) continue; // vague en cours : on laisse le pair vivre
+    l.status = 'todo';
+    l.started_at = null;
+    l.session_owner = null;
   }
   lot.status = 'in_progress';
   lot.started_at = now();
@@ -423,18 +494,31 @@ function readTodoSnapshot(root) {
   return raw;
 }
 
+// Tous les lots d'un ensemble coexistent-ils 2 à 2 (vague fleet valide) ? cf. canCoexist.
+function pairwiseCoexist(lots) {
+  for (let i = 0; i < lots.length; i++) {
+    for (let j = i + 1; j < lots.length; j++) {
+      if (!canCoexist(lots[i], lots[j])) return false;
+    }
+  }
+  return true;
+}
+
 // Réparation volontairement bête — jamais bloquante, jamais de matching sémantique.
 function reconcile(root) {
   const fixed = [];
   const warnings = [];
   const b = loadBacklog(root);
-  // 1. Plusieurs in_progress → garde le plus récemment démarré (fallback : id le plus haut).
+  // 1. Plusieurs in_progress. Une VAGUE valide (tous coexistent 2 à 2 : sessions distinctes +
+  //    périmètres disjoints, cf. D3) est légitime → on n'y touche pas. Sinon, retour à
+  //    l'invariant historique : garde le plus récemment démarré (fallback : id le plus haut).
   const inProg = b.lots.filter((l) => l.status === 'in_progress');
-  if (inProg.length > 1) {
+  if (inProg.length > 1 && !pairwiseCoexist(inProg)) {
     inProg.sort((a, c) => String(c.started_at || '').localeCompare(String(a.started_at || '')) || c.id - a.id);
     for (const l of inProg.slice(1)) {
       l.status = 'todo';
       l.started_at = null;
+      l.session_owner = null;
       fixed.push(`#${l.id} rétrogradé en « à faire » (un seul lot en cours à la fois)`);
     }
   }
@@ -477,11 +561,11 @@ function exportMarkdown(b) {
 }
 
 module.exports = {
-  backlogFile, loadBacklog, saveBacklog, addLot, setVerify, startLot, doneLot, dropLot, noteLot,
+  backlogFile, loadBacklog, saveBacklog, addLot, setVerify, setPerimeter, setDepends, startLot, doneLot, dropLot, noteLot,
   touchLot, addCost, currentLot, nextLot, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
-  epicBilan, estimateCost,
+  epicBilan, estimateCost, canCoexist, pairwiseCoexist,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot, modelEffortTag,
   exportCsv, exportMarkdown,
-  MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_NOTE, MAX_TODOS, EFFORT_LEVELS,
+  MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_OWNER, MAX_DEPENDS, MAX_NOTE, MAX_TODOS, EFFORT_LEVELS,
   COST_BUDGET_TOKENS, COST_WARN_TOKENS,
 };

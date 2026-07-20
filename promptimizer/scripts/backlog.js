@@ -17,6 +17,11 @@ function flag(name) {
   const i = process.argv.indexOf('--' + name);
   return i !== -1 && process.argv[i + 1] != null ? process.argv[i + 1] : null;
 }
+// Liste séparée par virgules (« --perimeter "lib/a,lib/b" ») → tableau nettoyé. [] si absent.
+function flagList(name) {
+  const v = flag(name);
+  return v ? v.split(',').map((s) => s.trim()).filter(Boolean) : [];
+}
 function out(s) { process.stdout.write(s + '\n'); }
 // Suffixe texte de l'estimation prédictive (lot #63) : vide si backlog.estimateCost n'a
 // aucune famille comparable (pas de lot clos avec cost_tokens > 0 sur ce modèle/effort/epic).
@@ -47,6 +52,8 @@ function show(root, json, epicFilter) {
     if (l.epic) line += ` [epic : ${l.epic}]`;
     line += backlog.modelEffortTag(l);
     if (l.verify) line += ` [verify : ${l.verify}]`;
+    if (l.perimeter && l.perimeter.length) line += ` [périmètre : ${l.perimeter.join(', ')}]`;
+    if (l.depends_on && l.depends_on.length) line += ` [dépend de : ${l.depends_on.map((d) => '#' + d).join(', ')}]`;
     if (l.status === 'done' && l.closed_commit) line += ` — commit ${l.closed_commit}`;
     else if (l.scope) line += ` — ${l.scope}`;
     if (l.status === 'done' && Number.isFinite(l.closed_occupancy)) line += ` (occupation à la clôture : ${l.closed_occupancy})`;
@@ -93,7 +100,8 @@ function main() {
     if (effort && !backlog.EFFORT_LEVELS.includes(effort)) {
       return out(`Refusé : --effort invalide (« ${effort} »). Valeurs acceptées : ${backlog.EFFORT_LEVELS.join(' | ')}.`);
     }
-    const newLot = backlog.addLot(root, flag('title'), flag('scope'), model, flag('epic'), flag('verify'), effort);
+    const depends = flagList('depends').map(Number).filter(Number.isFinite);
+    const newLot = backlog.addLot(root, flag('title'), flag('scope'), model, flag('epic'), flag('verify'), effort, flagList('perimeter'), depends);
     if (!newLot) {
       const b = backlog.loadBacklog(root);
       if (b.lots.filter((l) => l.status === 'todo' || l.status === 'in_progress').length >= backlog.MAX_LOTS_OPEN) {
@@ -101,7 +109,7 @@ function main() {
       }
       return out('Refusé : --title manquant ou vide.');
     }
-    let addMsg = `Lot #${newLot.id} « ${newLot.title} » ajouté (à faire)${backlog.modelEffortTag(newLot)}${newLot.epic ? ` [epic : ${newLot.epic}]` : ''}${newLot.verify ? ` [verify : ${newLot.verify}]` : ''}.`;
+    let addMsg = `Lot #${newLot.id} « ${newLot.title} » ajouté (à faire)${backlog.modelEffortTag(newLot)}${newLot.epic ? ` [epic : ${newLot.epic}]` : ''}${newLot.verify ? ` [verify : ${newLot.verify}]` : ''}${newLot.perimeter.length ? ` [périmètre : ${newLot.perimeter.join(', ')}]` : ''}${newLot.depends_on.length ? ` [dépend de : ${newLot.depends_on.map((d) => '#' + d).join(', ')}]` : ''}.`;
     addMsg += estimateSuffix(backlog.loadBacklog(root), newLot);
     return out(addMsg);
   }
@@ -118,9 +126,9 @@ function main() {
   }
 
   if (cmd === 'start') {
-    const lot = backlog.startLot(root, id);
+    const lot = backlog.startLot(root, id, flag('owner'));
     if (!lot) return out(`Lot #${id} introuvable ou déjà clos/abandonné.`);
-    let startMsg = `Lot #${lot.id} « ${lot.title} » démarré (en cours)${backlog.modelEffortTag(lot)}.`;
+    let startMsg = `Lot #${lot.id} « ${lot.title} » démarré (en cours)${backlog.modelEffortTag(lot)}${lot.session_owner ? ` [session : ${lot.session_owner}]` : ''}.`;
     startMsg += estimateSuffix(backlog.loadBacklog(root), lot);
     return out(startMsg);
   }

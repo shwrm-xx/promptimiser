@@ -4319,6 +4319,129 @@ section('Notifications OS opt-in : zone rouge / clôture de lot -> notification 
   if (prevNotify === undefined) delete process.env.PMZ_NOTIFY; else process.env.PMZ_NOTIFY = prevNotify;
 }
 
+// ==================== D3-1. BACKLOG v2 — PÉRIMÈTRE, DÉPENDANCES, COEXISTENCE (lot #76) ====================
+section('perimeter — normalisation + disjonction (lib/perimeter.js, lot #76)');
+{
+  const perimeter = require(path.join(PKG, 'lib', 'perimeter'));
+
+  // P1. normalize : trim, séparateurs POSIX, sans ./ ni / de tête/queue, dédup, non-array -> []
+  ok(JSON.stringify(perimeter.normalize([' lib/a ', './lib/a', 'lib/a/', 'lib\\b', 'lib/a'])) ===
+    JSON.stringify(['lib/a', 'lib/b']), 'perimeter.normalize : trim/POSIX/dédup/bornes');
+  ok(perimeter.normalize('lib/a').length === 0 && perimeter.normalize(null).length === 0,
+    'perimeter.normalize : entrée non-array -> []');
+
+  // P2. disjonction : dossiers frères disjoints ; conteneur/contenu qui se chevauchent
+  ok(perimeter.disjoint(['lib/a'], ['lib/b']) === true, 'disjoint : dossiers frères -> true');
+  ok(perimeter.disjoint(['lib'], ['lib/foo.js']) === false, 'disjoint : dossier vs fichier dedans -> false');
+  ok(perimeter.disjoint(['lib/*.js'], ['lib/foo.js']) === false, 'disjoint : glob vs fichier dans le même dossier -> false');
+  ok(perimeter.disjoint(['src/a/*'], ['src/b/*']) === true, 'disjoint : globs de dossiers frères -> true');
+
+  // P3. périmètre vide n'est disjoint de rien ; « * » chevauche tout (conservateur)
+  ok(perimeter.disjoint([], ['lib/a']) === false, 'disjoint : périmètre vide -> false (pas de coexistence)');
+  ok(perimeter.disjoint(['*'], ['lib/a']) === false, 'disjoint : « * » chevauche tout -> false');
+}
+
+section('backlog v2 — schéma perimeter/depends_on + coexistence multi-in_progress (lot #76)');
+{
+  const repo = path.join(SANDBOX, 'repo-backlog-v2');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+
+  // W1. addLot porte perimeter + depends_on (round-trip via loadBacklog)
+  const l1 = backlogLib.addLot(repo, 'Lot A', null, 'opus', null, null, 'medium', ['lib/a', 'lib/a'], [99, 99, 3]);
+  let b = backlogLib.loadBacklog(repo);
+  const got1 = b.lots.find((l) => l.id === l1.id);
+  ok(JSON.stringify(got1.perimeter) === JSON.stringify(['lib/a']), 'addLot : perimeter normalisé + persisté (dédup)');
+  ok(JSON.stringify(got1.depends_on) === JSON.stringify([99, 3]), 'addLot : depends_on dédup, self exclu, persisté');
+
+  // W1b. depends_on exclut le self, dropped les non-finis
+  const l2 = backlogLib.addLot(repo, 'Lot B', null, 'opus', null, null, 'medium', ['lib/b'], [l1.id]);
+  b = backlogLib.loadBacklog(repo);
+  const selfDep = backlogLib.addLot(repo, 'Lot self', null, 'opus', null, null, 'medium', ['lib/c'], []);
+  const withSelf = backlogLib.setDepends(repo, selfDep.id, [selfDep.id, 'x', 2]);
+  ok(JSON.stringify(withSelf.depends_on) === JSON.stringify([2]), 'setDepends : self + non-fini exclus');
+
+  // W2. sans fleet : start rétrograde les autres (comportement historique intact)
+  backlogLib.startLot(repo, l1.id);
+  backlogLib.startLot(repo, l2.id);
+  b = backlogLib.loadBacklog(repo);
+  ok(b.lots.filter((l) => l.status === 'in_progress').length === 1 && backlogLib.currentLot(b).id === l2.id,
+    'start classique : un seul in_progress (comportement intact)');
+  ok(b.lots.find((l) => l.id === l1.id).session_owner === null, 'start classique : session_owner reste null');
+
+  // W3. fleet : deux lots, sessions distinctes + périmètres disjoints -> coexistent
+  backlogLib.startLot(repo, l1.id, 'sess-1');
+  backlogLib.startLot(repo, l2.id, 'sess-2');
+  b = backlogLib.loadBacklog(repo);
+  const inProg = b.lots.filter((l) => l.status === 'in_progress');
+  ok(inProg.length === 2 && inProg.map((l) => l.id).sort().join(',') === [l1.id, l2.id].sort().join(','),
+    'start fleet : 2 lots coexistent (sessions distinctes + périmètres disjoints)');
+  ok(b.lots.find((l) => l.id === l1.id).session_owner === 'sess-1', 'start fleet : session_owner posé');
+
+  // W4. fleet : même session -> pas de coexistence (le précédent rétrograde)
+  const l3 = backlogLib.addLot(repo, 'Lot C', null, 'opus', null, null, 'medium', ['lib/c'], []);
+  backlogLib.startLot(repo, l3.id, 'sess-1'); // même owner que l1
+  b = backlogLib.loadBacklog(repo);
+  ok(b.lots.find((l) => l.id === l1.id).status === 'todo' && b.lots.find((l) => l.id === l3.id).status === 'in_progress',
+    'start fleet : même session -> le précédent (même owner) rétrograde');
+  ok(b.lots.find((l) => l.id === l2.id).status === 'in_progress', 'start fleet : le pair d\'une AUTRE session reste en cours');
+
+  // W5. fleet : périmètres qui se chevauchent -> pas de coexistence
+  const l4 = backlogLib.addLot(repo, 'Lot D', null, 'opus', null, null, 'medium', ['lib/b/sub'], []); // chevauche lib/b de l2
+  backlogLib.startLot(repo, l4.id, 'sess-9');
+  b = backlogLib.loadBacklog(repo);
+  ok(b.lots.find((l) => l.id === l2.id).status === 'todo',
+    'start fleet : périmètre chevauchant -> l\'autre lot rétrograde malgré owner distinct');
+
+  // W6. fleet demandé mais lot SANS périmètre -> régime classique (rétrograde tout)
+  const l5 = backlogLib.addLot(repo, 'Lot E', null, 'opus', null, null, 'medium', [], []);
+  backlogLib.startLot(repo, l5.id, 'sess-x');
+  b = backlogLib.loadBacklog(repo);
+  ok(b.lots.filter((l) => l.status === 'in_progress').length === 1 && backlogLib.currentLot(b).id === l5.id,
+    'start fleet sans périmètre : dégrade en classique (un seul in_progress)');
+
+  // W7. reconcile préserve une vague valide, répare un multi-in_progress invalide
+  const wave = { version: 1, next_id: 3, lots: [
+    { id: 1, title: 'W1', status: 'in_progress', started_at: '2026-07-20T10:00:00Z', session_owner: 'sA', perimeter: ['lib/a'] },
+    { id: 2, title: 'W2', status: 'in_progress', started_at: '2026-07-20T11:00:00Z', session_owner: 'sB', perimeter: ['lib/b'] },
+  ]};
+  const repoW = path.join(SANDBOX, 'repo-backlog-wave');
+  fs.mkdirSync(path.join(repoW, '.vibe-agent'), { recursive: true });
+  execFileSync('git', ['init', '-q', repoW]);
+  fs.writeFileSync(path.join(repoW, '.vibe-agent', 'backlog.json'), JSON.stringify(wave));
+  backlogLib.reconcile(repoW);
+  let bw = backlogLib.loadBacklog(repoW);
+  ok(bw.lots.filter((l) => l.status === 'in_progress').length === 2, 'reconcile : vague valide préservée (2 in_progress)');
+
+  const bad = { version: 1, next_id: 3, lots: [
+    { id: 1, title: 'B1', status: 'in_progress', started_at: '2026-07-20T10:00:00Z', session_owner: 'sA', perimeter: ['lib/x'] },
+    { id: 2, title: 'B2', status: 'in_progress', started_at: '2026-07-20T11:00:00Z', session_owner: 'sA', perimeter: ['lib/y'] }, // même owner
+  ]};
+  fs.writeFileSync(path.join(repoW, '.vibe-agent', 'backlog.json'), JSON.stringify(bad));
+  backlogLib.reconcile(repoW);
+  bw = backlogLib.loadBacklog(repoW);
+  ok(bw.lots.filter((l) => l.status === 'in_progress').length === 1 && backlogLib.currentLot(bw).id === 2,
+    'reconcile : multi-in_progress invalide (même owner) réparé -> garde le plus récent');
+
+  // W8. CLI : add --perimeter/--depends + start --owner
+  const repoC = path.join(SANDBOX, 'repo-backlog-v2-cli');
+  fs.mkdirSync(repoC, { recursive: true });
+  execFileSync('git', ['init', '-q', repoC]);
+  fs.writeFileSync(path.join(repoC, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoC, 'add', '.']);
+  execFileSync('git', ['-C', repoC, 'commit', '-q', '-m', 'init']);
+  const rAdd = runNode(BKLG, ['add', '--cwd', repoC, '--title', 'CLI lot', '--model', 'opus', '--perimeter', 'lib/a,lib/b', '--depends', '5,6']);
+  ok(/\[périmètre : lib\/a, lib\/b\]/.test(rAdd.out) && /\[dépend de : #5, #6\]/.test(rAdd.out),
+    'CLI add : --perimeter et --depends parsés et réaffichés');
+  const cliId = backlogLib.loadBacklog(repoC).lots[0].id;
+  const rStart = runNode(BKLG, ['start', '--cwd', repoC, '--id', String(cliId), '--owner', 'sess-cli']);
+  ok(/\[session : sess-cli\]/.test(rStart.out), 'CLI start : --owner parsé et réaffiché');
+  ok(backlogLib.loadBacklog(repoC).lots[0].session_owner === 'sess-cli', 'CLI start : session_owner persisté');
+}
+
 // ============================ OC. OPENCODE ============================
 section('OpenCode — squelette plugin + install sandbox (test/run-tests-opencode.js)');
 {

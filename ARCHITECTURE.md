@@ -230,6 +230,18 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   seul (3) `epic` — `null` dès qu'aucune famille n'a de lot clos avec `cost_tokens > 0` (pas de
   chiffre fabriqué à partir de zéro échantillon). Affiché en texte par `scripts/backlog.js`
   à la suite du message `add` (au `/scope`) **et** `start` (au démarrage réel du lot).
+- **Parallélisation gouvernée — schéma backlog v2** (lot #76, épic « Vagues parallèles », 1ʳᵉ
+  brique de la décision [D3](docs/decisions/D3-parallelisation-gouvernee.md)) : chaque lot porte
+  trois champs **inertes tant qu'aucune vague n'est active** — `perimeter` (globs de chemins que
+  le lot a le droit de modifier), `depends_on` (ids de lots, ordre de réintégration) et
+  `session_owner` (session qui tient le lot en cours). `startLot(root, id, sessionOwner)` a deux
+  régimes : **classique** (owner absent ou lot sans périmètre) = au plus un `in_progress`, les
+  autres rétrogradent (comportement historique **strictement** préservé) ; **fleet** (owner + lot
+  avec périmètre) = les lots en cours d'une **autre** session et de **périmètre disjoint**
+  coexistent, seuls les conflictuels rétrogradent. La disjonction de périmètres vit dans
+  `lib/perimeter.js` (normalisation + `disjoint`, matching **conservateur** au niveau des préfixes
+  statiques ; l'appartenance d'un fichier à un périmètre = lot #78). `reconcile` préserve une
+  vague valide (coexistence 2 à 2) mais répare tout multi-`in_progress` invalide.
 - **Ledgers projet** (`.vibe-agent/{read,context}-ledger.json`) : auto-créés par
   `ensureLedger` (tout hook qui touche au projet) puis maintenus par `post-tool-use.js`
   (atomique `tmp`+`rename`, cap FIFO). Servent l'advisory `/check-context`. Granularité
