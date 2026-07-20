@@ -3,9 +3,11 @@
 // globs qu'un lot a le droit de modifier. Ce module ne fait que la NORMALISATION et le test de
 // DISJONCTION — « deux lots peuvent-ils coexister en cours sans se marcher dessus ? ». Le test
 // d'APPARTENANCE d'un fichier à un périmètre (verdict du hook PreToolUse en mode fleet-fille)
-// est ajouté par le lot #78 ; le calcul de vagues par le lot #79. Zéro dépendance, pas de lib
-// de glob : matching conservateur au niveau des préfixes statiques (granularité « dossier »,
-// cf. D3 « pressenti : dossier + liste d'exceptions »).
+// (lot #78) puis le calcul de vagues par le lot #79. Zéro dépendance, pas de lib de glob :
+// matching conservateur au niveau des préfixes statiques (granularité « dossier », cf. D3
+// « pressenti : dossier + liste d'exceptions »).
+
+const path = require('path');
 
 const MAX_GLOBS = 20; // au-delà, un périmètre n'est plus lisible d'un coup d'œil (même esprit que les caps du backlog)
 const MAX_GLOB_LEN = 120;
@@ -72,4 +74,41 @@ function disjoint(a, b) {
   return true;
 }
 
-module.exports = { normalize, disjoint, staticPrefix, MAX_GLOBS, MAX_GLOB_LEN };
+// Ramène un chemin (absolu OU relatif à `root`) à un relatif POSIX sous `root`, ou null s'il
+// s'en échappe (« ../ »), est absolu hors root, ou n'est pas résoluble. Sans `root` on ne peut
+// rien affirmer → null (indécidable) : c'est au hook d'en faire un « allow ».
+function toRelPosix(filePath, root) {
+  const raw = String(filePath == null ? '' : filePath).trim();
+  if (!raw || !root) return null;
+  try {
+    const abs = path.resolve(root, raw);
+    const rel = path.relative(root, abs);
+    if (!rel || rel === '..' || rel.startsWith('..' + path.sep) || rel.startsWith('../') || path.isAbsolute(rel)) {
+      return null;
+    }
+    return rel.replace(/\\/g, '/');
+  } catch (_) {
+    return null;
+  }
+}
+
+// Un chemin appartient-il au périmètre ? Verdict CONSERVATEUR à trois issues pour le hook
+// fleet-fille :
+//   'inside'   — couvert par ≥ 1 glob (préfixe statique préfixe-de-chemin du fichier) → allow ;
+//   'outside'  — CERTAIN hors de TOUS les globs → SEUL cas où le hook refuse ;
+//   'unknown'  — périmètre vide, chemin hors root ou non résoluble → indécidable → allow.
+// Granularité « dossier » : on raisonne sur le préfixe statique de chaque glob (pas de vrai
+// moteur de glob), ce qui ÉLARGIT volontairement les périmètres — on ne refuse donc JAMAIS un
+// chemin qu'un glob pourrait couvrir (deny sur certitude seule).
+function memberVerdict(globs, filePath, root) {
+  const gl = normalize(globs);
+  if (!gl.length) return 'unknown';
+  const rel = toRelPosix(filePath, root);
+  if (rel === null) return 'unknown';
+  for (const g of gl) {
+    if (isPathPrefix(staticPrefix(g), rel)) return 'inside';
+  }
+  return 'outside';
+}
+
+module.exports = { normalize, disjoint, staticPrefix, memberVerdict, toRelPosix, MAX_GLOBS, MAX_GLOB_LEN };

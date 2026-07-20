@@ -16,6 +16,7 @@
 // via lecture-modification-écriture) pour réduire les fenêtres de course. La perte-de-mise-à-
 // jour résiduelle (deux read concurrents, deux write) est assumée au palier 2 (lancement
 // manuel, faible fréquence) — cf. D3 « Concurrence d'écriture ».
+const fs = require('fs');
 const path = require('path');
 const { vibeDir, ensureLedger } = require('./project');
 const { writeAtomic, readJson } = require('./fsjson');
@@ -27,9 +28,30 @@ const DEFAULT_STATE = 'in_flight';
 const MAX_LOTS = 20; // aligné sur MAX_LOTS_OPEN du backlog ; au-delà ce n'est plus une vague
 const MAX_STR = 200;
 const MAX_HEAD = 64; // sha git (court ou long)
+const MAX_EXT = 10; // demandes d'extension tracées par lot ; au-delà, l'orchestrateur doit déjà avoir tranché
 
 function fleetFile(root) {
   return path.join(vibeDir(root), 'fleet.json');
+}
+
+// Remonte depuis `cwd` le premier dossier contenant .vibe-agent/fleet.json, ou null. Purement
+// fs (aucun subprocess git) : court-circuit du hook PreToolUse pour NE PAS forker `git` à chaque
+// écriture quand aucune vague n'existe (cas ultra-majoritaire). Le fichier vit à la racine du
+// dépôt (là où ensureLedger crée .vibe-agent) : remonter le trouve depuis n'importe quel sous-
+// dossier, sans dépendre de git. Fail-open : toute erreur → null (→ session autonome).
+function findFleetRoot(cwd) {
+  try {
+    let dir = path.resolve(cwd || '.');
+    for (let i = 0; i < 64; i++) {
+      if (fs.existsSync(path.join(dir, '.vibe-agent', 'fleet.json'))) return dir;
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    return null;
+  } catch (_) {
+    return null;
+  }
 }
 
 function trunc(s, n) {
@@ -56,6 +78,23 @@ function inactiveFleet() {
   };
 }
 
+// Liste dédupliquée + capée de chemins (POSIX relatifs) qu'un lot a tenté d'écrire HORS de son
+// périmètre — trace passive pour l'orchestrateur, jamais un droit d'écriture. Entrée non-array
+// ou éléments vides → écartés.
+function normalizeExtRequests(v) {
+  if (!Array.isArray(v)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const p of v) {
+    const s = trunc(p, MAX_STR);
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+    if (out.length >= MAX_EXT) break;
+  }
+  return out;
+}
+
 // Normalise une entrée de lot en vol. Rejette (→ null) tout ce qui n'a pas d'id fini ni de
 // session propriétaire : sans propriétaire, on ne saurait pas à quelle session l'attribuer.
 function normalizeLot(l) {
@@ -68,6 +107,7 @@ function normalizeLot(l) {
     perimeter: perimeterLib.normalize(l.perimeter),
     state: STATES.includes(l.state) ? l.state : DEFAULT_STATE,
     title: l.title ? trunc(l.title, MAX_STR) : null,
+    ext_requests: normalizeExtRequests(l.ext_requests),
   };
 }
 
@@ -176,6 +216,30 @@ function removeLot(root, id) {
   }
 }
 
+// Trace une DEMANDE D'EXTENSION de périmètre : le lot `id` a tenté d'écrire `relPath`, hors de
+// son périmètre exclusif (verdict `outside` du hook PreToolUse). Enregistrée — dédupliquée,
+// capée — sur l'entrée du lot pour que l'orchestrateur arbitre un éventuel élargissement. Ce
+// n'est JAMAIS un droit d'écriture : l'écriture reste refusée ; on ne fait que rendre la friction
+// visible dans le registre partagé. Lecture-modification-écriture atomique. No-op silencieux sans
+// fleet actif / lot introuvable / chemin vide ; idempotent (même chemin déjà tracé → pas de
+// réécriture). Renvoie false au moindre doute — jamais d'exception (contrat fail-open du hook).
+function requestExtension(root, id, relPath) {
+  if (!root || !Number.isFinite(Number(id))) return false;
+  const p = trunc(relPath, MAX_STR);
+  if (!p) return false;
+  try {
+    const f = loadFleet(root);
+    if (!f.active) return false;
+    const lot = f.lots.find((l) => l.id === Number(id));
+    if (!lot) return false;
+    if (lot.ext_requests.includes(p)) return true; // déjà tracé : idempotent, pas d'écriture inutile
+    lot.ext_requests.push(p);
+    return saveFleet(root, f);
+  } catch (_) {
+    return false;
+  }
+}
+
 // Le lot en vol appartenant à la session `sessionId`, ou null. Une session ne « tient »
 // qu'un lot à la fois dans une vague (premier match).
 function lotForSession(fleetOrRoot, sessionId) {
@@ -219,12 +283,14 @@ function fleetLines(root, sessionId) {
 
 module.exports = {
   fleetFile,
+  findFleetRoot,
   loadFleet,
   saveFleet,
   upsertLot,
   setLotState,
   setIntegrationHead,
   removeLot,
+  requestExtension,
   lotForSession,
   fleetLines,
   STATES,

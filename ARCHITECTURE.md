@@ -30,7 +30,7 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
 |------|-----------------|-------------|------|------|
 | `session-start.js` | SessionStart `startup\|resume\|clear\|compact` (injecte au `startup`/`clear` ; `compact` → réinjection **enrichie** sous budget chiffré (`COMPACT_RESUME_CAP`, #72) : lot+verify + `pmz:skip` + résumés connus + todos ; `resume` → nudge occupation seul, voir ci-dessous) | `cwd`, `source`, `transcript_path` | `additionalContext` (startup/clear/compact) ou `systemMessage` (resume) | détecte projet, auto-scaffold si projet neuf (0 commit), sinon propose init, rappel court + titre de session suggéré + injecte le handoff de la session précédente puis le marque consommé ; sans handoff, le plan de lots sert de filet (2 lignes) ; au `resume`, si occupation ≥ 300k, `systemMessage` d'occupation (lot B5, zéro token injecté) |
 | `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd`, `transcript_path` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large (anti-spam 1×/session), nudge occupation ≥ 500k en 2 lignes (anti-spam 1×/palier, lot B5), vigie modèle réel vs préconisé du lot en cours (anti-spam 1×/session, lot #42) |
-| `pre-tool-use.js` | PreToolUse `Bash` | `tool_input.command` | `permissionDecision` allow/ask/deny | sûreté commandes |
+| `pre-tool-use.js` | PreToolUse `Bash` (+ `Edit`/`Write`/`MultiEdit` en vague) | `tool_input.command` / `.file_path` | `permissionDecision` allow/ask/deny | sûreté commandes + périmètre fleet-fille |
 | `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite` | `tool_input.file_path`, `tool_input.todos` | `additionalContext` (rare, advisory) + effet de bord ledgers | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite), signale une relecture complète redondante (lot B4) |
 | `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), **détecteur de dérive de session** (coût↑ + hitRate↓ sur 6 tours → prescrit la clôture, lot #62), **vigie des tours en boucle** (commande Bash qui échoue ≥ 3 fois d'affilée → nudge « change d'approche », anti-spam par commande, `lib/loopwatch.js`, lot #69), **vigie de dette git non commitée** (diff significatif qui grossit sur ≥ 3 tours sans commit → nudge « commit/clôture », anti-spam par palier, `lib/gitdebt.js`, lot #73), **vigie de gouvernance du CLAUDE.md** (absent ou hypertrophié > 10 Ko → nudge créer / dégraisser, 1×/session, `lib/claudemd.js`, lot #74), **notification OS opt-in** sur zone rouge et clôture de lot (`PMZ_NOTIFY=1`, `lib/notify.js`, lot #75), hygiène de lecture, **nudge subagent** à haute occupation + lectures (lot #52), **palier de gaspillage auto-surfacé** avec top-3 coupables (`waste_bucket` persisté, lot #52), rappel de clôture nommant les skills **et embarquant un brouillon d'entrée CHANGELOG pré-mâché** (en-tête daté + lot/epic/titre, scope sans son préfixe « fait quand : », fichiers modifiés plafonnés à 6, verify — `closureWithDraftMessage`, soudé au rappel pour rester atomique sous l'arbitre, lot #68), incrémente le compteur de lot, agrège le coût réel du lot en cours (`cost_tokens`) et alerte à l'approche du budget ~300k avec proposition de redécoupage (lot #43), auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, exécute la `verify` du lot à l'auto-clôture (timeout court `VERIFY_AUTOCLOSE_MS`, résultat visible, jamais bloquant) + rappel doux si le commit de clôture ne touche pas `CHANGELOG.md` (lot #44), **plafonne les nudges du tour par sévérité** (`lib/arbiter.js`, ≤ 3, lot #57), écrit le handoff auto (écrasé à chaque tour) |
 | `pre-compact.js` | PreCompact `manual\|auto` | `cwd`, `trigger`, `transcript_path` | `systemMessage` (manual) ou — (auto : effet de bord handoff seul) | sauve le handoff auto (plan de lots + todos compris) AVANT compaction ; la réinjection minimale se fait au SessionStart(compact). Sur `manual` (/compact), ajoute un rappel **chiffré** visible : compacter ≈ réécriture de l'occupation en cache-write (×1,25) + résumé lossy, vs clôture + handoff (~8k) — TTL prudent, aucun prix en dur (lot T1). `auto` reste silencieux (compaction subie) |
@@ -246,8 +246,9 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   [D3](docs/decisions/D3-parallelisation-gouvernee.md)) : `.vibe-agent/fleet.json` est l'état
   **partagé** d'une vague — le handoff commun (pas de duplication du handoff par session). Géré
   par `lib/fleet.js` (JSON plat via `lib/fsjson`, zéro dépendance). Une entrée par lot en vol :
-  `{ id, session_owner, branch, worktree, perimeter, state }` où `state ∈ in_flight | ready |
-  reintegrated` ; plus, au niveau vague, `wave_id` et la **tête de la branche d'intégration**
+  `{ id, session_owner, branch, worktree, perimeter, state, ext_requests }` où `state ∈ in_flight |
+  ready | reintegrated` et `ext_requests` = demandes d'extension de périmètre tracées (lot #78,
+  cf. « Garde de périmètre ») ; plus, au niveau vague, `wave_id` et la **tête de la branche d'intégration**
   (`integration_branch` + `integration_head`, dont l'avance est le futur déclencheur de rebase).
   **Inerte par défaut** : sans fichier, `loadFleet().active === false` et les sessions restent
   autonomes (mono-session inchangé). **Fail-open absolu** : fichier absent / JSON corrompu / lot
@@ -263,8 +264,28 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   c'est là que la garantie de périmètre compte le plus, le contexte compacté ayant perdu la
   contrainte « ne modifie que X »). Le hook installé v1.3.0 **ignore** ces champs : sans impact tant qu'aucune vague n'est
   posée, mais la 1ʳᵉ vague réelle exigera un redéploiement du plugin. L'écriture par les sessions
-  (inscription, transitions), le verdict de périmètre PreToolUse et le calcul de vague viennent
-  aux lots #78–#80.
+  (inscription, transitions) et le calcul de vague viennent aux lots #79–#80.
+- **Garde de périmètre — PreToolUse mode fleet-fille** (lot #78, 3ᵉ brique de
+  [D3](docs/decisions/D3-parallelisation-gouvernee.md)) : `pre-tool-use.js` s'étend à
+  `Edit`/`Write`/`MultiEdit` **pour le seul test d'appartenance au périmètre**, et **uniquement**
+  quand une vague est active ET que la session courante y tient un lot (« session fille »). Hors
+  vague, session non inscrite, ou lot sans périmètre déclaré : **zéro friction** (le chemin Bash
+  et le mode `acceptEdits` restent inchangés). Le verdict s'appuie sur `fleet.lotForSession` +
+  `perimeter.memberVerdict(globs, filePath, root)`, à trois issues **conservatrices** :
+  `inside`/`unknown` → `allow` ; `outside` (chemin résolu CERTAINEMENT hors de tous les globs) →
+  **`deny`**. On ne refuse donc que sur **certitude** : périmètre vide, chemin hors root (`../`)
+  ou non résoluble → `unknown` → `allow` (deny sur certitude seule ; doute/erreur → allow, contrat
+  fail-open). Le matching reste au **préfixe statique** des globs (granularité « dossier »,
+  cf. `perimeter.js`), volontairement élargi → jamais de faux `deny`. **Coût** : pour ne pas
+  forker `git` à chaque écriture hors vague, `fleet.findFleetRoot(cwd)` court-circuite en
+  remontant l'arbo (pur `fs`) — sans `.vibe-agent/fleet.json`, retour immédiat, aucun subprocess.
+  `MultiEdit` est gardé au même titre qu'`Edit`/`Write` (même champ `file_path`) pour fermer le
+  contournement trivial ; `NotebookEdit` (champ distinct, rare ici) reste hors périmètre du lot.
+  **Demande d'extension tracée** : sur un `deny`, le hook appelle `fleet.requestExtension(root,
+  id, relPath)`, qui note le chemin hors-zone (POSIX relatif, dédupliqué, capé) dans un champ
+  `ext_requests` de l'entrée du lot — trace **passive** pour l'orchestrateur (jamais un droit
+  d'écriture : l'écriture reste refusée). L'appel est **best-effort** (try/catch, jamais
+  bloquant), idempotent (même chemin déjà tracé → pas de réécriture), et no-op hors fleet actif.
 - **Ledgers projet** (`.vibe-agent/{read,context}-ledger.json`) : auto-créés par
   `ensureLedger` (tout hook qui touche au projet) puis maintenus par `post-tool-use.js`
   (atomique `tmp`+`rename`, cap FIFO). Servent l'advisory `/check-context`. Granularité
@@ -827,7 +848,11 @@ plusieurs sessions réelles (capture fournie par l'utilisateur, 2026-07-12).
 - **Stop non bloquant** : un Stop bloquant risque la boucle (cap 8) et gonfle le contexte ;
   `systemMessage` informe sans bloquer.
 - **PreToolUse limité à `Bash`** : `acceptEdits` montre que l'utilisateur veut peu de
-  confirmations ; on ne gêne pas Read/Edit.
+  confirmations ; on ne gêne pas Read/Edit. **Révision scopée (lot #78)** : hors vague, ce
+  contrat tient à l'identique ; à l'intérieur d'une vague active, `Edit`/`Write`/`MultiEdit` sont
+  gardés **pour le seul test de périmètre**, avec `deny` sur **certitude** uniquement (chemin hors
+  des globs du lot). L'exception est donc strictement bornée au régime fleet-fille — voir
+  « Garde de périmètre » plus haut.
 - **Zéro dépendance / `node` et `git` en chemin absolu** : `node` nu échouait (`exit 127`) sous le
   PATH épuré des apps GUI macOS ; `node` est figé à l'install (symlink stable de préférence) et
   `git` est résolu en chemin absolu au runtime (`lib/env.js resolveTool`). Si malgré tout un outil

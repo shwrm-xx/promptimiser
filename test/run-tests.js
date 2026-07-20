@@ -4516,6 +4516,122 @@ section('fleet — registre de vague fleet.json + injection SessionStart (lib/fl
   ok(!/Périmètre/.test(cm0), 'compactResumeMessage : aucun bloc fleet hors vague');
 }
 
+// ============ D3-3. HOOK DE PÉRIMÈTRE — PreToolUse mode fleet-fille (lot #78) ============
+section('perimeter — test d\'appartenance memberVerdict (lib/perimeter.js, lot #78)');
+{
+  const perimeter = require(path.join(PKG, 'lib', 'perimeter'));
+  const root = path.join(SANDBOX, 'repo-perim');
+  fs.mkdirSync(root, { recursive: true });
+
+  // P1. Appartenance : dossier couvre les fichiers dedans ; frère hors périmètre
+  ok(perimeter.memberVerdict(['lib/a'], 'lib/a/x.js', root) === 'inside', 'memberVerdict : dossier couvre le fichier dedans -> inside');
+  ok(perimeter.memberVerdict(['lib/a'], 'lib/b/x.js', root) === 'outside', 'memberVerdict : dossier frère -> outside (certain)');
+  ok(perimeter.memberVerdict(['lib/a'], 'lib/a', root) === 'inside', 'memberVerdict : le dossier lui-même -> inside');
+
+  // P2. Glob : préfixe statique élargit (conservateur, jamais de faux deny)
+  ok(perimeter.memberVerdict(['lib/*.js'], 'lib/foo.js', root) === 'inside', 'memberVerdict : glob lib/*.js couvre lib/foo.js -> inside');
+  ok(perimeter.memberVerdict(['lib/*.js'], 'lib/sub/deep.js', root) === 'inside', 'memberVerdict : glob élargi au sous-arbre -> inside (conservateur)');
+  ok(perimeter.memberVerdict(['src/a/*'], 'src/b/x.js', root) === 'outside', 'memberVerdict : glob de dossier frère -> outside');
+  ok(perimeter.memberVerdict(['*'], 'n-importe-quoi.js', root) === 'inside', 'memberVerdict : « * » couvre tout -> inside');
+
+  // P3. Indécidable -> unknown (le hook en fera un allow)
+  ok(perimeter.memberVerdict([], 'lib/a/x.js', root) === 'unknown', 'memberVerdict : périmètre vide -> unknown');
+  ok(perimeter.memberVerdict(['lib/a'], null, root) === 'unknown', 'memberVerdict : chemin absent -> unknown');
+  ok(perimeter.memberVerdict(['lib/a'], '../dehors.js', root) === 'unknown', 'memberVerdict : chemin hors root (../) -> unknown');
+
+  // P4. Chemin absolu SOUS root résolu correctement
+  ok(perimeter.memberVerdict(['lib/a'], path.join(root, 'lib', 'a', 'x.js'), root) === 'inside', 'memberVerdict : chemin absolu dans le périmètre -> inside');
+  ok(perimeter.memberVerdict(['lib/a'], path.join(root, 'lib', 'b', 'x.js'), root) === 'outside', 'memberVerdict : chemin absolu hors périmètre -> outside');
+
+  // P5. toRelPosix sans root -> null (indécidable)
+  ok(perimeter.toRelPosix('lib/a/x.js', null) === null, 'toRelPosix : sans root -> null');
+  ok(perimeter.toRelPosix('lib/a/x.js', root) === 'lib/a/x.js', 'toRelPosix : relatif normalisé POSIX');
+}
+
+section('pre-tool-use — mode fleet-fille : deny hors périmètre (hook, lot #78)');
+{
+  const fleet = require(path.join(PKG, 'lib', 'fleet'));
+  const repoP = path.join(SANDBOX, 'repo-fleet-hook');
+  fs.mkdirSync(path.join(repoP, '.vibe-agent'), { recursive: true });
+
+  function perimVerdict(toolName, filePath, cwd, sessionId) {
+    const r = runHook('pre-tool-use.js', { tool_name: toolName, tool_input: { file_path: filePath }, cwd, session_id: sessionId });
+    if (r.code !== 0) return 'exit' + r.code;
+    if (!r.out.trim()) return 'allow';
+    try { return JSON.parse(r.out).hookSpecificOutput.permissionDecision || 'invalid'; }
+    catch (_) { return 'invalid'; }
+  }
+
+  // H1. Hors vague (pas de fleet.json) : Edit/Write intacts -> allow (aucune régression)
+  ok(perimVerdict('Edit', 'lib/b/x.js', repoP, 'sA') === 'allow', 'hook : hors vague -> Edit allow (findFleetRoot court-circuite, pas de git)');
+
+  // Inscription d'une vague : sA tient le lot #1 (périmètre lib/a), sB le lot #2 (périmètre lib/b)
+  fleet.upsertLot(repoP, { id: 1, session_owner: 'sA', perimeter: ['lib/a'], branch: 'lot-1' });
+  fleet.upsertLot(repoP, { id: 2, session_owner: 'sB', perimeter: ['lib/b'], branch: 'lot-2' });
+
+  // H2. Session fille écrivant DANS son périmètre -> allow
+  ok(perimVerdict('Edit', 'lib/a/x.js', repoP, 'sA') === 'allow', 'hook : fille dans son périmètre -> allow');
+  // H3. Session fille écrivant HORS de son périmètre -> deny (certitude)
+  ok(perimVerdict('Edit', 'lib/b/x.js', repoP, 'sA') === 'deny', 'hook : fille hors périmètre -> deny');
+  ok(perimVerdict('Write', 'lib/b/x.js', repoP, 'sA') === 'deny', 'hook : Write hors périmètre -> deny (même garde qu\'Edit)');
+  ok(perimVerdict('MultiEdit', 'lib/b/x.js', repoP, 'sA') === 'deny', 'hook : MultiEdit hors périmètre -> deny (pas de contournement)');
+  // H3b. Le deny TRACE la demande d'extension dans fleet.json (chemin POSIX relatif, dédupliqué)
+  {
+    const lot1 = fleet.loadFleet(repoP).lots.find((l) => l.id === 1);
+    ok(lot1.ext_requests.includes('lib/b/x.js'), 'hook : deny -> demande d\'extension tracée dans fleet.json');
+  }
+
+  // H4. Chemin absolu hors périmètre -> deny
+  ok(perimVerdict('Edit', path.join(repoP, 'lib', 'b', 'x.js'), repoP, 'sA') === 'deny', 'hook : chemin absolu hors périmètre -> deny');
+
+  // H5. Session NON inscrite (mère / autre) : jamais de friction -> allow
+  ok(perimVerdict('Edit', 'lib/b/x.js', repoP, 'sZ') === 'allow', 'hook : session non inscrite (mère) -> allow');
+  ok(perimVerdict('Edit', 'lib/a/x.js', repoP, null) === 'allow', 'hook : sans session_id -> allow');
+
+  // H6. Chemin hors root (../) -> doute -> allow (fail-open)
+  ok(perimVerdict('Edit', '../dehors.js', repoP, 'sA') === 'allow', 'hook : chemin hors root -> allow (doute)');
+  // H7. Read jamais concerné même en vague active
+  ok(perimVerdict('Read', 'lib/b/x.js', repoP, 'sA') === 'allow', 'hook : Read hors garde de périmètre -> allow');
+
+  // H8. Lot au périmètre VIDE : indécidable -> allow (jamais de deny sur périmètre non déclaré)
+  fleet.upsertLot(repoP, { id: 1, session_owner: 'sA', perimeter: [], branch: 'lot-1' });
+  ok(perimVerdict('Edit', 'lib/b/x.js', repoP, 'sA') === 'allow', 'hook : périmètre vide -> allow (indécidable)');
+
+  // H9. Non-régression Bash : la garde catastrophique reste active en présence d'un fleet
+  ok(bashVerdict('rm -rf /') === 'deny', 'hook : Bash catastrophique -> deny (inchangé, fleet actif)');
+}
+
+section('fleet — demande d\'extension de périmètre requestExtension (lib/fleet.js, lot #78)');
+{
+  const fleet = require(path.join(PKG, 'lib', 'fleet'));
+  const repoE = path.join(SANDBOX, 'repo-ext');
+  fs.mkdirSync(path.join(repoE, '.vibe-agent'), { recursive: true });
+
+  // E1. no-op sans fleet actif / lot introuvable / chemin vide
+  ok(fleet.requestExtension(repoE, 1, 'lib/b/x.js') === false, 'requestExtension : hors vague -> false');
+  fleet.upsertLot(repoE, { id: 1, session_owner: 'sA', perimeter: ['lib/a'] });
+  ok(fleet.requestExtension(repoE, 9, 'lib/b/x.js') === false, 'requestExtension : lot inconnu -> false');
+  ok(fleet.requestExtension(repoE, 1, '') === false, 'requestExtension : chemin vide -> false');
+
+  // E2. trace + round-trip via loadFleet
+  ok(fleet.requestExtension(repoE, 1, 'lib/b/x.js') === true, 'requestExtension : 1re demande tracée -> true');
+  let lot = fleet.loadFleet(repoE).lots.find((l) => l.id === 1);
+  ok(JSON.stringify(lot.ext_requests) === JSON.stringify(['lib/b/x.js']), 'requestExtension : demande persistée (round-trip)');
+
+  // E3. idempotent : même chemin -> pas de doublon
+  ok(fleet.requestExtension(repoE, 1, 'lib/b/x.js') === true, 'requestExtension : même chemin -> true (idempotent)');
+  lot = fleet.loadFleet(repoE).lots.find((l) => l.id === 1);
+  ok(lot.ext_requests.length === 1, 'requestExtension : pas de doublon');
+
+  // E4. chemins distincts s'accumulent ; les lots par défaut portent ext_requests:[]
+  fleet.requestExtension(repoE, 1, 'lib/c/y.js');
+  lot = fleet.loadFleet(repoE).lots.find((l) => l.id === 1);
+  ok(lot.ext_requests.length === 2, 'requestExtension : chemins distincts accumulés');
+  fleet.upsertLot(repoE, { id: 2, session_owner: 'sB', perimeter: ['lib/b'] });
+  const lot2 = fleet.loadFleet(repoE).lots.find((l) => l.id === 2);
+  ok(JSON.stringify(lot2.ext_requests) === JSON.stringify([]), 'lot : ext_requests par défaut = [] (rétrocompat)');
+}
+
 // ============================ OC. OPENCODE ============================
 section('OpenCode — squelette plugin + install sandbox (test/run-tests-opencode.js)');
 {

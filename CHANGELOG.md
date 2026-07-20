@@ -2,6 +2,39 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-20 (lot #78 — epic « Vagues parallèles » : garde de périmètre PreToolUse fleet-fille)
+
+Troisième brique de la décision D3. Le hook `pre-tool-use.js` sait désormais refuser une écriture
+**certainement hors périmètre** d'une session fille — et reste **strictement inerte** hors vague.
+
+- `promptimizer/lib/perimeter.js` : ajout du **test d'appartenance** `memberVerdict(globs,
+  filePath, root)` à trois issues conservatrices — `inside` (couvert par ≥ 1 glob), `outside`
+  (CERTAIN hors de tous les globs), `unknown` (périmètre vide / chemin hors root / non résoluble).
+  Helper `toRelPosix(filePath, root)` (résolution absolu-ou-relatif → relatif POSIX sous root, ou
+  `null` si échappement `../`). Matching au **préfixe statique** (granularité « dossier »),
+  volontairement élargi : **jamais de faux `deny`**.
+- `promptimizer/lib/fleet.js` : `findFleetRoot(cwd)` — remontée d'arbo **pur `fs`** vers le
+  premier `.vibe-agent/fleet.json`. Court-circuite le hook pour **ne pas forker `git` à chaque
+  écriture** quand aucune vague n'existe (cas ultra-majoritaire, zéro régression de coût). Ajout du
+  champ `ext_requests` sur chaque lot (liste dédupliquée/capée) + `requestExtension(root, id,
+  relPath)` : trace **passive** d'une demande d'élargissement de périmètre (jamais un droit
+  d'écriture), atomique, idempotente, no-op hors vague.
+- `promptimizer/hooks/pre-tool-use.js` : la garde s'étend à `Edit`/`Write`/`MultiEdit` **pour le
+  seul test de périmètre**, et **uniquement** si une vague est active ET que la session courante y
+  tient un lot (via `lotForSession`). Verdict `outside` → **`deny`** ; tout le reste → `allow`
+  (deny **sur certitude seule** ; doute/erreur → allow, **fail-open absolu**). Hors vague, session
+  non inscrite (mère), ou lot sans périmètre : chemin Bash et mode `acceptEdits` **inchangés**. Sur
+  `deny`, la demande d'extension est tracée (`requestExtension`, best-effort, jamais bloquant) et
+  le message invite à demander l'élargissement à l'orchestrateur.
+  `MultiEdit` gardé au même titre (même `file_path`) pour fermer le contournement trivial ;
+  `NotebookEdit` hors périmètre du lot.
+- `test/run-tests.js` : 36 tests (unitaires `memberVerdict`/`toRelPosix` + `requestExtension` +
+  hook end-to-end : dans/hors périmètre, `Edit`/`Write`/`MultiEdit`, chemin absolu, session non
+  inscrite, hors root, `Read` non concerné, périmètre vide, traçabilité du deny, non-régression
+  Bash). Suite verte : **1021 OK**.
+- `ARCHITECTURE.md` : nouvelle puce « Garde de périmètre — PreToolUse mode fleet-fille » ; ligne de
+  contrat des hooks et décision « PreToolUse limité à Bash » révisées (exception scopée à la vague).
+
 ## 2026-07-20 (lot #77 — epic « Vagues parallèles » : registre de vague `fleet.json`)
 
 Deuxième brique de la décision D3. Le fichier d'état partagé d'une vague parallèle existe ; il
