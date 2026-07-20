@@ -2,6 +2,32 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-20 — lot #84 « Fallback natif de sortie volumineuse (sans RTK) » (epic « Bridge RTK »)
+
+Épilogue de l'epic « Bridge RTK » : un filet **générique** qui réduit une sortie Bash très longue
+avant qu'elle n'entre dans le contexte, quand RTK est absent. Ce n'est **pas** un remplacement de
+RTK. Hook **PostToolUse (sortie)**, distinct du bridge RTK (PreToolUse, entrée).
+
+- **Spike gate levé d'abord** (contrainte du lot) : le champ **`updatedToolOutput`** est confirmé
+  par la doc officielle Claude Code (« PostToolUse decision control ») — il **remplace** la sortie du
+  tool, la valeur **doit matcher la shape du tool** (Bash = objet `{stdout,stderr,interrupted,isImage,
+  noOutputExpected}`, prouvé aussi sur une trace transcript réelle), et un objet **non conforme est
+  ignoré** (sortie originale conservée) → fail-open natif de la plateforme. Lot **viable**, pas droppé.
+- `promptimizer/lib/output-fallback.js` (nouveau) : `reduceBashOutput()` applique les stratégies
+  §10 — dédup des lignes consécutives, en-tête + fin conservés, lignes d'erreur préservées, **sortie
+  complète stockée** sous `.vibe-agent/logs/<id>.log`, en-tête technique `[PMZ sortie réduite]`
+  (commande / lignes brutes / transmises / erreurs / chemin du log). Ne substitue **que `stdout`** en
+  repartant de l'objet reçu (shape garantie) ; `stderr`/`interrupted` **jamais touchés** (§10 : ne
+  jamais masquer une erreur, ne jamais fabriquer un succès).
+- **Garde-fous** : RTK actif → fallback inactif (`rtk-status.isBridgeEnabled`, pas de double
+  traitement) ; petite sortie (≤ `PMZ_OUTPUT_FALLBACK_LINES`, 300 lignes) **intacte** ; image/binaire
+  jamais réduit ; pas de repo git → **pas de réduction** (jamais perdre du texte) ; gain négligeable →
+  pas de réécriture ; désactivable `PMZ_OUTPUT_FALLBACK_DISABLE=1`.
+- `promptimizer/hooks/post-tool-use.js` : branche `Bash` ajoutée (matcher PostToolUse étendu à `Bash`
+  dans `hooks/hooks.json` **et** `install/merge-settings.js`). `promptimizer/lib/output.js` :
+  primitive `postToolUpdatedOutput()`.
+- Tests : **+15 assertions** (section « Fallback sortie Bash »), suite complète **verte**.
+
 ## 2026-07-20 — lot #83 « Métrologie honnête des gains RTK + bilan de clôture » (epic « Bridge RTK »)
 
 Troisième brique de l'epic « Bridge RTK » : le lot clos peut désormais afficher le gain confié à

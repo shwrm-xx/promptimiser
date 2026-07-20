@@ -72,7 +72,7 @@ const PMZ_HOOKS = {
   SessionStart: [{ matcher: 'startup|resume|clear|compact', hooks: [cmd('session-start.js', T.sessionStart)] }],
   UserPromptSubmit: [{ hooks: [cmd('user-prompt-submit.js', T.default)] }],
   PreToolUse: [{ matcher: 'Bash|Edit|Write|MultiEdit', hooks: [cmd('pre-tool-use.js', T.default)] }],
-  PostToolUse: [{ matcher: 'Read|Edit|Write|TodoWrite', hooks: [cmd('post-tool-use.js', T.default)] }],
+  PostToolUse: [{ matcher: 'Read|Edit|Write|TodoWrite|Bash', hooks: [cmd('post-tool-use.js', T.default)] }],
   Stop: [{ hooks: [cmd('stop.js', T.default)] }],
   PreCompact: [{ matcher: 'manual|auto', hooks: [cmd('pre-compact.js', T.default)] }],
 };

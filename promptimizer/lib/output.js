@@ -50,6 +50,16 @@ function preToolUpdatedInput(updatedInput) {
   process.exit(0);
 }
 
+// Remplace la sortie d'un tool DÉJÀ exécuté par une version réduite (PostToolUse, lot #84).
+// La valeur DOIT matcher la shape de sortie du tool (Bash = objet {stdout,stderr,interrupted,
+// isImage,…}) : un objet qui ne matche pas est IGNORÉ par Claude Code et la sortie originale est
+// conservée (fail-open natif de la plateforme, cf. doc « PostToolUse decision control »). On
+// construit donc toujours l'objet à partir de la réponse reçue, en ne substituant que stdout.
+function postToolUpdatedOutput(updatedToolOutput) {
+  write({ hookSpecificOutput: { hookEventName: 'PostToolUse', updatedToolOutput } });
+  process.exit(0);
+}
+
 // Message VISIBLE par l'utilisateur, NON réinjecté dans le contexte, NON bloquant.
 function systemMessage(text) {
   if (text) write({ systemMessage: text });
@@ -61,4 +71,4 @@ function passThrough() {
   process.exit(0);
 }
 
-module.exports = { write, injectContext, postToolContext, preToolDecision, preToolUpdatedInput, systemMessage, passThrough };
+module.exports = { write, injectContext, postToolContext, preToolDecision, preToolUpdatedInput, postToolUpdatedOutput, systemMessage, passThrough };

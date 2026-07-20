@@ -223,7 +223,7 @@ function pmzEntry(s2, ev) {
   return (s2.hooks[ev] || []).find((e) => (e.hooks || []).some((h) => h.command.includes('promptimizer/hooks/')));
 }
 ok(pmzEntry(s, 'SessionStart').matcher === 'startup|resume|clear|compact', 'matcher SessionStart couvre clear et compact');
-ok(pmzEntry(s, 'PostToolUse').matcher === 'Read|Edit|Write|TodoWrite', 'matcher PostToolUse couvre TodoWrite');
+ok(pmzEntry(s, 'PostToolUse').matcher === 'Read|Edit|Write|TodoWrite|Bash', 'matcher PostToolUse couvre TodoWrite + Bash');
 ok(pmzEntry(s, 'PreCompact') && pmzEntry(s, 'PreCompact').matcher === 'manual|auto', 'PreCompact enregistré (manual|auto)');
 
 // D3ter. Anti-régression : les tool_names réellement gérés par pre-tool-use.js (Bash + le
@@ -1432,6 +1432,70 @@ section('TodoWrite — snapshot passif (.vibe-agent/todo-snapshot.json)');
   // O6. lecteur (consommé par le handoff au lot A3)
   const r = backlogLib.readTodoSnapshot(repo);
   ok(!!r && Array.isArray(r.todos) && r.todos.length === 30, 'readTodoSnapshot : dernier état lu');
+}
+
+// ===================== Fallback natif de sortie volumineuse (lot #84) =====================
+section('Fallback sortie Bash — réduction, garde-fous, préservation (lot #84)');
+{
+  const repo = path.join(SANDBOX, 'repo-outfb');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  const big = (() => { const L = []; for (let i = 0; i < 800; i++) L.push('row ' + i); return L.join('\n') + '\n'; })();
+  const trBig = { stdout: big, stderr: '', interrupted: false, isImage: false, noOutputExpected: false };
+
+  // Récupère l'objet JSON émis par le hook (ou null si rien).
+  function bashOut(toolResponse, command, extraEnv) {
+    const r = runHook('post-tool-use.js', { tool_name: 'Bash', cwd: repo, tool_input: { command: command || 'seq 800' }, tool_response: toolResponse }, extraEnv);
+    if (r.code !== 0) return { err: 'exit' + r.code };
+    if (!r.out.trim()) return null;
+    try { return JSON.parse(r.out).hookSpecificOutput; } catch (_) { return { err: 'invalid' }; }
+  }
+
+  // F1. grosse sortie → updatedToolOutput avec en-tête [PMZ sortie réduite]
+  const o1 = bashOut(trBig);
+  ok(o1 && o1.updatedToolOutput && /^\[PMZ sortie réduite\]/.test(o1.updatedToolOutput.stdout),
+    'grosse sortie → updatedToolOutput avec en-tête PMZ');
+  ok(o1 && o1.updatedToolOutput.stdout.length < big.length, 'sortie réduite plus courte que la brute');
+  ok(o1 && /Sortie complète : \.vibe-agent\/logs\//.test(o1.updatedToolOutput.stdout), 'chemin du log affiché dans l\'en-tête');
+
+  // F2. sortie complète stockée sur disque
+  const logsDir = path.join(repo, '.vibe-agent', 'logs');
+  const logs = fs.existsSync(logsDir) ? fs.readdirSync(logsDir).filter((f) => f.endsWith('.log')) : [];
+  ok(logs.length >= 1, 'sortie complète écrite sous .vibe-agent/logs/');
+  ok(logs.length && fs.readFileSync(path.join(logsDir, logs[0]), 'utf8').includes('row 799'), 'le log contient la fin de la sortie brute');
+
+  // F3. petite sortie → intacte (passThrough, aucun JSON)
+  ok(bashOut({ stdout: 'a\nb\nc\n', stderr: '', isImage: false }, 'ls') === null, 'petite sortie → intacte (aucune réécriture)');
+
+  // F4. RTK actif → fallback inactif
+  ok(bashOut(trBig, 'seq 800', { PMZ_RTK_ENABLE: '1' }) === null, 'RTK actif → fallback inactif');
+
+  // F5. désactivable par env
+  ok(bashOut(trBig, 'seq 800', { PMZ_OUTPUT_FALLBACK_DISABLE: '1' }) === null, 'PMZ_OUTPUT_FALLBACK_DISABLE=1 → inactif');
+
+  // F6. image/binaire → intacte
+  ok(bashOut({ stdout: big, stderr: '', isImage: true }, 'x') === null, 'isImage → jamais réduit');
+
+  // F7. stderr / interrupted JAMAIS altérés (ne jamais masquer une erreur, §10)
+  const o7 = bashOut({ stdout: big, stderr: 'boom detail', interrupted: true, isImage: false, noOutputExpected: false }, 'x');
+  ok(o7 && o7.updatedToolOutput.stderr === 'boom detail' && o7.updatedToolOutput.interrupted === true,
+    'stderr et interrupted préservés à l\'identique');
+  ok(o7 && 'noOutputExpected' in o7.updatedToolOutput, 'shape de sortie Bash préservée (champs conservés)');
+
+  // F8. lignes d'erreur conservées dans la sortie réduite
+  const withErr = (() => { const L = []; for (let i = 0; i < 800; i++) L.push('noise ' + i); L[400] = 'FAILED: assertion X'; return L.join('\n') + '\n'; })();
+  const o8 = bashOut({ stdout: withErr, stderr: '', isImage: false }, 'npm test');
+  ok(o8 && o8.updatedToolOutput.stdout.includes('FAILED: assertion X'), 'ligne d\'erreur conservée malgré la réduction');
+  ok(o8 && /Erreurs détectées : [1-9]/.test(o8.updatedToolOutput.stdout), 'compteur d\'erreurs > 0 dans l\'en-tête');
+
+  // F9. hors git → pas de réduction (nulle part où stocker la sortie complète)
+  const dirNo = path.join(SANDBOX, 'outfb-nogit');
+  fs.mkdirSync(dirNo, { recursive: true });
+  const rNo = runHook('post-tool-use.js', { tool_name: 'Bash', cwd: dirNo, tool_input: { command: 'x' }, tool_response: trBig });
+  ok(rNo.code === 0 && !rNo.out.trim(), 'hors git → sortie intacte (rien à réécrire)');
+
+  // F10. entrée dégénérée → exit 0, aucune réécriture
+  ok(runHook('post-tool-use.js', { tool_name: 'Bash', cwd: repo, tool_input: { command: 'x' } }).code === 0, 'tool_response absent → exit 0');
 }
 
 // ============================ P. SUIVI PASSIF DU BACKLOG ============================

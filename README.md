@@ -216,6 +216,12 @@ redémarre Claude Code : les matchers de hooks ne s'appliquent qu'à la réinsta
   Activation guidée + diagnostic via `/pmz:rtk [status|enable|disable|migrate]`. À la clôture d'un
   lot, le bilan affiche le **gain RTK avec son niveau de preuve** (compteur local de commandes
   réécrites, ou rien si aucune activité — jamais de valeur inventée).
+- **Fallback de sortie volumineuse** (filet générique quand RTK est absent) : une sortie de commande
+  Bash **très longue** (> 300 lignes) est réduite avant d'entrer dans le contexte (dédup, en-tête,
+  lignes d'erreur et fin conservées), la **sortie complète étant toujours stockée** sous
+  `.vibe-agent/logs/` (chemin affiché). Les sorties courtes et les erreurs sont **intactes** ; inactif
+  si le bridge RTK est actif (pas de double traitement). Désactivable via `PMZ_OUTPUT_FALLBACK_DISABLE=1`
+  (seuil réglable par `PMZ_OUTPUT_FALLBACK_LINES`).
 - Les hooks sont chargés au **démarrage** de Claude Code : après (dés)installation, **redémarre**
   l'app pour appliquer les changements.
 

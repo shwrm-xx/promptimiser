@@ -17,11 +17,12 @@ if (disabled()) process.exit(0);
 const fs = require('fs');
 const path = require('path');
 const { parseHookInput } = require('../lib/stdin');
-const { passThrough, postToolContext } = require('../lib/output');
+const { passThrough, postToolContext, postToolUpdatedOutput } = require('../lib/output');
 const { gitRoot, ensureLedger } = require('../lib/project');
 const { recordRead, recordModify, getSummary } = require('../lib/ledger');
 const { maybeAdvise } = require('../lib/advisory');
 const { writeTodoSnapshot } = require('../lib/backlog');
+const { reduceBashOutput } = require('../lib/output-fallback');
 
 function relOf(root, fp) {
   try {
@@ -46,6 +47,20 @@ function main() {
   if (tool === 'TodoWrite') {
     const root = gitRoot(input.cwd || process.cwd());
     if (root) writeTodoSnapshot(root, input.tool_input && input.tool_input.todos, input.session_id || null);
+    return passThrough();
+  }
+  // Bash : fallback natif de sortie volumineuse (lot #84). Réécrit updatedToolOutput SEULEMENT si
+  // reduceBashOutput décide de réduire (RTK absent, sortie > seuil, gain réel) ; sinon passThrough
+  // → sortie brute intacte. tool_response porte {stdout,stderr,interrupted,isImage,…} pour Bash.
+  if (tool === 'Bash') {
+    const root = gitRoot(input.cwd || process.cwd());
+    const res = reduceBashOutput({
+      toolResponse: input.tool_response,
+      command: input.tool_input && input.tool_input.command,
+      root,
+      env: process.env,
+    });
+    if (res && res.updatedToolOutput) return postToolUpdatedOutput(res.updatedToolOutput);
     return passThrough();
   }
   const fp = input.tool_input && input.tool_input.file_path;

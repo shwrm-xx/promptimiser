@@ -31,7 +31,7 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
 | `session-start.js` | SessionStart `startup\|resume\|clear\|compact` (injecte au `startup`/`clear` ; `compact` → réinjection **enrichie** sous budget chiffré (`COMPACT_RESUME_CAP`, #72) : lot+verify + `pmz:skip` + résumés connus + todos ; `resume` → nudge occupation seul, voir ci-dessous) | `cwd`, `source`, `transcript_path` | `additionalContext` (startup/clear/compact) ou `systemMessage` (resume) | détecte projet, auto-scaffold si projet neuf (0 commit), sinon propose init, rappel court + titre de session suggéré + injecte le handoff de la session précédente puis le marque consommé ; sans handoff, le plan de lots sert de filet (2 lignes) ; au `resume`, si occupation ≥ 300k, `systemMessage` d'occupation (lot B5, zéro token injecté) |
 | `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd`, `transcript_path` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large (anti-spam 1×/session), nudge occupation ≥ 500k en 2 lignes (anti-spam 1×/palier, lot B5), vigie modèle réel vs préconisé du lot en cours (anti-spam 1×/session, lot #42) |
 | `pre-tool-use.js` | PreToolUse `Bash` (+ `Edit`/`Write`/`MultiEdit` en vague) | `tool_input.command` / `.file_path` | `permissionDecision` allow/ask/deny **ou** `updatedInput` (réécriture RTK, sans `permissionDecision`) | sûreté commandes + périmètre fleet-fille + **bridge RTK optionnel** (default OFF, lot #81) |
-| `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite` | `tool_input.file_path`, `tool_input.todos` | `additionalContext` (rare, advisory) + effet de bord ledgers | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite), signale une relecture complète redondante (lot B4) |
+| `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite\|Bash` | `tool_input.file_path`, `tool_input.todos`, `tool_input.command` + `tool_response` (Bash) | `additionalContext` (rare, advisory) **ou** `updatedToolOutput` (réduction sortie Bash, lot #84) + effet de bord ledgers | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite), signale une relecture complète redondante (lot B4), **réduit une sortie Bash volumineuse** hors RTK (lot #84) |
 | `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), **détecteur de dérive de session** (coût↑ + hitRate↓ sur 6 tours → prescrit la clôture, lot #62), **vigie des tours en boucle** (commande Bash qui échoue ≥ 3 fois d'affilée → nudge « change d'approche », anti-spam par commande, `lib/loopwatch.js`, lot #69), **vigie de dette git non commitée** (diff significatif qui grossit sur ≥ 3 tours sans commit → nudge « commit/clôture », anti-spam par palier, `lib/gitdebt.js`, lot #73), **vigie de gouvernance du CLAUDE.md** (absent ou hypertrophié > 10 Ko → nudge créer / dégraisser, 1×/session, `lib/claudemd.js`, lot #74), **notification OS opt-in** sur zone rouge et clôture de lot (`PMZ_NOTIFY=1`, `lib/notify.js`, lot #75), hygiène de lecture, **nudge subagent** à haute occupation + lectures (lot #52), **palier de gaspillage auto-surfacé** avec top-3 coupables (`waste_bucket` persisté, lot #52), rappel de clôture nommant les skills **et embarquant un brouillon d'entrée CHANGELOG pré-mâché** (en-tête daté + lot/epic/titre, scope sans son préfixe « fait quand : », fichiers modifiés plafonnés à 6, verify — `closureWithDraftMessage`, soudé au rappel pour rester atomique sous l'arbitre, lot #68), incrémente le compteur de lot, agrège le coût réel du lot en cours (`cost_tokens`) et alerte à l'approche du budget ~300k avec proposition de redécoupage (lot #43), auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, exécute la `verify` du lot à l'auto-clôture (timeout court `VERIFY_AUTOCLOSE_MS`, résultat visible, jamais bloquant) + rappel doux si le commit de clôture ne touche pas `CHANGELOG.md` (lot #44), **plafonne les nudges du tour par sévérité** (`lib/arbiter.js`, ≤ 3, lot #57), écrit le handoff auto (écrasé à chaque tour) |
 | `pre-compact.js` | PreCompact `manual\|auto` | `cwd`, `trigger`, `transcript_path` | `systemMessage` (manual) ou — (auto : effet de bord handoff seul) | sauve le handoff auto (plan de lots + todos compris) AVANT compaction ; la réinjection minimale se fait au SessionStart(compact). Sur `manual` (/compact), ajoute un rappel **chiffré** visible : compacter ≈ réécriture de l'occupation en cache-write (×1,25) + résumé lossy, vs clôture + handoff (~8k) — TTL prudent, aucun prix en dur (lot T1). `auto` reste silencieux (compaction subie) |
 
@@ -361,6 +361,23 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   4 colonnes dérivées ajoutées — `command_optimizer_provider`, `command_tokens_saved`
   (mesuré seulement), `command_saving_ratio` (mesuré seulement), `command_evidence` — vides pour
   un lot sans métrologie.
+- **Fallback natif de sortie volumineuse** (lot #84, épilogue de l'epic « Bridge RTK ») :
+  `lib/output-fallback.js` + branche `Bash` de `post-tool-use.js`. Filet **générique** quand RTK est
+  absent — pas un remplacement fonctionnel de RTK. C'est un hook **PostToolUse (sortie)**, distinct
+  du bridge RTK qui, lui, réécrit l'**entrée** en PreToolUse. **Spike gate levé d'abord** (contrainte
+  du lot) : le champ **`updatedToolOutput`** est confirmé côté doc Claude Code (« PostToolUse decision
+  control ») — il **remplace** la sortie du tool, la valeur **doit matcher la shape du tool** (Bash =
+  objet `{stdout,stderr,interrupted,isImage,noOutputExpected}`), et un objet **non conforme est
+  ignoré** (sortie originale conservée) → fail-open natif de la plateforme. `reduceBashOutput` ne
+  substitue donc **que `stdout`** en repartant de l'objet reçu (shape garantie), et ne touche
+  **jamais** `stderr`/`interrupted` (§10 : ne jamais masquer une erreur, ne jamais fabriquer un
+  succès). **Déclenchement** : RTK absent (garde `rtk-status.isBridgeEnabled`), sortie > seuil
+  (`PMZ_OUTPUT_FALLBACK_LINES`, 300 lignes par défaut), gain réel. **Stratégies §10** : dédup des
+  lignes consécutives, en-tête + fin conservés, lignes d'erreur préservées, **sortie complète stockée**
+  sous `.vibe-agent/logs/<id>.log` (pas de repo git → pas de réduction, on refuse de perdre du texte),
+  en-tête technique `[PMZ sortie réduite]` (commande / lignes brutes / transmises / erreurs / chemin
+  du log). **Petite sortie intacte** (jamais de filtrage silencieux), **image/binaire jamais réduit**,
+  désactivable `PMZ_OUTPUT_FALLBACK_DISABLE=1`.
 - **Plan de vagues — `pmz:parallelize`** (lot #79, 4ᵉ brique de
   [D3](docs/decisions/D3-parallelisation-gouvernee.md)) : `backlog.planWaves(b)` (fonction
   **pure** : ne lit/écrit rien, ne lance rien) calcule un plan de vagues parallèles à partir des
@@ -445,8 +462,9 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   plus du mtime), émet un `additionalContext` d'une ligne (~60 tokens) signalant la relecture
   probablement redondante — et, si un résumé du fichier est connu (`read-ledger.summaries`,
   lot #53), le **sert en 2e ligne** à la place de la relecture (`ledger.getSummary`, lu
-  seulement quand la relecture est redondante — zéro I/O sinon). PostToolUse reste strictement informatif : jamais de
-  `permissionDecision`, le `Read` est déjà exécuté. Plafonné par un état **hors-projet**
+  seulement quand la relecture est redondante — zéro I/O sinon). Cet advisory ne porte jamais de
+  `permissionDecision`, le `Read` est déjà exécuté (le seul levier « actif » de PostToolUse est
+  `updatedToolOutput`, réservé au fallback de sortie Bash, lot #84). Plafonné par un état **hors-projet**
   `<sha1(session_id)>-advisory` (même convention que `occupancy.js`/`turnstats.js`) : 1×/fichier
   ET 3×/session, remis à zéro à chaque nouvelle `session_id`. Opt-out `PMZ_NO_ADVISORY=1` (ne
   consomme pas le plafond — l'advisory reste disponible si l'opt-out est levé dans la session).
