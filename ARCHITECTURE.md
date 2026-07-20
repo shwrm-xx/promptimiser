@@ -781,6 +781,12 @@ plusieurs sessions réelles (capture fournie par l'utilisateur, 2026-07-12).
   packaging en plugin natif est faisable et validé sur machine réelle ; il supprime l'installeur
   bespoke + la fusion de `settings.json` au prix d'une régression niche (takeover d'un hook Stop
   tiers). Détail, preuves et chiffrage : [docs/decisions/D1-plugin-go-nogo.md](docs/decisions/D1-plugin-go-nogo.md).
+- **Parallélisation gouvernée : GO palier 2, palier 3 conditionné** (2026-07-20) : N sessions
+  filles coordonnées par périmètres exclusifs disjoints (hook PreToolUse étendu à Edit/Write en
+  mode fleet uniquement — révision scopée de « PreToolUse limité à Bash » ci-dessous), contrat
+  d'interfaces gelé avant fan-out, réintégration pipeline avec gates. Principe : les conflits
+  s'éliminent au découpage, pas au merge. Rien d'implémenté à ce jour — orientation et découpage
+  pressenti : [docs/decisions/D3-parallelisation-gouvernee.md](docs/decisions/D3-parallelisation-gouvernee.md).
 - **Occupation-tokens plutôt que compteur de tours** (vs spec) : signal réel, déjà éprouvé par
   `context-guard.py` ; PMZ le reprend à son compte (système standalone unifié).
 - **Stop non bloquant** : un Stop bloquant risque la boucle (cap 8) et gonfle le contexte ;

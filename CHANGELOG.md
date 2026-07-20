@@ -2,6 +2,19 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-20 (décision D3 — parallélisation gouvernée des lots, paliers 2 & 3)
+
+- `docs/decisions/D3-parallelisation-gouvernee.md` (nouveau) : **GO palier 2** (N sessions filles
+  coordonnées, protocole PMZ complet par lot), **palier 3 conditionné** (3 critères d'entrée
+  mesurables). Principe directeur : les conflits s'éliminent au **découpage** (périmètres
+  exclusifs disjoints + hook de blocage en écriture + contrat d'interfaces gelé), pas à la
+  réintégration (pipeline de merge avec gates, rebase continu). Architecture cible = extensions
+  d'organes existants (backlog v2 `perimeter`/`depends_on`, `fleet.json`, PreToolUse en mode
+  fleet-fille, `pmz:parallelize`/`pmz:reintegrate`) — **aucun code dans ce lot**, découpage
+  pressenti en 6 briques à passer par `/pmz:scope`.
+- `ARCHITECTURE.md` : puce « Décisions & pourquoi » pointant vers D3 (dont la révision scopée de
+  « PreToolUse limité à Bash » en mode fleet).
+
 ## 2026-07-19 (version — 1.3.0)
 
 - `promptimizer/VERSION` : bump mineur 1.2.8 → 1.3.0 (`bumpVersion('minor')`), epic « Vigies &
