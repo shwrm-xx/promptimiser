@@ -185,7 +185,9 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   one-shot). `spawn` injectable (`opts.spawn`, défaut `child_process.spawn`, détaché + `unref`)
   pour permettre aux tests de stuber le lanceur sans jamais déclencher de vraie notification.
   Fail-open total (plateforme non gérée, outil absent, `spawn` qui lève → `false`, jamais
-  d'exception vers `stop.js`).
+  d'exception vers `stop.js`). **Vigies de vague** (lot #80) : deux événements supplémentaires,
+  câblés par `runPipeline` (cf. `pmz:reintegrate`) — `notifyLotReady` (un lot fille prêt à merger)
+  et `notifyWaveClosed` (vague entièrement réintégrée), mêmes garanties opt-in/fail-open.
 - **Hygiène de lecture** (`lib/occupancy.js: evaluateReadMix`) : même principe (lit le transcript
   brut, fenêtre fixe 1,5 Mo, aucune dépendance au ledger), tally les blocs `tool_use` récents pour
   détecter une majorité de `Read` sans `offset`/`limit` face aux recherches (`Grep`/`Glob`/`grep`
@@ -301,6 +303,23 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   parallelize` (option `--epic` pour filtrer, `--json` pour la machine, `launched:false`) **PROPOSE**
   le plan (vagues + branches + périmètres) et **ne lance RIEN** : ni branche, ni worktree, ni
   session fille. Le lancement reste **manuel et validé** (`start --id … --owner …`, cf. D3 palier 2).
+- **Réintégration en pipeline — `pmz:reintegrate`** (lot #80, 5ᵉ/6ᵉ brique de
+  [D3](docs/decisions/D3-parallelisation-gouvernee.md), principe **P3** « jamais de big-bang ») :
+  `lib/reintegrate.js` sépare trois responsabilités. `planReintegration(fleet, backlog)` (**pur**)
+  ordonne les lots `ready` du fleet en un **pipeline** respectant `depends_on` (tri topologique) ;
+  un lot encore `in_flight` tient la vague ouverte (`notReady`), un lot `ready` dépendant d'un lot
+  en vol ou pris dans un cycle est `blocked` (jamais mergé avant sa dépendance). `runPipeline(root)`
+  **EXÉCUTE** : pour chaque étape, `git merge --no-ff` de la branche du lot dans la branche
+  d'intégration → **gate `verify`** → si vert, avance `fleet.setIntegrationHead` (**signal de
+  rebase** pour les lots en vol) + `setLotState(reintegrated)` + vigie « lot prêt » ; si rouge
+  (conflit → `merge --abort`, ou gate → `reset --hard`), **annule et STOPPE** (le coupable est le lot
+  de l'étape — attribution sans ambiguïté). `aggregateChangelog` (**pur**) bâtit l'entrée de
+  changelog **agrégée** de la vague ; vigie « vague close » quand toute la vague est réintégrée.
+  La CLI `scripts/backlog.js reintegrate` **PROPOSE** le pipeline par défaut (rien mergé, comme
+  `parallelize`) ; `--execute` exécute réellement (`--into <branche>` force la branche
+  d'intégration). Contrairement aux hooks (fail-open muet), c'est une **commande délibérée** : elle
+  rapporte conflits et gates rouges. S'appuie sur `lib/fleet.js`, `backlog.planWaves`/`waveBranch`,
+  `lib/gitdebt.js` (lecture de tête git).
 - **Ledgers projet** (`.vibe-agent/{read,context}-ledger.json`) : auto-créés par
   `ensureLedger` (tout hook qui touche au projet) puis maintenus par `post-tool-use.js`
   (atomique `tmp`+`rename`, cap FIFO). Servent l'advisory `/check-context`. Granularité

@@ -74,4 +74,18 @@ function notifyLotClosed(lot, opts) {
   return send('Promptimizer — lot clôturé', label, opts);
 }
 
-module.exports = { enabled, send, commandFor, notifyRedZone, notifyLotClosed };
+// Vigies de vague (lot #80, D3 §Signal) — relaient hors terminal les frontières de la
+// réintégration : un lot fille prêt à merger, et une vague entièrement close.
+function notifyLotReady(lot, opts) {
+  const label = lot && lot.title ? `#${lot.id} — ${lot.title}` : 'lot';
+  return send('Promptimizer — lot prêt à merger', label, opts);
+}
+
+function notifyWaveClosed(wave, opts) {
+  const n = wave && Number.isFinite(wave.count) ? wave.count : null;
+  const branch = wave && wave.branch ? ` sur ${wave.branch}` : '';
+  const body = n != null ? `${n} lot(s) réintégré(s)${branch} — vague close.` : `Vague close${branch}.`;
+  return send('Promptimizer — vague close', body, opts);
+}
+
+module.exports = { enabled, send, commandFor, notifyRedZone, notifyLotClosed, notifyLotReady, notifyWaveClosed };

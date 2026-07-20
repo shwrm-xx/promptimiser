@@ -4314,6 +4314,16 @@ section('Notifications OS opt-in : zone rouge / clôture de lot -> notification 
   ok(calls.length === 1 && /clôturé/.test(calls[0].args[0]) && /#75 — Notifications OS opt-in/.test(calls[0].args[1]),
     'V75 : notifyLotClosed -> titre « clôturé », corps = #id — titre du lot');
 
+  // -- Vigies de vague (lot #80) : lot prêt à merger + vague close --
+  calls.length = 0;
+  notify.notifyLotReady({ id: 80, title: 'pmz:reintegrate' }, { platform: 'linux', spawn: stubSpawn });
+  ok(calls.length === 1 && /prêt à merger/.test(calls[0].args[0]) && /#80 — pmz:reintegrate/.test(calls[0].args[1]),
+    'V80 : notifyLotReady -> titre « prêt à merger », corps = #id — titre');
+  calls.length = 0;
+  notify.notifyWaveClosed({ count: 3, branch: 'integration' }, { platform: 'linux', spawn: stubSpawn });
+  ok(calls.length === 1 && /vague close/.test(calls[0].args[0]) && /3 lot\(s\) réintégré\(s\) sur integration/.test(calls[0].args[1]),
+    'V80 : notifyWaveClosed -> titre « vague close », corps = compte + branche');
+
   // -- Repli : sans env, PMZ_NOTIFY non défini -> stop.js reste inchangé (régression V71/V74
   //    déjà couverte : ces tests tournent avec PMZ_NOTIFY absent et passent toujours). --
   if (prevNotify === undefined) delete process.env.PMZ_NOTIFY; else process.env.PMZ_NOTIFY = prevNotify;
@@ -4737,6 +4747,208 @@ section('backlog — CLI parallelize : plan proposé, rien lancé (scripts/backl
   execFileSync('git', ['-C', repoEmpty, 'commit', '-q', '-m', 'init']);
   const re = runNode(BKLG, ['parallelize', '--cwd', repoEmpty]);
   ok(/rien à paralléliser/.test(re.out), 'CLI parallelize : backlog vide -> « rien à paralléliser »');
+}
+
+// ============ D3-5/6. RÉINTÉGRATION EN PIPELINE + VIGIES DE VAGUE (lot #80) ============
+section('reintegrate — planner topologique + changelog agrégé (pur, lib/reintegrate.js, lot #80)');
+{
+  const reint = require(path.join(PKG, 'lib', 'reintegrate'));
+
+  // R1. Ordre topologique : #2 (ready) dépend de #1 (ready) -> #1 avant #2 ; complete=true.
+  const f1 = { active: true, lots: [
+    { id: 2, state: 'ready', branch: 'b2', title: 'B', session_owner: 's2' },
+    { id: 1, state: 'ready', branch: 'b1', title: 'A', session_owner: 's1' },
+  ] };
+  const b1 = { lots: [
+    { id: 1, depends_on: [], verify: 'npm t', title: 'A', status: 'in_progress' },
+    { id: 2, depends_on: [1], verify: 'npm t', title: 'B', status: 'in_progress' },
+  ] };
+  const p1 = reint.planReintegration(f1, b1);
+  ok(p1.steps.length === 2 && p1.steps[0].id === 1 && p1.steps[1].id === 2, 'R1 : ordre topologique (dépendance d\'abord)');
+  ok(p1.steps[0].branch === 'b1' && p1.steps[0].verify === 'npm t', 'R1 : branche + gate portés dans le step');
+  ok(p1.complete === true && p1.notReady.length === 0 && p1.blocked.length === 0, 'R1 : vague complète (tout ready)');
+
+  // R2. Un ready dépend d'un in_flight -> bloqué ; l'in_flight tient la vague ouverte.
+  const f2 = { active: true, lots: [
+    { id: 1, state: 'in_flight', branch: 'b1', title: 'A', session_owner: 's1' },
+    { id: 2, state: 'ready', branch: 'b2', title: 'B', session_owner: 's2' },
+  ] };
+  const p2 = reint.planReintegration(f2, { lots: [
+    { id: 1, depends_on: [] }, { id: 2, depends_on: [1] },
+  ] });
+  ok(p2.steps.length === 0, 'R2 : aucun step (le seul ready dépend d\'un lot en vol)');
+  ok(p2.blocked.length === 1 && p2.blocked[0].id === 2 && /encore en vol/.test(p2.blocked[0].reason), 'R2 : #2 bloqué par #1 en vol');
+  ok(p2.notReady.length === 1 && p2.notReady[0].id === 1, 'R2 : #1 in_flight listé notReady');
+  ok(p2.complete === false, 'R2 : vague non complète');
+
+  // R3. Cycle -> tout bloqué, aucun step.
+  const f3 = { active: true, lots: [
+    { id: 1, state: 'ready', branch: 'b1', session_owner: 's1' },
+    { id: 2, state: 'ready', branch: 'b2', session_owner: 's2' },
+  ] };
+  const p3 = reint.planReintegration(f3, { lots: [
+    { id: 1, depends_on: [2] }, { id: 2, depends_on: [1] },
+  ] });
+  ok(p3.steps.length === 0 && p3.blocked.length === 2 && p3.blocked.every((x) => /circulaire/.test(x.reason)),
+    'R3 : cycle -> les deux bloqués, aucun step');
+
+  // R4. Un lot déjà réintégré satisfait la dépendance d'un ready (pipeline continu).
+  const f4 = { active: true, lots: [
+    { id: 1, state: 'reintegrated', branch: 'b1', session_owner: 's1' },
+    { id: 2, state: 'ready', branch: 'b2', session_owner: 's2' },
+  ] };
+  const p4 = reint.planReintegration(f4, { lots: [{ id: 1, depends_on: [] }, { id: 2, depends_on: [1] }] });
+  ok(p4.steps.length === 1 && p4.steps[0].id === 2 && p4.complete === true,
+    'R4 : dépendance déjà réintégrée satisfaite -> #2 mergeable, vague complète');
+
+  // R5. changelog agrégé : un bloc daté, une ligne par lot réintégré (ignore les non-mergés).
+  const cl = reint.aggregateChangelog(
+    [{ id: 1, title: 'A', status: 'reintegrated', head: 'abcdef1234' }, { id: 2, status: 'gate-failed' }],
+    { waveId: 'vague-x', date: '2026-07-20', integrationBranch: 'integration' });
+  ok(/## 2026-07-20 — Réintégration de vague « vague-x » \(1 lot\)/.test(cl), 'R5 : entête daté + compte (1 lot mergé)');
+  ok(/Branche d'intégration : `integration`/.test(cl) && /Lot #1 « A » réintégré .*abcdef1/.test(cl), 'R5 : branche + ligne du lot mergé');
+  ok(!/#2/.test(cl), 'R5 : lot non réintégré exclu du changelog agrégé');
+}
+
+section('reintegrate — pipeline de merge git réel + vigies (lib/reintegrate.js, lot #80)');
+{
+  const reint = require(path.join(PKG, 'lib', 'reintegrate'));
+  const fleet = require(path.join(PKG, 'lib', 'fleet'));
+
+  // Prépare un dépôt git réel avec branche de base + N branches de lot (périmètres disjoints).
+  function mkRepo(name) {
+    const repo = path.join(SANDBOX, name);
+    fs.mkdirSync(repo, { recursive: true });
+    execFileSync('git', ['init', '-q', repo]);
+    execFileSync('git', ['-C', repo, 'config', 'user.email', 't@t.t']);
+    execFileSync('git', ['-C', repo, 'config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(repo, '.gitignore'), '.vibe-agent/\n');
+    fs.mkdirSync(path.join(repo, 'lib'), { recursive: true });
+    fs.writeFileSync(path.join(repo, 'lib', 'a.js'), 'base\n');
+    fs.writeFileSync(path.join(repo, 'lib', 'b.js'), 'base\n');
+    fs.writeFileSync(path.join(repo, 'lib', 'shared.js'), 'base\n');
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+    const def = execFileSync('git', ['-C', repo, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).trim();
+    return { repo, def };
+  }
+  function branchEdit(repo, def, branch, file, content) {
+    execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', branch, def]);
+    fs.writeFileSync(path.join(repo, file), content);
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', `edit ${file}`]);
+    execFileSync('git', ['-C', repo, 'checkout', '-q', def]);
+  }
+  function stubNotify() {
+    const events = [];
+    return { events, notifyLotReady: (l) => events.push(['ready', l.id]), notifyWaveClosed: (w) => events.push(['wave', w.count]) };
+  }
+
+  // ---- RP1. Happy path : 2 lots ready, périmètres disjoints, gates verts -> vague close ----
+  {
+    const { repo, def } = mkRepo('repo-reint-ok');
+    branchEdit(repo, def, 'lot-1', 'lib/a.js', 'lot1\n');
+    branchEdit(repo, def, 'lot-2', 'lib/b.js', 'lot2\n');
+    // backlog : depends_on #2 -> #1, gate `true` (exit 0)
+    runNode(BKLG, ['add', '--cwd', repo, '--title', 'A', '--model', 'opus', '--perimeter', 'lib/a', '--verify', 'true']);
+    runNode(BKLG, ['add', '--cwd', repo, '--title', 'B', '--model', 'opus', '--perimeter', 'lib/b', '--depends', '1', '--verify', 'true']);
+    fleet.upsertLot(repo, { id: 1, session_owner: 's1', perimeter: ['lib/a'], branch: 'lot-1', state: 'ready', title: 'A' });
+    fleet.upsertLot(repo, { id: 2, session_owner: 's2', perimeter: ['lib/b'], branch: 'lot-2', state: 'ready', title: 'B' });
+
+    const n = stubNotify();
+    const res = reint.runPipeline(repo, { into: def, notify: n });
+    ok(res.ok === true && res.merged.length === 2 && res.merged.every((m) => m.status === 'reintegrated'),
+      'RP1 : les 2 lots mergés + gate vert');
+    ok(res.waveClosed === true, 'RP1 : vague close (tout réintégré)');
+    const f = fleet.loadFleet(repo);
+    ok(f.lots.find((l) => l.id === 1).state === 'reintegrated' && f.lots.find((l) => l.id === 2).state === 'reintegrated',
+      'RP1 : fleet -> les 2 lots reintegrated');
+    ok(f.integration_head && f.integration_branch === def, 'RP1 : tête d\'intégration avancée + branche posée');
+    const merges = execFileSync('git', ['-C', repo, 'log', '--merges', '--oneline'], { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
+    ok(merges.length === 2, 'RP1 : 2 commits de merge réels sur la branche d\'intégration');
+    ok(fs.readFileSync(path.join(repo, 'lib', 'a.js'), 'utf8') === 'lot1\n', 'RP1 : contenu du lot #1 bien intégré');
+    ok(n.events.filter((e) => e[0] === 'ready').length === 2 && n.events.some((e) => e[0] === 'wave' && e[1] === 2),
+      'RP1 : vigies -> 2× lot prêt + 1× vague close');
+  }
+
+  // ---- RP2. Gate rouge : le merge est annulé, pipeline stoppé, coupable nommé ----
+  {
+    const { repo, def } = mkRepo('repo-reint-gate');
+    branchEdit(repo, def, 'lot-1', 'lib/a.js', 'lot1\n');
+    runNode(BKLG, ['add', '--cwd', repo, '--title', 'A', '--model', 'opus', '--perimeter', 'lib/a', '--verify', 'false']);
+    fleet.upsertLot(repo, { id: 1, session_owner: 's1', perimeter: ['lib/a'], branch: 'lot-1', state: 'ready', title: 'A' });
+    const base = execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+
+    const n = stubNotify();
+    const res = reint.runPipeline(repo, { into: def, notify: n });
+    ok(res.ok === false && res.reason === 'gate-failed' && res.culprit.id === 1, 'RP2 : gate rouge -> échec, coupable #1');
+    ok(res.merged.length === 1 && res.merged[0].status === 'gate-failed', 'RP2 : lot #1 marqué gate-failed');
+    ok(execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() === base, 'RP2 : merge annulé (HEAD ramené à la base)');
+    ok(fleet.loadFleet(repo).lots.find((l) => l.id === 1).state === 'ready', 'RP2 : fleet -> lot reste ready (non réintégré)');
+    ok(res.waveClosed === false && !n.events.some((e) => e[0] === 'wave'), 'RP2 : vague NON close, aucune vigie de clôture');
+  }
+
+  // ---- RP3. Conflit de merge : abort, pipeline stoppé au lot en conflit ----
+  {
+    const { repo, def } = mkRepo('repo-reint-conflict');
+    branchEdit(repo, def, 'lot-1', 'lib/shared.js', 'lot1\n');
+    branchEdit(repo, def, 'lot-2', 'lib/shared.js', 'lot2\n'); // même fichier -> conflit au 2e merge
+    runNode(BKLG, ['add', '--cwd', repo, '--title', 'A', '--model', 'opus', '--perimeter', 'lib/a', '--verify', 'true']);
+    runNode(BKLG, ['add', '--cwd', repo, '--title', 'B', '--model', 'opus', '--perimeter', 'lib/b', '--verify', 'true']);
+    fleet.upsertLot(repo, { id: 1, session_owner: 's1', perimeter: ['lib/a'], branch: 'lot-1', state: 'ready', title: 'A' });
+    fleet.upsertLot(repo, { id: 2, session_owner: 's2', perimeter: ['lib/b'], branch: 'lot-2', state: 'ready', title: 'B' });
+
+    const res = reint.runPipeline(repo, { into: def, notify: stubNotify() });
+    ok(res.ok === false && res.reason === 'conflict' && res.culprit.id === 2, 'RP3 : conflit au lot #2 -> échec, coupable #2');
+    ok(res.merged[0].status === 'reintegrated' && res.merged[1].status === 'conflict', 'RP3 : #1 mergé, #2 en conflit');
+    const status = execFileSync('git', ['-C', repo, 'status', '--porcelain'], { encoding: 'utf8' }).trim();
+    ok(status === '', 'RP3 : merge --abort -> arbre propre (pas de conflit résiduel)');
+    ok(fleet.loadFleet(repo).lots.find((l) => l.id === 2).state === 'ready', 'RP3 : #2 reste ready');
+  }
+}
+
+section('backlog — CLI reintegrate : plan proposé (défaut) + exécution (--execute) (scripts/backlog.js, lot #80)');
+{
+  const fleet = require(path.join(PKG, 'lib', 'fleet'));
+  const repo = path.join(SANDBOX, 'repo-reint-cli');
+  fs.mkdirSync(path.join(repo, 'lib'), { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  execFileSync('git', ['-C', repo, 'config', 'user.email', 't@t.t']);
+  execFileSync('git', ['-C', repo, 'config', 'user.name', 'T']);
+  fs.writeFileSync(path.join(repo, '.gitignore'), '.vibe-agent/\n');
+  fs.writeFileSync(path.join(repo, 'lib', 'a.js'), 'base\n');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const def = execFileSync('git', ['-C', repo, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).trim();
+  execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'lot-1', def]);
+  fs.writeFileSync(path.join(repo, 'lib', 'a.js'), 'lot1\n');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'e']);
+  execFileSync('git', ['-C', repo, 'checkout', '-q', def]);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'A', '--model', 'opus', '--perimeter', 'lib/a', '--verify', 'true']);
+  fleet.upsertLot(repo, { id: 1, session_owner: 's1', perimeter: ['lib/a'], branch: 'lot-1', state: 'ready', title: 'A' });
+  fleet.setIntegrationHead(repo, null, def);
+
+  // CR1. Plan par défaut : propose, ne merge rien.
+  const rp = runNode(BKLG, ['reintegrate', '--cwd', repo]);
+  ok(/Plan de réintégration/.test(rp.out) && /#1 « A »/.test(rp.out) && /gate : true/.test(rp.out), 'CR1 : plan affiche le lot + gate');
+  ok(/rien n'est mergé/.test(rp.out) && /--execute/.test(rp.out), 'CR1 : garde-fou « rien mergé » + rappel --execute');
+  ok(execFileSync('git', ['-C', repo, 'log', '--merges', '--oneline'], { encoding: 'utf8' }).trim() === '', 'CR1 : aucun merge (plan seul)');
+  ok(fleet.loadFleet(repo).lots.find((l) => l.id === 1).state === 'ready', 'CR1 : fleet inchangé (lot reste ready)');
+
+  // CR2. --json en plan : executed:false + steps.
+  const rj = runNode(BKLG, ['reintegrate', '--cwd', repo, '--json']);
+  let parsed = null; try { parsed = JSON.parse(rj.out); } catch (_) { /* null */ }
+  ok(parsed && parsed.executed === false && Array.isArray(parsed.steps) && parsed.steps.length === 1 && parsed.steps[0].id === 1,
+    'CR2 : --json plan -> executed:false + steps');
+
+  // CR3. --execute : merge réel + fleet reintegrated + changelog agrégé.
+  const re = runNode(BKLG, ['reintegrate', '--cwd', repo, '--execute']);
+  ok(/Réintégration de vague/.test(re.out) && /✅ #1/.test(re.out), 'CR3 : --execute merge le lot #1');
+  ok(/Réintégration de vague «|## 20\d\d-\d\d-\d\d — Réintégration/.test(re.out) && /Vague entièrement réintégrée/.test(re.out),
+    'CR3 : changelog agrégé + vague close');
+  ok(execFileSync('git', ['-C', repo, 'log', '--merges', '--oneline'], { encoding: 'utf8' }).trim() !== '', 'CR3 : merge réel présent');
+  ok(fleet.loadFleet(repo).lots.find((l) => l.id === 1).state === 'reintegrated', 'CR3 : fleet -> lot reintegrated');
 }
 
 // ============================ OC. OPENCODE ============================

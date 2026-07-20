@@ -2,6 +2,38 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-20 (lot #80 — epic « Vagues parallèles » : pmz:reintegrate + vigies de vague)
+
+Cinquième et dernière brique de la décision D3 (principe **P3** : réintégration en pipeline,
+jamais en big-bang). Clôt l'epic « Vagues parallèles ».
+
+- `promptimizer/lib/reintegrate.js` (nouveau) : trois responsabilités séparées et testables.
+  `planReintegration(fleet, backlog)` (**pur**) ordonne les lots `ready` du fleet en un **pipeline**
+  respectant `depends_on` (tri topologique) — un lot `in_flight` tient la vague ouverte
+  (`notReady`), un lot `ready` dépendant d'un lot en vol ou pris dans un cycle est `blocked`.
+  `runPipeline(root)` **exécute** : `git merge --no-ff` de chaque branche dans la branche
+  d'intégration → **gate `verify`** → si vert, `fleet.setIntegrationHead` (**signal de rebase**) +
+  `setLotState(reintegrated)` + vigie « lot prêt » ; si rouge (conflit → `merge --abort`, gate →
+  `reset --hard`), **annule et STOPPE** (coupable = le lot de l'étape, sans ambiguïté).
+  `aggregateChangelog` (**pur**) bâtit l'entrée de changelog **agrégée** ; vigie « vague close »
+  quand toute la vague est réintégrée.
+- `promptimizer/lib/notify.js` : deux **vigies de vague** — `notifyLotReady` (lot fille prêt à
+  merger) et `notifyWaveClosed` (vague close), mêmes garanties opt-in (`PMZ_NOTIFY=1`) / fail-open
+  que les vigies #75.
+- `promptimizer/scripts/backlog.js` : sous-commande `reintegrate` — **propose** le pipeline par
+  défaut (rien mergé, comme `parallelize`), `--execute` exécute réellement, `--into <branche>` force
+  la branche d'intégration ; `--json` pour la machine.
+- `promptimizer/commands/reintegrate.md` : nouvelle slash-command (auto-listée par `/help`) ;
+  ajoutée à `REQUIRED_COMMANDS` du build plugin (10 commandes).
+- `test/run-tests.js` : +40 assertions (planner topologique : ordre/bloqué par lot en vol/cycle/
+  dépendance réintégrée ; changelog agrégé ; **pipeline git réel** : happy path + gate rouge annulé +
+  conflit aborté ; vigies ; CLI plan + `--execute`). Suite : **1078 OK · 0 échec**.
+- Docs : `ARCHITECTURE.md` (bullet #80 réintégration + vigies), `README.md` (10 commandes).
+- **Non fait (interprétation minimale)** : commande **non** portée au canal OpenCode
+  (`opencode/command/pmz/`) ; **pas** de bump de `VERSION` (aligné sur l'epic #76-79) — le
+  redéploiement du plugin reste requis avant usage réel ; `reintegrate` **n'écrit pas** dans
+  `CHANGELOG.md` (il propose le bloc agrégé, l'humain le colle — discipline `/close-batch`).
+
 ## 2026-07-20 (lot #79 — epic « Vagues parallèles » : pmz:parallelize, plan de vagues sans lancement)
 
 Quatrième brique de la décision D3. Une commande **propose** un plan de vagues parallèles à partir

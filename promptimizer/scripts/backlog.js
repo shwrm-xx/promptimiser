@@ -7,6 +7,7 @@
 const { gitRoot } = require('../lib/project');
 const { parseCwd } = require('../lib/cli');
 const backlog = require('../lib/backlog');
+const reint = require('../lib/reintegrate');
 const lot = require('../lib/lot');
 const trigram = require('../lib/trigram');
 const { fmtK } = require('../lib/messages');
@@ -107,6 +108,90 @@ function parallelize(root, json, epicFilter) {
   out('');
   out('⚠️ Proposition seule : aucune branche, worktree ni session fille n\'a été créé.');
   out(`Pour lancer une vague, valide le plan puis démarre chaque lot manuellement : node ${PMZ_BASE}/scripts/backlog.js start --id <id> --owner <session>.`);
+}
+
+// pmz:reintegrate — réintègre une vague parallèle EN PIPELINE (D3, P3) : merge séquentiel dans
+// l'ordre du graphe depends_on, gate `verify` à chaque étape, avance de la tête d'intégration
+// (signal de rebase) + changelog agrégé. Par défaut PROPOSE le plan (rien mergé) ; `--execute`
+// exécute réellement. `--into <branche>` force la branche d'intégration.
+function reintegrate(root, json, execute, into) {
+  const fleet = require('../lib/fleet').loadFleet(root);
+  const b = backlog.loadBacklog(root);
+  const plan = reint.planReintegration(fleet, b);
+  const byId = new Map(b.lots.map((l) => [l.id, l]));
+  const dateOf = () => new Date().toISOString().slice(0, 10);
+
+  if (!execute) {
+    if (json) {
+      return out(JSON.stringify({
+        executed: false,
+        integration_branch: into || fleet.integration_branch || null,
+        steps: plan.steps,
+        notReady: plan.notReady,
+        blocked: plan.blocked,
+        complete: plan.complete,
+      }, null, 2));
+    }
+    out('## Plan de réintégration (proposition — rien n\'est mergé)');
+    if (!plan.steps.length && !plan.notReady.length && !plan.blocked.length) {
+      return out('Aucune vague active à réintégrer (aucun lot « prêt à merger » dans fleet.json).');
+    }
+    const ib = into || fleet.integration_branch;
+    out(ib ? `Branche d'intégration : \`${ib}\`.` : 'Branche d\'intégration : (courante au moment du --execute).');
+    out('');
+    if (plan.steps.length) {
+      out(`${plan.steps.length} lot(s) à merger, dans l'ordre du graphe :`);
+      plan.steps.forEach((s, i) => {
+        const dep = s.depends_on.length ? ` (dépend de ${s.depends_on.map((d) => '#' + d).join(', ')})` : '';
+        out(`${i + 1}. #${s.id} « ${s.title || '?'} »${dep} — branche \`${s.branch || '?'}\` — gate : ${s.verify || '(aucune)'}`);
+      });
+    } else {
+      out('Aucun lot « prêt à merger ».');
+    }
+    if (plan.notReady.length) {
+      out('');
+      out(`Encore en vol (tiennent la vague ouverte) : ${plan.notReady.map((x) => '#' + x.id).join(', ')}.`);
+    }
+    if (plan.blocked.length) {
+      out('');
+      for (const x of plan.blocked) out(`Bloqué : #${x.id} « ${x.title || '?'} » — ${x.reason}.`);
+    }
+    out('');
+    out('⚠️ Proposition seule : aucune branche n\'a été mergée, fleet.json inchangé.');
+    out(`Pour exécuter le pipeline (merge + gate à chaque étape) : node ${PMZ_BASE}/scripts/backlog.js reintegrate --execute.`);
+    return;
+  }
+
+  // --execute : exécution réelle du pipeline.
+  const res = reint.runPipeline(root, { into });
+  if (json) {
+    return out(JSON.stringify({ executed: true, ...res }, null, 2));
+  }
+  if (res.reason === 'no-integration-branch') return out('Refusé : aucune branche d\'intégration (ni fleet.integration_branch, ni --into, ni branche courante).');
+  if (res.reason === 'nothing-ready') return out('Rien à réintégrer : aucun lot « prêt à merger ».');
+  if (res.reason === 'checkout-failed') return out(`Refusé : checkout de \`${res.integrationBranch}\` impossible (arbre sale ?).\n${(res.out || '').trim()}`);
+
+  out('## Réintégration de vague');
+  out(`Branche d'intégration : \`${res.integrationBranch}\`.`);
+  out('');
+  for (const m of res.merged) {
+    const t = m.title ? ` « ${m.title} »` : '';
+    if (m.status === 'reintegrated') out(`✅ #${m.id}${t} — mergé + gate vert (${String(m.head || '').slice(0, 7)}).`);
+    else if (m.status === 'conflict') out(`❌ #${m.id}${t} — CONFLIT de merge, annulé. Pipeline stoppé (le coupable est ce lot).`);
+    else if (m.status === 'gate-failed') out(`❌ #${m.id}${t} — merge OK mais GATE ROUGE, merge annulé. Pipeline stoppé (le coupable est ce lot).`);
+    else out(`⏭️ #${m.id}${t} — sauté (${m.reason || 'raison inconnue'}).`);
+  }
+  if (!res.ok && res.culprit) {
+    out('');
+    out(`⛔ Vague NON close : corrige le lot #${res.culprit.id}, remets-le « prêt », puis relance --execute.`);
+    return;
+  }
+  out('');
+  out(reint.aggregateChangelog(res.merged, { waveId: fleet.wave_id, date: dateOf(), integrationBranch: res.integrationBranch }));
+  out('');
+  out(res.waveClosed
+    ? '🎉 Vague entièrement réintégrée et close. Colle le bloc ci-dessus dans CHANGELOG.md, puis commit.'
+    : 'Lots prêts réintégrés. La vague reste ouverte (des lots sont encore en vol).');
 }
 
 function main() {
@@ -214,6 +299,8 @@ function main() {
 
   if (cmd === 'parallelize') return parallelize(root, json, flag('epic'));
 
+  if (cmd === 'reintegrate') return reintegrate(root, json, process.argv.includes('--execute'), flag('into'));
+
   if (cmd === 'reconcile') {
     const r = backlog.reconcile(root);
     if (!r.fixed.length && !r.warnings.length) return out('Rien à réparer.');
@@ -222,7 +309,7 @@ function main() {
     return;
   }
 
-  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | next | parallelize | reconcile | epic | verify | trigram | export.`);
+  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | next | parallelize | reintegrate | reconcile | epic | verify | trigram | export.`);
 }
 
 if (require.main === module) {
