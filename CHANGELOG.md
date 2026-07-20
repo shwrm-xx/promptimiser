@@ -2,6 +2,18 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-20 (version — 1.4.0)
+
+- `promptimizer/VERSION` : bump mineur 1.3.0 → 1.4.0 (`bumpVersion('minor')`), epic « Vagues
+  parallèles » (#76-80) livrée depuis la dernière mineure — perimeter/depends_on backlog v2,
+  `fleet.json`, garde PreToolUse fleet-fille, `pmz:parallelize`, `pmz:reintegrate`.
+- Cause du bump : le cache plugin Claude Code est **indexé par version** — la version étant
+  restée figée à 1.3.0 depuis le lot #58, le plugin installé (`pmz@pmz-local`) ne portait
+  toujours PAS les vagues parallèles malgré un rebuild de `dist/marketplace/` (constaté
+  2026-07-20 : cache `~/.claude/plugins/cache/pmz-local/pmz/1.3.0/` sans `fleet.js`/
+  `perimeter.js`/`reintegrate.js` ni `parallelize.md`/`reintegrate.md`). `claude plugin update`
+  nécessite un numéro de version qui change pour re-copier le contenu.
+
 ## 2026-07-20 (fix — reco de modèle du lot suivant dans le handoff/close-batch)
 
 La checklist de `/close-batch` nommait le lot suivant à reprendre dans le handoff mais
