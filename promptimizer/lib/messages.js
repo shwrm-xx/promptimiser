@@ -297,7 +297,12 @@ function compactResumeMessage(lot, prog, opts) {
   const todos = Array.isArray(o.todos) ? o.todos : [];
   const skips = Array.isArray(o.skips) ? o.skips : [];
   const decisions = Array.isArray(o.decisions) ? o.decisions : [];
+  const fleet = Array.isArray(o.fleet) ? o.fleet : [];
   const blocks = [`Après compaction — lot en cours : « ${lot.title} » (${prog.done}/${prog.total} faits).`];
+  // Vague parallèle : la garantie de périmètre est CRITIQUE juste après compaction (le contexte
+  // perdu incluait la contrainte « ne modifie que X »). Placée en 2ᵉ bloc = priorité haute,
+  // survit au rognage du cap.
+  if (fleet.length) blocks.push(fleet.join('\n'));
   if (lot.verify) blocks.push(`Preuve de clôture (verify) : ${lot.verify}`);
   if (skips.length) {
     blocks.push('Ne pas relire sauf changement (déjà lus / coûteux — git diff/git grep d\'abord) : ' + skips.join(' · '));

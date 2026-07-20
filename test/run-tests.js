@@ -4506,6 +4506,14 @@ section('fleet — registre de vague fleet.json + injection SessionStart (lib/fl
   fs.writeFileSync(ffile, JSON.stringify({ version: 1, lots: [{ id: 5, perimeter: ['lib/x'] }, { id: 6, session_owner: 'sC' }] }));
   f = fleet.loadFleet(repoF);
   ok(f.lots.length === 1 && f.lots[0].id === 6, 'fleet.loadFleet : lot sans session_owner écarté');
+
+  // F10. injection compact : les lignes fleet sont un bloc PRIORITAIRE (2ᵉ position, survit au cap)
+  const fl = ['Vague parallèle active : 2 lot(s) en vol.', 'Périmètre EXCLUSIF — ne modifie QUE : lib/a.'];
+  const cm = messages.compactResumeMessage({ title: 'Lot X', verify: 'npm t' }, { done: 1, total: 3 }, { fleet: fl });
+  ok(/Périmètre EXCLUSIF/.test(cm), 'compactResumeMessage : périmètre fleet injecté');
+  ok(cm.indexOf('Périmètre EXCLUSIF') < cm.indexOf('verify'), 'compactResumeMessage : bloc fleet AVANT le verify (priorité haute)');
+  const cm0 = messages.compactResumeMessage({ title: 'Lot X' }, { done: 1, total: 3 }, {});
+  ok(!/Périmètre/.test(cm0), 'compactResumeMessage : aucun bloc fleet hors vague');
 }
 
 // ============================ OC. OPENCODE ============================

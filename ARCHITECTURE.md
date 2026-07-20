@@ -255,10 +255,13 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   autonome, il ne la gêne jamais). Mutations **par lot** (`upsertLot`/`setLotState`/`removeLot`/
   `setIntegrationHead`) en lecture-modification-écriture atomique (temp+rename) pour réduire les
   fenêtres de course ; la perte-de-MàJ résiduelle est assumée au palier 2 (lancement manuel).
-  `session-start.js` injecte, **au startup/clear seulement**, les lignes **courtes** de
-  `fleetLines(root, sessionId)` (périmètre exclusif + branche + tête d'intégration + nb de lots
-  sœurs, `< 10` lignes) — et **uniquement** si la session tient un lot en vol ; sinon silence
-  total. Le hook installé v1.3.0 **ignore** ces champs : sans impact tant qu'aucune vague n'est
+  `session-start.js` injecte les lignes **courtes** de `fleetLines(root, sessionId)` (périmètre
+  exclusif + branche + tête d'intégration + nb de lots sœurs, `< 10` lignes) — et **uniquement**
+  si la session tient un lot en vol ; sinon silence total. Deux points d'ancrage : au
+  **startup/clear** (via `withFleet`, en plus de MSG_ACTIF/handoff) **et après compaction** (bloc
+  **prioritaire** de `compactResumeMessage`, placé en 2ᵉ position pour survivre au rognage du cap —
+  c'est là que la garantie de périmètre compte le plus, le contexte compacté ayant perdu la
+  contrainte « ne modifie que X »). Le hook installé v1.3.0 **ignore** ces champs : sans impact tant qu'aucune vague n'est
   posée, mais la 1ʳᵉ vague réelle exigera un redéploiement du plugin. L'écriture par les sessions
   (inscription, transitions), le verdict de périmètre PreToolUse et le calcul de vague viennent
   aux lots #78–#80.

@@ -16,13 +16,16 @@ reste **inerte** tant qu'aucun lot n'y est inscrit.
   `removeLot` (une vague vidée redevient inerte), `lotForSession`. `fleetLines(root, sessionId)`
   produit les lignes **courtes** d'injection (< 10 lignes : périmètre exclusif + branche + tête
   d'intégration + nb de lots sœurs), vides hors vague ou pour une session non inscrite.
-- `promptimizer/hooks/session-start.js` : au **startup/clear** uniquement, injection des lignes
-  fleet **si** la session courante tient un lot en vol (helper `withFleet`, fail-open — message
-  inchangé au moindre doute). Aucun token injecté hors vague.
-- `test/run-tests.js` : section lot #77 (9 groupes) — inerte par défaut, JSON corrompu fail-open,
+- `promptimizer/hooks/session-start.js` : injection des lignes fleet **si** la session courante
+  tient un lot en vol (fail-open — message inchangé au moindre doute), à **deux** points d'ancrage :
+  au **startup/clear** (helper `withFleet`) **et après compaction** (bloc prioritaire de
+  `compactResumeMessage`, placé en 2ᵉ position pour survivre au cap — c'est après compaction que la
+  garantie de périmètre compte le plus). Aucun token injecté hors vague.
+- `test/run-tests.js` : section lot #77 (10 groupes) — inerte par défaut, JSON corrompu fail-open,
   `upsert` (idempotence par id), `lotForSession`, `setLotState`/`setIntegrationHead`, `fleetLines`
   (< 10 lignes, périmètre + tête + sœurs, silence pour non-propriétaire), `removeLot` (vidage →
-  inerte), lot sans `session_owner` écarté. Suite verte : 982 OK.
+  inerte), lot sans `session_owner` écarté, injection compact (bloc prioritaire avant le verify).
+  Suite verte : 985 OK.
 
 Non couvert (lots suivants) : l'**écriture** par les sessions filles (inscription, transitions),
 le verdict de périmètre PreToolUse (#78), le calcul de vague `pmz:parallelize` (#79) et la

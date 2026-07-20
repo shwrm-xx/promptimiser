@@ -99,7 +99,10 @@ function main() {
         : [];
       const skips = avoidRereadNotes(root, 5);
       const decisions = topSummaries(root, 3);
-      return injectContext('SessionStart', compactResumeMessage(cur, progress(b), { todos, skips, decisions }));
+      // Après compaction, une session fille de vague a perdu sa contrainte de périmètre :
+      // on la restitue en priorité haute (cf. compactResumeMessage). Vide hors vague.
+      const fleet = fleetLines(root, input.session_id || null);
+      return injectContext('SessionStart', compactResumeMessage(cur, progress(b), { todos, skips, decisions, fleet }));
     } catch (_) {
       return passThrough();
     }
