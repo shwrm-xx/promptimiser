@@ -2,6 +2,12 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-20 (version — 1.4.2)
+
+- `promptimizer/VERSION` : bump patch 1.4.1 → 1.4.2 (`bumpVersion('patch')`) — déploie le fix de
+  la garde de périmètre fleet-fille (matcher `PreToolUse` étendu) dans le plugin installé. Même
+  cause qu'au bump précédent : le cache plugin Claude Code est indexé par version.
+
 ## 2026-07-20 (fix — garde de périmètre fleet-fille jamais invoquée : matcher PreToolUse oublié)
 
 Le lot #78 avait ajouté dans `pre-tool-use.js` la garde de périmètre fleet-fille (`perimeterDeny`,
