@@ -2,6 +2,28 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-20 (fix — garde de périmètre fleet-fille jamais invoquée : matcher PreToolUse oublié)
+
+Le lot #78 avait ajouté dans `pre-tool-use.js` la garde de périmètre fleet-fille (`perimeterDeny`,
+`deny` sur écriture certainement hors périmètre en vague parallèle) pour les outils `Edit`/`Write`/
+`MultiEdit`, mais le matcher `PreToolUse` déclaré à Claude Code était resté `"Bash"` seul dans les
+DEUX canaux de déploiement. Résultat : le hook n'était jamais invoqué sur `Edit`/`Write`/`MultiEdit`
+en usage réel → la garde de périmètre était du code mort en production, malgré des tests verts (les
+tests invoquent le hook directement en stdin, en contournant le matcher — angle mort non couvert).
+
+- `promptimizer/hooks/hooks.json` (canal plugin) et `promptimizer/install/merge-settings.js`
+  (canal manuel, `PMZ_HOOKS.PreToolUse`) : matcher étendu à `"Bash|Edit|Write|MultiEdit"`. Aucun
+  coût ajouté hors vague : `perimeterDeny()` sort en tête sur `findFleetRoot()` (pas de fleet → pas
+  de `git` spawné, `passThrough()` immédiat) — comportement déjà couvert par les tests H1/H5-H8.
+  Idempotence de `merge-settings.js` inchangée (le remplacement d'une entrée PMZ se fait par tag de
+  commande, pas par matcher).
+- `test/run-tests.js` : nouveau bloc D3ter — anti-régression qui relit `PERIMETER_TOOLS` depuis la
+  source de `pre-tool-use.js` et vérifie que chaque tool_name géré (`Bash` + le contenu de
+  `PERIMETER_TOOLS`) apparaît bien dans le matcher `PreToolUse` des DEUX canaux. C'est le test qui
+  aurait attrapé cette régression.
+- Plugin reconstruit (`node promptimizer/install/build-plugin.js`) : `hooks.json` est copié tel quel
+  depuis la source, le correctif se propage sans action supplémentaire à `dist/marketplace/`.
+
 ## 2026-07-20 (version — 1.4.1)
 
 - `promptimizer/VERSION` : bump patch 1.4.0 → 1.4.1 (`bumpVersion('patch')`) — déploie le fix

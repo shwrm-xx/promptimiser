@@ -226,6 +226,36 @@ ok(pmzEntry(s, 'SessionStart').matcher === 'startup|resume|clear|compact', 'matc
 ok(pmzEntry(s, 'PostToolUse').matcher === 'Read|Edit|Write|TodoWrite', 'matcher PostToolUse couvre TodoWrite');
 ok(pmzEntry(s, 'PreCompact') && pmzEntry(s, 'PreCompact').matcher === 'manual|auto', 'PreCompact enregistré (manual|auto)');
 
+// D3ter. Anti-régression : les tool_names réellement gérés par pre-tool-use.js (Bash + le
+// contenu de PERIMETER_TOOLS, lot #78) doivent TOUS apparaître dans le matcher PreToolUse
+// déclaré — dans les DEUX canaux. Sinon Claude Code n'invoque jamais le hook sur ces
+// tool_names et la garde de périmètre devient du code mort en production (régression réelle :
+// le matcher est resté "Bash" seul après l'ajout de la garde Edit/Write/MultiEdit).
+{
+  const preToolSrc = fs.readFileSync(path.join(HOOKS, 'pre-tool-use.js'), 'utf8');
+  const mSet = preToolSrc.match(/PERIMETER_TOOLS\s*=\s*new Set\(\[([^\]]+)\]\)/);
+  ok(!!mSet, 'pre-tool-use.js : PERIMETER_TOOLS repéré dans la source (garde anti-drift du regex)');
+  const perimeterTools = mSet ? mSet[1].split(',').map((t) => t.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean) : [];
+  ok(perimeterTools.length > 0, 'pre-tool-use.js : PERIMETER_TOOLS non vide');
+  const handledTools = ['Bash', ...perimeterTools];
+
+  const hooksJson = JSON.parse(fs.readFileSync(path.join(HOOKS, 'hooks.json'), 'utf8'));
+  const pluginEntry = (hooksJson.hooks.PreToolUse || []).find((e) =>
+    (e.hooks || []).some((h) => typeof h.command === 'string' && h.command.includes('pre-tool-use.js')));
+  ok(!!pluginEntry, 'hooks.json (canal plugin) : entrée PreToolUse -> pre-tool-use.js trouvée');
+  const pluginTools = pluginEntry ? String(pluginEntry.matcher || '').split('|') : [];
+  for (const t of handledTools) {
+    ok(pluginTools.includes(t), `hooks.json (canal plugin) : matcher PreToolUse couvre ${t}`);
+  }
+
+  const msEntry = pmzEntry(s, 'PreToolUse');
+  ok(!!msEntry, 'merge-settings (canal manuel) : entrée PreToolUse installée');
+  const msTools = msEntry ? String(msEntry.matcher || '').split('|') : [];
+  for (const t of handledTools) {
+    ok(msTools.includes(t), `merge-settings (canal manuel) : matcher PreToolUse couvre ${t}`);
+  }
+}
+
 // D4. Strip legacy (vibe-session-governor) + double-firing
 writeSettings({
   hooks: {
