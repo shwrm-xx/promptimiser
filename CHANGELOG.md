@@ -2,6 +2,13 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-20 (version — 1.4.1)
+
+- `promptimizer/VERSION` : bump patch 1.4.0 → 1.4.1 (`bumpVersion('patch')`) — déploie le fix
+  `/scope` (proposition automatique des vagues parallèles) dans le plugin installé. Rappel
+  (leçon du jour) : le cache plugin Claude Code est indexé par version, un rebuild seul ne
+  suffit pas à le rafraîchir.
+
 ## 2026-07-20 (fix — `/scope` propose les vagues parallèles au découpage)
 
 L'epic « Vagues parallèles » (#76-80) livrait tout l'outillage (`fleet.json`, garde de
