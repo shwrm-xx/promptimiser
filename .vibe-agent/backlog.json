@@ -1795,7 +1795,7 @@
       "effort_hint": "medium",
       "epic": "Bridge RTK",
       "verify": "node test/run-tests.js",
-      "closed_commit": "5c4f8c3",
+      "closed_commit": "fd38f7f",
       "closed_at": "2026-07-20T14:19:14.152Z",
       "closed_session_id": null,
       "closed_occupancy": null,
