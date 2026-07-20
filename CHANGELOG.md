@@ -2,6 +2,32 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-20 (lot #79 — epic « Vagues parallèles » : pmz:parallelize, plan de vagues sans lancement)
+
+Quatrième brique de la décision D3. Une commande **propose** un plan de vagues parallèles à partir
+du backlog — et **ne lance rien** (ni branche, ni worktree, ni session fille).
+
+- `promptimizer/lib/backlog.js` : `planWaves(b)` — fonction **pure** qui groupe les lots « à
+  faire » en **vagues** aux périmètres **disjoints deux à deux** (via `perimeter.disjoint`) et
+  respectant l'ordre `depends_on` (satisfaite par une vague antérieure ou un lot déjà fait ;
+  layering glouton, terminaison garantie). Deux règles cardinales, fail-safe : **refus des
+  intersections** (périmètres chevauchants → vagues distinctes, jamais co-planifiés) ; au moindre
+  doute hors vague — `unplannable` (lot sans périmètre), `blocked` (cycle, ou dépend d'un
+  non parallélisable). `waveBranch(lot)` — nom de branche suggéré `pmz/lot-<id>-<slug>` (slug ASCII
+  borné, accents dépliés), présentatif, réutilisable au lot #80.
+- `promptimizer/scripts/backlog.js` : sous-commande `parallelize` (`--epic` pour filtrer, `--json`
+  avec `launched:false`) — affiche vagues + branches + périmètres, plus les lots non
+  parallélisables / bloqués, et un **garde-fou explicite « rien n'est lancé »**. Le lancement reste
+  **manuel et validé** (`start --id … --owner …`, cf. D3 palier 2).
+- `promptimizer/commands/parallelize.md` : nouvelle slash-command (auto-listée par `/help`) ;
+  ajoutée à `REQUIRED_COMMANDS` du build plugin.
+- `test/run-tests.js` : +17 assertions (planWaves : groupement/refus des intersections/unplannable/
+  blocked/cycle/dép. faite/entrée invalide ; waveBranch ; CLI parallelize humain + JSON + preuve
+  qu'aucun lot n'est démarré). Suite : **1038 OK · 0 échec**.
+- Docs : `ARCHITECTURE.md` (bullet #79) et `README.md` (9 commandes + liste des slash-commands).
+- **Non fait (interprétation minimale)** : la commande n'est **pas** portée au canal OpenCode
+  (`opencode/command/pmz/`, mirror manuel, reste à 8 commandes) — hors périmètre littéral de #79.
+
 ## 2026-07-20 (lot #78 — epic « Vagues parallèles » : garde de périmètre PreToolUse fleet-fille)
 
 Troisième brique de la décision D3. Le hook `pre-tool-use.js` sait désormais refuser une écriture

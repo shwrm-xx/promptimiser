@@ -286,6 +286,21 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   `ext_requests` de l'entrée du lot — trace **passive** pour l'orchestrateur (jamais un droit
   d'écriture : l'écriture reste refusée). L'appel est **best-effort** (try/catch, jamais
   bloquant), idempotent (même chemin déjà tracé → pas de réécriture), et no-op hors fleet actif.
+- **Plan de vagues — `pmz:parallelize`** (lot #79, 4ᵉ brique de
+  [D3](docs/decisions/D3-parallelisation-gouvernee.md)) : `backlog.planWaves(b)` (fonction
+  **pure** : ne lit/écrit rien, ne lance rien) calcule un plan de vagues parallèles à partir des
+  lots « à faire ». Une **vague** = un groupe de lots aux **périmètres disjoints deux à deux**
+  (via `perimeter.disjoint`) dont toutes les `depends_on` sont satisfaites par une vague antérieure
+  ou un lot déjà fait ; layering glouton (au moins un lot placé par tour → terminaison garantie).
+  **Deux règles cardinales, fail-safe** : les périmètres qui se **chevauchent** ne partagent jamais
+  une vague (l'un est repoussé plus loin — *refus des intersections*) ; au moindre doute, hors
+  vague — lot sans périmètre → `unplannable`, lot dont une dépendance ne pourra jamais aboutir
+  (cycle, dépend d'un `unplannable`) → `blocked`. Retour `{ waves, unplannable, blocked }`.
+  `backlog.waveBranch(lot)` dérive un nom de branche suggéré (`pmz/lot-<id>-<slug>`, slug ASCII
+  borné, accents dépliés) — présentatif, réutilisé au lot #80. La CLI `scripts/backlog.js
+  parallelize` (option `--epic` pour filtrer, `--json` pour la machine, `launched:false`) **PROPOSE**
+  le plan (vagues + branches + périmètres) et **ne lance RIEN** : ni branche, ni worktree, ni
+  session fille. Le lancement reste **manuel et validé** (`start --id … --owner …`, cf. D3 palier 2).
 - **Ledgers projet** (`.vibe-agent/{read,context}-ledger.json`) : auto-créés par
   `ensureLedger` (tout hook qui touche au projet) puis maintenus par `post-tool-use.js`
   (atomique `tmp`+`rename`, cap FIFO). Servent l'advisory `/check-context`. Granularité

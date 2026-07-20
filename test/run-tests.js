@@ -4632,6 +4632,113 @@ section('fleet — demande d\'extension de périmètre requestExtension (lib/fle
   ok(JSON.stringify(lot2.ext_requests) === JSON.stringify([]), 'lot : ext_requests par défaut = [] (rétrocompat)');
 }
 
+section('backlog — planWaves + waveBranch : plan de vagues parallèles (lib, lot #79)');
+{
+  const ids = (arr) => arr.map((l) => l.id);
+  const P = (lots) => backlogLib.planWaves({ lots });
+
+  // P1. deux périmètres disjoints -> même vague ; dépendant -> vague suivante
+  let plan = P([
+    { id: 1, title: 'A', status: 'todo', perimeter: ['lib/a'], depends_on: [] },
+    { id: 2, title: 'B', status: 'todo', perimeter: ['lib/b'], depends_on: [] },
+    { id: 3, title: 'C', status: 'todo', perimeter: ['lib/c'], depends_on: [1, 2] },
+  ]);
+  ok(plan.waves.length === 2 && ids(plan.waves[0]).sort().join(',') === '1,2' && ids(plan.waves[1]).join(',') === '3',
+    'planWaves : disjoints groupés en vague 1, dépendant en vague 2 (ordre depends_on)');
+
+  // P2. REFUS des intersections : périmètres chevauchants jamais dans la même vague
+  plan = P([
+    { id: 1, title: 'A', status: 'todo', perimeter: ['lib/a'], depends_on: [] },
+    { id: 2, title: 'A-sub', status: 'todo', perimeter: ['lib/a/sub'], depends_on: [] },
+  ]);
+  ok(plan.waves.length === 2 && ids(plan.waves[0]).join(',') === '1' && ids(plan.waves[1]).join(',') === '2',
+    'planWaves : périmètres chevauchants -> vagues distinctes (refus des intersections)');
+
+  // P3. lot sans périmètre -> non parallélisable (jamais dans une vague)
+  plan = P([
+    { id: 1, title: 'A', status: 'todo', perimeter: ['lib/a'], depends_on: [] },
+    { id: 2, title: 'NoP', status: 'todo', perimeter: [], depends_on: [] },
+  ]);
+  ok(plan.waves.length === 1 && ids(plan.waves[0]).join(',') === '1' &&
+    plan.unplannable.length === 1 && plan.unplannable[0].lot.id === 2,
+    'planWaves : lot sans périmètre -> unplannable, hors vague');
+
+  // P4. dépendance sur un lot fait -> satisfaite d'emblée
+  plan = P([
+    { id: 1, title: 'Done', status: 'done', perimeter: ['lib/a'], depends_on: [] },
+    { id: 2, title: 'Needs done', status: 'todo', perimeter: ['lib/b'], depends_on: [1] },
+  ]);
+  ok(plan.waves.length === 1 && ids(plan.waves[0]).join(',') === '2',
+    'planWaves : dépendance sur lot fait -> satisfaite (vague 1)');
+
+  // P5. bloqués : cycle + dépendance sur un non parallélisable
+  plan = P([
+    { id: 1, title: 'Cyc1', status: 'todo', perimeter: ['lib/a'], depends_on: [2] },
+    { id: 2, title: 'Cyc2', status: 'todo', perimeter: ['lib/b'], depends_on: [1] },
+    { id: 3, title: 'NoP', status: 'todo', perimeter: [], depends_on: [] },
+    { id: 4, title: 'DepNoP', status: 'todo', perimeter: ['lib/d'], depends_on: [3] },
+  ]);
+  ok(plan.waves.length === 0 && ids(plan.blocked.map((x) => x.lot)).sort().join(',') === '1,2,4',
+    'planWaves : cycle + dépendance sur non parallélisable -> bloqués, aucune vague');
+
+  // P6. backlog vide / non-array -> plan vide, jamais throw
+  const empty = backlogLib.planWaves({ lots: [] });
+  const bad = backlogLib.planWaves(null);
+  ok(empty.waves.length === 0 && empty.unplannable.length === 0 && empty.blocked.length === 0 &&
+    bad.waves.length === 0, 'planWaves : vide / entrée invalide -> plan vide (fail-safe)');
+
+  // P7. waveBranch : slug ASCII borné, accents dépliés, fallback
+  ok(backlogLib.waveBranch({ id: 7, title: 'Auth Core' }) === 'pmz/lot-7-auth-core', 'waveBranch : slug basique');
+  ok(backlogLib.waveBranch({ id: 8, title: 'Réintégration & vigies!!' }) === 'pmz/lot-8-reintegration-vigies',
+    'waveBranch : accents dépliés + non-alphanum -> tiret, sans tiret final');
+  ok(backlogLib.waveBranch({ id: 9, title: '' }) === 'pmz/lot-9-lot', 'waveBranch : titre vide -> fallback « lot »');
+}
+
+section('backlog — CLI parallelize : plan proposé, rien lancé (scripts/backlog.js, lot #79)');
+{
+  const repoPz = path.join(SANDBOX, 'repo-parallelize');
+  fs.mkdirSync(repoPz, { recursive: true });
+  execFileSync('git', ['init', '-q', repoPz]);
+  fs.writeFileSync(path.join(repoPz, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoPz, 'add', '.']);
+  execFileSync('git', ['-C', repoPz, 'commit', '-q', '-m', 'init']);
+  runNode(BKLG, ['add', '--cwd', repoPz, '--title', 'Auth core', '--model', 'opus', '--perimeter', 'lib/a']);
+  runNode(BKLG, ['add', '--cwd', repoPz, '--title', 'UI panel', '--model', 'sonnet', '--perimeter', 'lib/b']);
+  runNode(BKLG, ['add', '--cwd', repoPz, '--title', 'Wire', '--model', 'opus', '--perimeter', 'lib/c', '--depends', '1,2']);
+  runNode(BKLG, ['add', '--cwd', repoPz, '--title', 'Sans périmètre', '--model', 'sonnet']);
+
+  // C1. sortie humaine : vagues + branches + non parallélisables + garde-fou « rien lancé »
+  const rh = runNode(BKLG, ['parallelize', '--cwd', repoPz]);
+  ok(/Vague 1/.test(rh.out) && /Vague 2/.test(rh.out), 'CLI parallelize : deux vagues affichées');
+  ok(/pmz\/lot-1-auth-core/.test(rh.out) && /pmz\/lot-3-wire/.test(rh.out), 'CLI parallelize : branches suggérées');
+  ok(/Non parallélisables[^\n]*#4/.test(rh.out), 'CLI parallelize : lot sans périmètre listé non parallélisable');
+  ok(/rien n'est lancé/.test(rh.out) && /aucune branche, worktree ni session fille/.test(rh.out),
+    'CLI parallelize : garde-fou « rien lancé » affiché');
+
+  // C2. JSON : launched:false + structure de vagues
+  const rj = runNode(BKLG, ['parallelize', '--cwd', repoPz, '--json']);
+  let parsed = null;
+  try { parsed = JSON.parse(rj.out); } catch (_) { /* laissé null */ }
+  ok(parsed && parsed.launched === false && Array.isArray(parsed.waves) && parsed.waves.length === 2 &&
+    parsed.waves[0].length === 2 && parsed.waves[1][0].id === 3 && parsed.unplannable.length === 1,
+    'CLI parallelize --json : launched:false + vagues + unplannable');
+
+  // C3. NE LANCE RIEN : aucun lot passé en cours, aucun owner posé
+  const b = backlogLib.loadBacklog(repoPz);
+  ok(b.lots.every((l) => l.status === 'todo' && l.session_owner === null),
+    'CLI parallelize : n\'a rien lancé (tous todo, aucun owner)');
+
+  // C4. aucun lot à faire -> message dédié
+  const repoEmpty = path.join(SANDBOX, 'repo-parallelize-empty');
+  fs.mkdirSync(repoEmpty, { recursive: true });
+  execFileSync('git', ['init', '-q', repoEmpty]);
+  fs.writeFileSync(path.join(repoEmpty, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoEmpty, 'add', '.']);
+  execFileSync('git', ['-C', repoEmpty, 'commit', '-q', '-m', 'init']);
+  const re = runNode(BKLG, ['parallelize', '--cwd', repoEmpty]);
+  ok(/rien à paralléliser/.test(re.out), 'CLI parallelize : backlog vide -> « rien à paralléliser »');
+}
+
 // ============================ OC. OPENCODE ============================
 section('OpenCode — squelette plugin + install sandbox (test/run-tests-opencode.js)');
 {

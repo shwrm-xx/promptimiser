@@ -63,6 +63,52 @@ function show(root, json, epicFilter) {
   }
 }
 
+// pmz:parallelize — calcule un plan de vagues parallèles (périmètres disjoints + ordre
+// depends_on) et le PROPOSE : branches + périmètres, sans RIEN lancer (ni branche, ni worktree,
+// ni session fille). Refuse les intersections (jamais deux périmètres chevauchants dans une
+// vague). Le lancement reste manuel et validé par l'humain (cf. D3, palier 2).
+function parallelize(root, json, epicFilter) {
+  let b = backlog.loadBacklog(root);
+  if (epicFilter) b = { ...b, lots: b.lots.filter((l) => l.epic === epicFilter) };
+  const plan = backlog.planWaves(b);
+  const withBranch = (l) => ({ id: l.id, title: l.title, branch: backlog.waveBranch(l), perimeter: l.perimeter, depends_on: l.depends_on });
+
+  if (json) {
+    return out(JSON.stringify({
+      launched: false,
+      waves: plan.waves.map((w) => w.map(withBranch)),
+      unplannable: plan.unplannable.map((u) => ({ id: u.lot.id, title: u.lot.title, reason: u.reason })),
+      blocked: plan.blocked.map((x) => ({ id: x.lot.id, title: x.lot.title, reason: x.reason })),
+    }, null, 2));
+  }
+
+  const nParallel = plan.waves.reduce((s, w) => s + w.length, 0);
+  out('## Plan de vagues (proposition — rien n\'est lancé)');
+  if (!nParallel && !plan.unplannable.length && !plan.blocked.length) {
+    return out(epicFilter ? `Aucun lot « à faire » pour l'epic « ${epicFilter} » — rien à paralléliser.`
+      : 'Aucun lot « à faire » — rien à paralléliser.');
+  }
+  out(`${nParallel} lot(s) parallélisable(s) sur ${plan.waves.length} vague(s).`);
+  out('');
+  plan.waves.forEach((w, i) => {
+    out(`### Vague ${i + 1} — ${w.length} lot(s) en parallèle`);
+    for (const l of w) {
+      const dep = l.depends_on.length ? ` (dépend de ${l.depends_on.map((d) => '#' + d).join(', ')})` : '';
+      out(`- #${l.id} « ${l.title} »${dep} — branche \`${backlog.waveBranch(l)}\` — périmètre : ${l.perimeter.join(', ')}`);
+    }
+    out('');
+  });
+  if (plan.unplannable.length) {
+    out(`Non parallélisables (aucun périmètre) : ${plan.unplannable.map((u) => '#' + u.lot.id).join(', ')} — à traiter en série.`);
+  }
+  if (plan.blocked.length) {
+    for (const x of plan.blocked) out(`Bloqué : #${x.lot.id} « ${x.lot.title} » — ${x.reason}.`);
+  }
+  out('');
+  out('⚠️ Proposition seule : aucune branche, worktree ni session fille n\'a été créé.');
+  out(`Pour lancer une vague, valide le plan puis démarre chaque lot manuellement : node ${PMZ_BASE}/scripts/backlog.js start --id <id> --owner <session>.`);
+}
+
 function main() {
   const root = gitRoot(parseCwd());
   if (!root) return out('Pas un dépôt git — backlog indisponible.');
@@ -166,6 +212,8 @@ function main() {
     return out(format === 'csv' ? backlog.exportCsv(b) : backlog.exportMarkdown(b));
   }
 
+  if (cmd === 'parallelize') return parallelize(root, json, flag('epic'));
+
   if (cmd === 'reconcile') {
     const r = backlog.reconcile(root);
     if (!r.fixed.length && !r.warnings.length) return out('Rien à réparer.');
@@ -174,7 +222,7 @@ function main() {
     return;
   }
 
-  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | next | reconcile | epic | verify | trigram | export.`);
+  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | next | parallelize | reconcile | epic | verify | trigram | export.`);
 }
 
 if (require.main === module) {

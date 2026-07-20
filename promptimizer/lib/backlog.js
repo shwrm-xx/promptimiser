@@ -504,6 +504,87 @@ function pairwiseCoexist(lots) {
   return true;
 }
 
+// Nom de branche suggéré pour un lot en vol (préfixe `pmz/lot-<id>-<slug>`). Slug ASCII borné,
+// dérivé du titre (accents dépliés, non-alphanum → tiret). Purement présentatif — réutilisé par
+// pmz:parallelize (plan) et, à terme, pmz:reintegrate (#80). Ne lit/écrit rien.
+function waveBranch(lot) {
+  const slug = String((lot && lot.title) || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // déplie les accents
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32)
+    .replace(/-+$/, '') || 'lot';
+  return `pmz/lot-${lot && lot.id}-${slug}`;
+}
+
+// Calcule un PLAN DE VAGUES parallèles à partir des lots « à faire » (D3). Une vague est un
+// groupe de lots dont les périmètres sont disjoints DEUX À DEUX (le conflit git y devient
+// structurellement impossible) et dont toutes les dépendances `depends_on` sont satisfaites par
+// une vague antérieure ou par un lot déjà fait. Fonction PURE : ne lit/écrit rien, ne lance
+// rien — elle PROPOSE seulement. Deux règles cardinales, fail-safe :
+//   - REFUS des intersections : deux lots aux périmètres qui se chevauchent ne partagent JAMAIS
+//     une vague ; l'un est repoussé à une vague ultérieure (jamais co-planifiés).
+//   - Au moindre doute → hors vague : un lot sans périmètre est « non parallélisable » ; un lot
+//     dont une dépendance ne pourra jamais être satisfaite (cycle, dépend d'un non parallélisable)
+//     est « bloqué ». Ni l'un ni l'autre n'entre dans une vague.
+// Retour : { waves: [[lot, …], …], unplannable: [{ lot, reason }], blocked: [{ lot, reason }] }.
+// L'ordre des vagues respecte `depends_on` ; l'ordre intra-vague suit l'id (stable).
+function planWaves(b) {
+  const lots = (b && Array.isArray(b.lots)) ? b.lots : [];
+  const doneIds = new Set(lots.filter((l) => l.status === 'done').map((l) => l.id));
+  const todo = lots.filter((l) => l.status === 'todo');
+  const withPerim = todo.filter((l) => Array.isArray(l.perimeter) && l.perimeter.length > 0);
+  const unplannable = todo
+    .filter((l) => !(Array.isArray(l.perimeter) && l.perimeter.length > 0))
+    .map((l) => ({ lot: l, reason: 'aucun périmètre défini' }));
+  const unplannableIds = new Set(unplannable.map((u) => u.lot.id));
+  const plannableIds = new Set(withPerim.map((l) => l.id));
+
+  const blocked = [];
+  // Un lot qui dépend d'un lot « à faire » SANS périmètre ne sera jamais plaçable (sa dépendance
+  // n'entrera dans aucune vague) → bloqué d'emblée.
+  let remaining = withPerim.filter((l) => {
+    const deps = Array.isArray(l.depends_on) ? l.depends_on : [];
+    if (deps.some((d) => unplannableIds.has(d))) {
+      blocked.push({ lot: l, reason: 'dépend d’un lot non parallélisable' });
+      return false;
+    }
+    return true;
+  });
+
+  // Une dépendance est satisfaite si : c'est un lot plaçable déjà posé dans une vague antérieure,
+  // OU un lot déjà fait, OU une référence hors-plan (abandonné / id inconnu) — tolérée, jamais bloquante.
+  const placed = new Set(doneIds);
+  function depsSatisfied(l) {
+    const deps = Array.isArray(l.depends_on) ? l.depends_on : [];
+    return deps.every((d) => (plannableIds.has(d) ? placed.has(d) : true));
+  }
+
+  const waves = [];
+  while (remaining.length) {
+    const ready = remaining.filter(depsSatisfied).sort((a, c) => a.id - c.id);
+    if (!ready.length) {
+      // Plus aucun lot prêt alors qu'il en reste : cycle ou dépendance impossible → tous bloqués.
+      for (const l of remaining) blocked.push({ lot: l, reason: 'dépendance circulaire ou impossible' });
+      break;
+    }
+    // Remplissage glouton : un lot rejoint la vague seulement si son périmètre est disjoint de
+    // TOUS ceux déjà retenus ; sinon il attend une vague ultérieure. La vague vide accepte
+    // toujours le premier prêt → progrès garanti à chaque tour (terminaison).
+    const wave = [];
+    for (const l of ready) {
+      if (wave.every((w) => perimeterLib.disjoint(w.perimeter, l.perimeter))) wave.push(l);
+    }
+    const waveIds = new Set(wave.map((l) => l.id));
+    wave.forEach((l) => placed.add(l.id));
+    waves.push(wave);
+    remaining = remaining.filter((l) => !waveIds.has(l.id));
+  }
+
+  return { waves, unplannable, blocked };
+}
+
 // Réparation volontairement bête — jamais bloquante, jamais de matching sémantique.
 function reconcile(root) {
   const fixed = [];
@@ -563,7 +644,7 @@ function exportMarkdown(b) {
 module.exports = {
   backlogFile, loadBacklog, saveBacklog, addLot, setVerify, setPerimeter, setDepends, startLot, doneLot, dropLot, noteLot,
   touchLot, addCost, currentLot, nextLot, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
-  epicBilan, estimateCost, canCoexist, pairwiseCoexist,
+  epicBilan, estimateCost, canCoexist, pairwiseCoexist, planWaves, waveBranch,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot, modelEffortTag,
   exportCsv, exportMarkdown,
   MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_OWNER, MAX_DEPENDS, MAX_NOTE, MAX_TODOS, EFFORT_LEVELS,
