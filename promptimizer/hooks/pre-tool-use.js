@@ -13,8 +13,9 @@ const { disabled } = require('../lib/env');
 if (disabled()) process.exit(0);
 
 const { parseHookInput } = require('../lib/stdin');
-const { preToolDecision, passThrough } = require('../lib/output');
+const { preToolDecision, preToolUpdatedInput, passThrough } = require('../lib/output');
 const { classify } = require('../lib/bash-guard');
+const { rewriteCommand } = require('../lib/optimizer');
 const { findFleetRoot, loadFleet, lotForSession, requestExtension } = require('../lib/fleet');
 const { memberVerdict, toRelPosix } = require('../lib/perimeter');
 
@@ -62,6 +63,21 @@ function main() {
     }
     if (verdict === 'ask') {
       return preToolDecision('ask', 'Commande destructive — confirmer avant exécution (Promptimizer) : ' + short);
+    }
+    // Commande SÛRE (allow) : bridge RTK optionnel, DEFAULT OFF (lot #81). La sécurité PMZ a déjà
+    // tranché sur la commande ORIGINALE — on ne réécrit qu'une commande jugée sûre. Fail-open :
+    // toute absence/panne RTK renvoie applied:false → passThrough (la commande originale passe).
+    const rw = rewriteCommand(cmd, { cwd: input.cwd });
+    if (rw.applied) {
+      // Vérification défensive (spec §8) : la commande réécrite doit rester SÛRE. Un RTK produisant
+      // une commande deny/ask (résultat anormal) est IGNORÉ — jamais d'exécution silencieuse d'une
+      // commande dangereuse via réécriture. On préserve les autres champs de tool_input (timeout,
+      // description, run_in_background) : updatedInput remplace l'objet, ne le fusionne pas.
+      if (classify(rw.rewrittenCommand) === null) {
+        return preToolUpdatedInput(
+          Object.assign({}, input.tool_input, { command: rw.rewrittenCommand })
+        );
+      }
     }
     return passThrough();
   }

@@ -2,6 +2,36 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-20 — lot #81 « Spike-gate + socle optimizer + bridge RTK (default OFF) » (epic « Bridge RTK »)
+
+Première brique de l'epic « Bridge RTK » : faire transiter une commande Bash **jugée sûre** par un
+moteur de compression externe (RTK) via une réécriture d'input du hook `PreToolUse`, sans dupliquer
+le contrôle de sécurité PMZ. **Désactivé par défaut** — opt-in strict `PMZ_RTK_ENABLE=1`.
+
+- `promptimizer/lib/optimizer.js` (nouveau) : socle command-optimizer **pur et fail-open**.
+  `rewriteCommand(cmd, opts)` renvoie une `RewriteResult` (`{applied, originalCommand,
+  rewrittenCommand, provider, reason}`). Contrat CLI `rtk rewrite "<cmd>"` : **exit 0 + stdout non
+  vide ≠ original → réécrit** ; exit 1/2/3, timeout, binaire absent, stdout vide/identique →
+  commande **originale** (fail-open). Pas de double préfixe (`rtk …` / `RTK_DISABLED=1 …` en tête →
+  inchangé). Appel **sans shell** (argv `execFileSync`). Détection minimale (présence binaire) et
+  **hors chemin chaud** : default OFF → sortie immédiate, zéro I/O ; aucun `rtk --version`.
+- `promptimizer/hooks/pre-tool-use.js` : après le verdict `allow` (sécurité PMZ tranchée sur la
+  commande **originale**), bridge RTK optionnel. La commande réécrite est **re-classifiée
+  défensivement** — un RTK produisant une commande dangereuse est **ignoré** (jamais d'exécution
+  silencieuse). Émet `updatedInput` **sans** `permissionDecision` (flux d'autorisation normal ;
+  `Object.assign` préserve les autres champs de `tool_input` — sémantique de remplacement CC).
+- `promptimizer/lib/output.js` : `preToolUpdatedInput(updatedInput)` — le « gate ».
+- `promptimizer/lib/env.js` : `findTool(name)` (chemin absolu ou `null`, sans `--version`).
+- `promptimizer/lib/timeouts.js` : `RTK_REWRITE_MS` (400 ms, override `PMZ_RTK_REWRITE_TIMEOUT_MS`),
+  borné bien en deçà du watchdog PreToolUse.
+- `test/run-tests.js` : section « Bridge RTK » — unitaires (contrat exit 0/1/2/3, timeout, absent,
+  noop, double préfixe, default OFF) + **gate prouvé au niveau hook** (`updatedInput` sans
+  `permissionDecision`, champs préservés, sécurité avant réécriture, vérif défensive). Préchauffage
+  anti-flake ETXTBSY du faux binaire `rtk`. Suite : **1106 OK · 0 échec**.
+- `ARCHITECTURE.md` / `README.md` : contrat du hook + sous-section « Bridge RTK » ; variable
+  d'opt-in documentée. Socle livré comme **seam fonctionnel** (registre à classes/`health()` de la
+  spec §7 reporté au lot #82, doctor/status) ; câblage OpenCode hors périmètre de ce lot.
+
 ## 2026-07-20 (version — 1.4.2)
 
 - `promptimizer/VERSION` : bump patch 1.4.1 → 1.4.2 (`bumpVersion('patch')`) — déploie le fix de

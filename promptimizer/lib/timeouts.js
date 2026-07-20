@@ -25,8 +25,17 @@ const VERIFY_CLOSE_MS = (() => {
   return Number.isFinite(env) && env > 0 ? env : 120000;
 })();
 
+// Réécriture RTK (lot #81, bridge command-optimizer) : appel `rtk rewrite` sur le chemin chaud
+// PreToolUse. Court PAR CONSTRUCTION — RTK doit répondre en centaines de ms ou être ignoré (la
+// commande originale passe). Borné bien en deçà du watchdog PreToolUse (watchdogMs(5) = 4500 ms)
+// pour ne jamais faire pendre le hook. Override d'env (tuning / tests) ; borne > 0 sinon défaut.
+const RTK_REWRITE_MS = (() => {
+  const env = parseInt(process.env.PMZ_RTK_REWRITE_TIMEOUT_MS || '', 10);
+  return Number.isFinite(env) && env > 0 ? env : 400;
+})();
+
 function watchdogMs(timeoutS) {
   return Math.max(0, timeoutS * 1000 - WATCHDOG_MARGIN_MS);
 }
 
-module.exports = { SETTINGS_TIMEOUT_S, WATCHDOG_MARGIN_MS, VERIFY_AUTOCLOSE_MS, VERIFY_CLOSE_MS, watchdogMs };
+module.exports = { SETTINGS_TIMEOUT_S, WATCHDOG_MARGIN_MS, VERIFY_AUTOCLOSE_MS, VERIFY_CLOSE_MS, RTK_REWRITE_MS, watchdogMs };

@@ -59,4 +59,22 @@ function resolveTool(name) {
   return name;
 }
 
-module.exports = { disabled, advisoryDisabled, hasTool, resolveNode, resolveTool };
+// Chemin absolu d'un outil s'il est exécutable, sinon null (distinct de resolveTool qui renvoie
+// le nom nu en repli). Utilisé par le socle command-optimizer (lot #81) pour détecter RTK sans
+// lancer `rtk --version` : présence binaire seule, sur le PATH + dirs usuels.
+function findTool(name) {
+  const fromPath = (process.env.PATH || '').split(path.delimiter);
+  for (const dir of [...fromPath, ...EXTRA_DIRS]) {
+    if (!dir) continue;
+    const cand = path.join(dir, name);
+    try {
+      fs.accessSync(cand, fs.constants.X_OK);
+      return cand;
+    } catch (_) {
+      /* continue */
+    }
+  }
+  return null;
+}
+
+module.exports = { disabled, advisoryDisabled, hasTool, resolveNode, resolveTool, findTool };

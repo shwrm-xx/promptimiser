@@ -209,6 +209,11 @@ redémarre Claude Code : les matchers de hooks ne s'appliquent qu'à la réinsta
   Retire la variable pour réactiver.
 - **Couper juste la note de relecture redondante** (le reste de PMZ continue de tourner) :
   `PMZ_NO_ADVISORY=1`.
+- **Bridge RTK** (compression des sorties de commande via l'outil externe [RTK]) : **désactivé par
+  défaut**. Opt-in en exportant `PMZ_RTK_ENABLE=1` (et en ayant `rtk` installé) — PMZ fait alors
+  transiter les commandes Bash **jugées sûres** par `rtk rewrite`, la sécurité PMZ restant
+  prioritaire (une commande dangereuse n'est jamais réécrite). Sans la variable, aucun surcoût.
+  (Activation guidée et diagnostic à venir dans une prochaine version.)
 - Les hooks sont chargés au **démarrage** de Claude Code : après (dés)installation, **redémarre**
   l'app pour appliquer les changements.
 

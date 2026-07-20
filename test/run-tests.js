@@ -4981,6 +4981,106 @@ section('backlog — CLI reintegrate : plan proposé (défaut) + exécution (--e
   ok(fleet.loadFleet(repo).lots.find((l) => l.id === 1).state === 'reintegrated', 'CR3 : fleet -> lot reintegrated');
 }
 
+// ============================ RTK1. BRIDGE RTK — SOCLE + GATE (lot #81) ============================
+section('Bridge RTK — socle optimizer + gate PreToolUse (lot #81, default OFF)');
+{
+  const optimizer = require(path.join(PKG, 'lib', 'optimizer'));
+
+  // Faux binaire `rtk` (node shebang) piloté par RTK_TEST_MODE. argv: [node, rtk, 'rewrite', '<cmd>'].
+  const rtkDir = path.join(SANDBOX, 'rtkbin');
+  fs.mkdirSync(rtkDir, { recursive: true });
+  const rtkBin = path.join(rtkDir, 'rtk');
+  fs.writeFileSync(rtkBin, [
+    '#!/usr/bin/env node',
+    "'use strict';",
+    "const mode = process.env.RTK_TEST_MODE || 'rewrite';",
+    "const cmd = process.argv[3] || '';",
+    "if (mode === 'noop') { process.stdout.write(cmd); process.exit(0); }",
+    "if (mode === 'danger') { process.stdout.write('rm -rf /'); process.exit(0); }",
+    "if (mode === 'exit1') { process.exit(1); }",
+    "if (mode === 'exit2') { process.exit(2); }",
+    "if (mode === 'exit3') { process.exit(3); }",
+    "if (mode === 'timeout') { setTimeout(function () { process.stdout.write('late'); process.exit(0); }, 5000); }",
+    "else { process.stdout.write('rtk-wrapped: ' + cmd); process.exit(0); }",
+    '',
+  ].join('\n'));
+  fs.chmodSync(rtkBin, 0o755);
+  // ETXTBSY : exécuter un binaire fraîchement écrit peut échouer tant que le FS ne l'a pas libéré
+  // (macOS/Linux). On « préchauffe » : on retente une invocation anodine jusqu'à ce qu'elle passe,
+  // rendant les tests déterministes (l'échec initial était ce flake, pas un bug du produit).
+  for (let i = 0; i < 200; i++) {
+    try {
+      execFileSync(rtkBin, ['rewrite', 'warmup'], { encoding: 'utf8', env: Object.assign({}, process.env, { RTK_TEST_MODE: 'rewrite' }) });
+      break;
+    } catch (e) {
+      if (!/ETXTBSY/.test(String((e && e.message) || e))) break;
+    }
+  }
+  const resolveRtk = () => rtkBin;
+  const envOn = (mode) => Object.assign({}, process.env, { PMZ_RTK_ENABLE: '1', RTK_TEST_MODE: mode || 'rewrite' });
+
+  // -- Unitaires rewriteCommand : fonction pure (aucune décision de permission) --
+  ok(optimizer.rewriteCommand('git status', {}).applied === false,
+    'RTK: default OFF → applied:false (aucune réécriture sans opt-in)');
+  ok(optimizer.rewriteCommand('git status', { env: { PMZ_RTK_ENABLE: '1' }, resolve: () => null }).applied === false,
+    'RTK: activé mais binaire absent → applied:false');
+  {
+    const r = optimizer.rewriteCommand('git status', { env: envOn('rewrite'), resolve: resolveRtk });
+    ok(r.applied === true && r.rewrittenCommand === 'rtk-wrapped: git status' && r.provider === 'rtk',
+      'RTK: exit 0 + stdout ≠ orig → réécriture appliquée');
+  }
+  for (const [mode, label] of [['exit1', 'exit 1'], ['exit2', 'exit 2'], ['exit3', 'exit 3']]) {
+    const r = optimizer.rewriteCommand('git status', { env: envOn(mode), resolve: resolveRtk });
+    ok(r.applied === false && r.rewrittenCommand === 'git status', 'RTK: ' + label + ' → commande inchangée');
+  }
+  {
+    const r = optimizer.rewriteCommand('git status', { env: envOn('timeout'), resolve: resolveRtk, timeoutMs: 200 });
+    ok(r.applied === false && r.rewrittenCommand === 'git status', 'RTK: timeout → commande inchangée (fail-open)');
+  }
+  ok(optimizer.rewriteCommand('git status', { env: envOn('noop'), resolve: resolveRtk }).applied === false,
+    'RTK: stdout === original → applied:false (noop)');
+  ok(optimizer.rewriteCommand('rtk rewrite git status', { env: envOn('rewrite'), resolve: resolveRtk }).applied === false,
+    'RTK: commande déjà préfixée « rtk … » → pas de double préfixe');
+  ok(optimizer.rewriteCommand('RTK_DISABLED=1 git status', { env: envOn('rewrite'), resolve: resolveRtk }).applied === false,
+    'RTK: override « RTK_DISABLED=1 … » respecté → applied:false');
+
+  // -- GATE prouvé au niveau hook : updatedInput SANS permissionDecision (rtk résolu via PATH) --
+  const onPath = (mode) => ({ PATH: rtkDir + path.delimiter + process.env.PATH, PMZ_RTK_ENABLE: '1', RTK_TEST_MODE: mode });
+  {
+    const r = runHook('pre-tool-use.js',
+      { tool_name: 'Bash', tool_input: { command: 'git status', description: 'd', timeout: 120000 } },
+      onPath('rewrite'));
+    let j = null; try { j = JSON.parse(r.out); } catch (_) { /* null */ }
+    const hs = j && j.hookSpecificOutput;
+    ok(r.code === 0 && hs && hs.updatedInput && hs.updatedInput.command === 'rtk-wrapped: git status',
+      'GATE: commande sûre + RTK actif → updatedInput.command réécrit');
+    ok(hs && !('permissionDecision' in hs),
+      'GATE: réécriture SANS permissionDecision (flux d\'autorisation normal)');
+    ok(hs && hs.updatedInput && hs.updatedInput.description === 'd' && hs.updatedInput.timeout === 120000,
+      'GATE: champs tool_input préservés (sémantique de remplacement)');
+  }
+  {
+    // Sécurité AVANT réécriture : dangereuse + RTK actif → deny sur l'ORIGINALE, pas d'updatedInput.
+    const r = runHook('pre-tool-use.js', { tool_name: 'Bash', tool_input: { command: 'rm -rf /' } }, onPath('rewrite'));
+    let j = null; try { j = JSON.parse(r.out); } catch (_) { /* null */ }
+    const hs = j && j.hookSpecificOutput;
+    ok(hs && hs.permissionDecision === 'deny' && !hs.updatedInput,
+      'GATE: commande dangereuse + RTK actif → deny (sécurité avant réécriture), pas d\'updatedInput');
+  }
+  {
+    // Vérification défensive : RTK réécrit une commande sûre EN dangereuse → réécriture IGNORÉE.
+    const r = runHook('pre-tool-use.js', { tool_name: 'Bash', tool_input: { command: 'git status' } }, onPath('danger'));
+    ok(r.code === 0 && !r.out.trim(),
+      'GATE: réécriture produisant une commande dangereuse → ignorée (passThrough sur l\'originale)');
+  }
+  {
+    // Default OFF : commande sûre, rtk sur le PATH mais SANS opt-in → passThrough (aucune réécriture).
+    const r = runHook('pre-tool-use.js', { tool_name: 'Bash', tool_input: { command: 'git status' } },
+      { PATH: rtkDir + path.delimiter + process.env.PATH, RTK_TEST_MODE: 'rewrite' });
+    ok(r.code === 0 && !r.out.trim(), 'GATE: default OFF → passThrough (pas de réécriture sans PMZ_RTK_ENABLE=1)');
+  }
+}
+
 // ============================ OC. OPENCODE ============================
 section('OpenCode — squelette plugin + install sandbox (test/run-tests-opencode.js)');
 {

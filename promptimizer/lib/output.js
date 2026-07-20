@@ -41,6 +41,15 @@ function preToolDecision(decision, reason) {
   process.exit(0);
 }
 
+// Réécrit l'input d'un tool AVANT son exécution, SANS émettre de permissionDecision : la commande
+// réécrite suit ensuite le flux d'autorisation normal (rien n'est forcé à allow/ask/deny). C'est
+// le « gate » du bridge RTK (lot #81). Prérequis d'appel : la commande ORIGINALE a DÉJÀ passé le
+// contrôle de sécurité PMZ en amont — ici on ne fait que substituer l'input.
+function preToolUpdatedInput(updatedInput) {
+  write({ hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput } });
+  process.exit(0);
+}
+
 // Message VISIBLE par l'utilisateur, NON réinjecté dans le contexte, NON bloquant.
 function systemMessage(text) {
   if (text) write({ systemMessage: text });
@@ -52,4 +61,4 @@ function passThrough() {
   process.exit(0);
 }
 
-module.exports = { write, injectContext, postToolContext, preToolDecision, systemMessage, passThrough };
+module.exports = { write, injectContext, postToolContext, preToolDecision, preToolUpdatedInput, systemMessage, passThrough };
