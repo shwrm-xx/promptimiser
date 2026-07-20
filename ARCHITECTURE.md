@@ -303,6 +303,17 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   parallelize` (option `--epic` pour filtrer, `--json` pour la machine, `launched:false`) **PROPOSE**
   le plan (vagues + branches + périmètres) et **ne lance RIEN** : ni branche, ni worktree, ni
   session fille. Le lancement reste **manuel et validé** (`start --id … --owner …`, cf. D3 palier 2).
+- **`/pmz:scope` propose le périmètre/dépendances au découpage** (fix 2026-07-20, ferme le
+  dernier écart de D3 — le découpage pressenti listait 6 briques toutes livrées aux lots #76-80,
+  mais `/scope` lui-même n'avait jamais été mis à jour pour s'en servir) : à la décomposition,
+  `commands/scope.md` propose désormais un périmètre par lot **quand il est clairement
+  déductible** du découpage (jamais deviné à l'aveugle), inclus dans l'unique question de
+  validation déjà utilisée pour modèle/effort/epic. Une fois les lots persistés, si ≥ 2 lots et
+  qu'au moins une vague de `parallelize --json` compte ≥ 2 lots (opportunité réelle — une vague
+  à 1 lot n'apporte rien), le plan est affiché et **une** question à choix tranche
+  parallèle/série ; sinon silence total (zéro bruit sur un découpage ordinaire). Le lancement
+  des sessions filles reste **manuel** dans les deux cas — aucun changement à la doctrine D3
+  palier 2, seule la découverte de la fonctionnalité devient automatique.
 - **Réintégration en pipeline — `pmz:reintegrate`** (lot #80, 5ᵉ/6ᵉ brique de
   [D3](docs/decisions/D3-parallelisation-gouvernee.md), principe **P3** « jamais de big-bang ») :
   `lib/reintegrate.js` sépare trois responsabilités. `planReintegration(fleet, backlog)` (**pur**)

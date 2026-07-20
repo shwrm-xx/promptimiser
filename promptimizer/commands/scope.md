@@ -20,23 +20,40 @@ quand : … » vérifiable** — au-delà, redécouper plutôt que grossir un lo
    session (`[XXX · #Y] NomDePlan · Lot #X · résumé` — `#Y` = id backlog global, `Lot #X` = rang
    du lot dans le plan) ; sinon l'omettre (epic = label optionnel, la session s'affichera
    `[XXX · #Y] Session Libre · résumé`).
-2. Faire valider le découpage, les modèles préconisés **et l'epic éventuel** par
-   l'utilisateur en **UNE** question (pas dix).
+   Proposer aussi, **quand c'est clairement déductible du découpage** (lots qui touchent des
+   dossiers/modules distincts) : un **périmètre** par lot (globs de chemins que ce lot a le
+   droit de modifier) et, si un ordre s'impose entre lots, un `depends_on` (id des lots qui
+   doivent être clos avant). Jamais forcé : sans périmètre net, un lot reste périmètre-vide
+   (séquentiel classique, comportement inchangé) — ne pas deviner un périmètre incertain.
+2. Faire valider le découpage, les modèles préconisés, l'epic éventuel **et le périmètre/les
+   dépendances proposés** par l'utilisateur en **UNE** question (pas dix).
 3. Si un epic a été validé, l'enregistrer une fois pour la session/le titre :
    `node ~/.claude/promptimizer/scripts/backlog.js epic --set "Nom de l'epic"`
    (écrit `.vibe-agent/epic`, cap 60 caractères).
 4. Persister chaque lot validé (un appel par lot), avec sa préconisation de modèle, son
-   effort et, si présent, l'epic :
-   `node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "fait quand : …" --model sonnet --effort medium --verify "npm test" --epic "Nom de l'epic"`
+   effort, si présent l'epic, et si validé son périmètre/ses dépendances :
+   `node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "fait quand : …" --model sonnet --effort medium --verify "npm test" --epic "Nom de l'epic" --perimeter "src/a/**" --depends 12`
    (`--model` est **obligatoire** — l'ajout est refusé sans lui ; `--effort` doit valoir
-   `low`/`medium`/`high`/`xhigh` sinon l'ajout est refusé ; `--epic` reste optionnel).
+   `low`/`medium`/`high`/`xhigh` sinon l'ajout est refusé ; `--epic` reste optionnel ;
+   `--perimeter`/`--depends` répétables, optionnels, omis si aucun périmètre net).
    **`--verify` dès que le lot est vérifiable par une commande** (test, typecheck, build,
    lint…) : c'est la preuve rejouée à l'auto-clôture. Un lot posé sans elle sera « clos sans
    preuve » — à réserver aux lots réellement non vérifiables par commande (doc, choix visuel).
-   Elle est éditable après coup : `backlog.js verify --set "…" --id <id>`. Puis démarrer le
-   premier : `node ~/.claude/promptimizer/scripts/backlog.js start --id <id>`.
-5. Afficher le plan (`node ~/.claude/promptimizer/scripts/backlog.js show`, ou
-   `show --epic "Nom de l'epic"` pour filtrer) et traiter **UNIQUEMENT le premier lot**.
+   Elle est éditable après coup : `backlog.js verify --set "…" --id <id>`.
+4bis. **Si ≥ 2 lots viennent d'être persistés**, calculer le plan de vagues :
+   `node ~/.claude/promptimizer/scripts/backlog.js parallelize --json` (ajouter `--epic "…"` si
+   posé). Une **opportunité réelle** = au moins une vague contenant **≥ 2 lots** (une vague à 1
+   lot n'apporte rien). Si aucune opportunité : ne rien afficher, passer silencieusement à
+   l'étape 5 (comportement historique intact, zéro bruit sur un découpage ordinaire). Si
+   opportunité : afficher le plan lisible (`parallelize` sans `--json` : vagues, branches
+   suggérées, périmètres) puis poser **une** question à choix :
+   - **Lancer en parallèle** → afficher, pour chaque lot de la 1ʳᵉ vague, la commande de
+     démarrage suggérée (`backlog.js start --id <id> --owner <session>`) ; rappeler que
+     l'ouverture des sessions filles reste **manuelle** (PMZ ne lance rien tout seul).
+   - **Traiter en série** → comportement actuel, passer à l'étape 5.
+5. Démarrer et traiter le lot voulu : `node ~/.claude/promptimizer/scripts/backlog.js start --id <id>`,
+   afficher le plan (`show`, ou `show --epic "Nom de l'epic"` pour filtrer) et traiter
+   **UNIQUEMENT** le(s) lot(s) démarré(s) (le premier lot en série ; la 1ʳᵉ vague si parallèle).
 
 Le suivi est ensuite automatique : le hook Stop clôt le lot au commit et annonce le suivant,
 le handoff porte l'avancement (x/y faits), le plan est réinjecté au démarrage suivant et

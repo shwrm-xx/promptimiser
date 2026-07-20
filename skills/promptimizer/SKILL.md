@@ -40,8 +40,10 @@ poser sur chaque lot via `--epic "<NomDePlan>"` : c'est lui qui nomme le plan da
 session (`[XXX · #Y] NomDePlan · Lot #X · résumé` — `#Y` = id backlog global, `Lot #X` = rang
 dans le plan). Sans nom de plan, la session s'affiche `[XXX · #Y] Session
 Libre · résumé`.
-Traiter **uniquement le premier lot**. Le suivi est automatique ensuite : clôture au commit
-(hook Stop), avancement dans le handoff, réinjection au démarrage et après compaction.
+Traiter **uniquement le premier lot** (ou la 1ʳᵉ vague si une parallélisation a été choisie —
+`/scope` propose automatiquement un plan de vagues quand des lots ont des périmètres disjoints
+et laisse l'utilisateur trancher parallèle/série). Le suivi est automatique ensuite : clôture au
+commit (hook Stop), avancement dans le handoff, réinjection au démarrage et après compaction.
 
 **Règle de découpe** : 1 lot = 1 session sous ~300k tokens, 1 commit, un critère
 « fait quand : … » vérifiable. Un lot qui dépasse l'un de ces trois → le redécouper plutôt

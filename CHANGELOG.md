@@ -2,6 +2,23 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-20 (fix — `/scope` propose les vagues parallèles au découpage)
+
+L'epic « Vagues parallèles » (#76-80) livrait tout l'outillage (`fleet.json`, garde de
+périmètre, `pmz:parallelize`, `pmz:reintegrate`) mais `/scope` — l'unique porte d'entrée du
+découpage en lots — n'avait jamais été mis à jour pour s'en servir : périmètre/dépendances
+restaient à poser à la main, et le plan de vagues à invoquer séparément. Quasi jamais découvert
+en pratique.
+
+- `promptimizer/commands/scope.md` : à la décomposition, propose un périmètre par lot **quand
+  il est clairement déductible** (jamais deviné), inclus dans l'unique question de validation
+  déjà utilisée pour modèle/effort/epic. Après persistance, si ≥ 2 lots et qu'une opportunité
+  réelle existe (≥ 1 vague de `parallelize --json` avec ≥ 2 lots), affiche le plan et pose une
+  question à choix parallèle/série ; sinon silence total (comportement inchangé).
+- Aucun script Node modifié : tout l'outillage CLI existait déjà (`backlog.js add
+  --perimeter/--depends`, `backlog.js parallelize`). Le lancement des sessions filles reste
+  manuel (D3 palier 2) — seule la découverte devient automatique.
+
 ## 2026-07-20 (version — 1.4.0)
 
 - `promptimizer/VERSION` : bump mineur 1.3.0 → 1.4.0 (`bumpVersion('minor')`), epic « Vagues
