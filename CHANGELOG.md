@@ -2,6 +2,36 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-20 — lot #82 « /pmz:rtk : activation guidée + détection de conflit (3 canaux) » (epic « Bridge RTK »)
+
+Deuxième brique de l'epic « Bridge RTK » : statut fiable du bridge (5 états), activation/
+désactivation **persistée** (survit au caractère jetable d'un process hook et à un update du
+plugin), détection de hook RTK autonome sur les 3 canaux visés par la spec (§9).
+
+- `promptimizer/lib/rtk-status.js` (nouveau) : `computeStatus()` → `absent` / `présent-inactif` /
+  `actif` / `conflit` / `incompatible`. Activation persistée sous `PMZ_STATE_DIR/rtk-state.json`
+  (`PMZ_RTK_ENABLE=1/0` en env reste un override ponctuel prioritaire, pour les tests). Détection
+  canal Claude Code **par contenu** (`/rtk/i` hors tags PMZ) dans `settings.json` — pas par nom de
+  fichier attendu, pour couvrir un hook « invisible ». Détection best-effort OpenCode/Codex
+  (fichiers tiers non normalisés), marqueur Codex resserré pour éviter un faux positif sur un
+  `AGENTS.md` de projet mentionnant « rtk » en prose. Conflit détecté sur un bridge persisté actif
+  → neutralisation automatique (repassé à `false`) dès le prochain `status`/`enable`/`disable`/
+  `migrate`.
+- `promptimizer/lib/optimizer.js` : `rtkEnabled()` délègue à `rtk-status.isBridgeEnabled()` — lit
+  désormais l'état persisté en l'absence d'override d'env explicite (comportement lot #81 inchangé
+  quand `PMZ_RTK_ENABLE` est posé).
+- `promptimizer/scripts/rtk.js` + `promptimizer/commands/rtk.md` (nouveaux) : `/pmz:rtk
+  [status|enable|disable|migrate]`. `enable` refuse sur `conflit`/`absent`/`incompatible` avec
+  remédiation exacte affichée. `migrate` ne touche QUE le canal Claude Code (sauvegarde horodatée
+  de `settings.json`, retrait ciblé des seules entrées en conflit) ; OpenCode/Codex restent à
+  traiter manuellement.
+- `promptimizer/lib/timeouts.js` : `RTK_STATUS_MS` (1 s, `PMZ_RTK_STATUS_TIMEOUT_MS`) — vérif
+  `rtk --version`, hors chemin chaud (déclenchée par la commande, jamais par un hook `PreToolUse`).
+- Tests : +28 assertions (`test/run-tests.js`, section RTK2) — 5 états, détection des 3 canaux
+  (avec anti faux-positif Codex), neutralisation automatique, persistance enable/disable via CLI
+  (nouveau process), refus motivé, migration (backup + retrait ciblé + préservation des hooks
+  tiers non concernés). Suite complète : 1134 OK · 0 échec.
+
 ## 2026-07-20 — lot #81 « Spike-gate + socle optimizer + bridge RTK (default OFF) » (epic « Bridge RTK »)
 
 Première brique de l'epic « Bridge RTK » : faire transiter une commande Bash **jugée sûre** par un

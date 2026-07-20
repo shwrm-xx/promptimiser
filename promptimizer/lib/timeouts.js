@@ -34,8 +34,17 @@ const RTK_REWRITE_MS = (() => {
   return Number.isFinite(env) && env > 0 ? env : 400;
 })();
 
+// Vérif `rtk --version` (lot #82, statut/doctor) : HORS chemin chaud — déclenchée par une
+// commande utilisateur (/pmz:rtk), pas par un hook PreToolUse. Peut donc rester un peu plus
+// généreuse que RTK_REWRITE_MS sans risquer de faire pendre un hook. Override d'env pour les
+// tests ; borne > 0 sinon défaut.
+const RTK_STATUS_MS = (() => {
+  const env = parseInt(process.env.PMZ_RTK_STATUS_TIMEOUT_MS || '', 10);
+  return Number.isFinite(env) && env > 0 ? env : 1000;
+})();
+
 function watchdogMs(timeoutS) {
   return Math.max(0, timeoutS * 1000 - WATCHDOG_MARGIN_MS);
 }
 
-module.exports = { SETTINGS_TIMEOUT_S, WATCHDOG_MARGIN_MS, VERIFY_AUTOCLOSE_MS, VERIFY_CLOSE_MS, RTK_REWRITE_MS, watchdogMs };
+module.exports = { SETTINGS_TIMEOUT_S, WATCHDOG_MARGIN_MS, VERIFY_AUTOCLOSE_MS, VERIFY_CLOSE_MS, RTK_REWRITE_MS, RTK_STATUS_MS, watchdogMs };

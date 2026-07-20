@@ -25,10 +25,15 @@
 const { execFileSync } = require('child_process');
 const { findTool } = require('./env');
 const { RTK_REWRITE_MS } = require('./timeouts');
+const { isBridgeEnabled } = require('./rtk-status');
 
-// Active UNIQUEMENT sur opt-in explicite (default OFF, lot #81). Env injectable pour les tests.
+// Active UNIQUEMENT sur opt-in explicite (default OFF, lot #81). `PMZ_RTK_ENABLE=1/0` en env
+// reste un override ponctuel prioritaire (tests, désactivation d'un seul appel) ; en son
+// absence, l'activation « normale » (lot #82, /pmz:rtk enable) est lue depuis l'état persisté
+// sous PMZ_STATE_DIR — un hook Bash est un process jetable, il ne peut pas se souvenir d'un
+// `enable` précédent autrement que via un fichier.
 function rtkEnabled(env) {
-  return (env || process.env).PMZ_RTK_ENABLE === '1';
+  return isBridgeEnabled(env);
 }
 
 // Commande déjà préfixée RTK, ou explicitement désactivée pour cet appel → ne JAMAIS re-préfixer

@@ -4981,42 +4981,45 @@ section('backlog — CLI reintegrate : plan proposé (défaut) + exécution (--e
   ok(fleet.loadFleet(repo).lots.find((l) => l.id === 1).state === 'reintegrated', 'CR3 : fleet -> lot reintegrated');
 }
 
+// Faux binaire `rtk` (node shebang) piloté par RTK_TEST_MODE — partagé par RTK1 (lot #81) et
+// RTK2 (lot #82, statut/doctor). argv rewrite: [node, rtk, 'rewrite', '<cmd>'] ; argv version:
+// [node, rtk, '--version'].
+const rtkDir = path.join(SANDBOX, 'rtkbin');
+fs.mkdirSync(rtkDir, { recursive: true });
+const rtkBin = path.join(rtkDir, 'rtk');
+fs.writeFileSync(rtkBin, [
+  '#!/usr/bin/env node',
+  "'use strict';",
+  "const mode = process.env.RTK_TEST_MODE || 'rewrite';",
+  "if (process.argv[2] === '--version') { if (mode === 'noversion') process.exit(1); process.stdout.write('rtk 1.2.3'); process.exit(0); }",
+  "const cmd = process.argv[3] || '';",
+  "if (mode === 'noop') { process.stdout.write(cmd); process.exit(0); }",
+  "if (mode === 'danger') { process.stdout.write('rm -rf /'); process.exit(0); }",
+  "if (mode === 'exit1') { process.exit(1); }",
+  "if (mode === 'exit2') { process.exit(2); }",
+  "if (mode === 'exit3') { process.exit(3); }",
+  "if (mode === 'timeout') { setTimeout(function () { process.stdout.write('late'); process.exit(0); }, 5000); }",
+  "else { process.stdout.write('rtk-wrapped: ' + cmd); process.exit(0); }",
+  '',
+].join('\n'));
+fs.chmodSync(rtkBin, 0o755);
+// ETXTBSY : exécuter un binaire fraîchement écrit peut échouer tant que le FS ne l'a pas libéré
+// (macOS/Linux). On « préchauffe » : on retente une invocation anodine jusqu'à ce qu'elle passe,
+// rendant les tests déterministes (l'échec initial était ce flake, pas un bug du produit).
+for (let i = 0; i < 200; i++) {
+  try {
+    execFileSync(rtkBin, ['rewrite', 'warmup'], { encoding: 'utf8', env: Object.assign({}, process.env, { RTK_TEST_MODE: 'rewrite' }) });
+    break;
+  } catch (e) {
+    if (!/ETXTBSY/.test(String((e && e.message) || e))) break;
+  }
+}
+const resolveRtk = () => rtkBin;
+
 // ============================ RTK1. BRIDGE RTK — SOCLE + GATE (lot #81) ============================
 section('Bridge RTK — socle optimizer + gate PreToolUse (lot #81, default OFF)');
 {
   const optimizer = require(path.join(PKG, 'lib', 'optimizer'));
-
-  // Faux binaire `rtk` (node shebang) piloté par RTK_TEST_MODE. argv: [node, rtk, 'rewrite', '<cmd>'].
-  const rtkDir = path.join(SANDBOX, 'rtkbin');
-  fs.mkdirSync(rtkDir, { recursive: true });
-  const rtkBin = path.join(rtkDir, 'rtk');
-  fs.writeFileSync(rtkBin, [
-    '#!/usr/bin/env node',
-    "'use strict';",
-    "const mode = process.env.RTK_TEST_MODE || 'rewrite';",
-    "const cmd = process.argv[3] || '';",
-    "if (mode === 'noop') { process.stdout.write(cmd); process.exit(0); }",
-    "if (mode === 'danger') { process.stdout.write('rm -rf /'); process.exit(0); }",
-    "if (mode === 'exit1') { process.exit(1); }",
-    "if (mode === 'exit2') { process.exit(2); }",
-    "if (mode === 'exit3') { process.exit(3); }",
-    "if (mode === 'timeout') { setTimeout(function () { process.stdout.write('late'); process.exit(0); }, 5000); }",
-    "else { process.stdout.write('rtk-wrapped: ' + cmd); process.exit(0); }",
-    '',
-  ].join('\n'));
-  fs.chmodSync(rtkBin, 0o755);
-  // ETXTBSY : exécuter un binaire fraîchement écrit peut échouer tant que le FS ne l'a pas libéré
-  // (macOS/Linux). On « préchauffe » : on retente une invocation anodine jusqu'à ce qu'elle passe,
-  // rendant les tests déterministes (l'échec initial était ce flake, pas un bug du produit).
-  for (let i = 0; i < 200; i++) {
-    try {
-      execFileSync(rtkBin, ['rewrite', 'warmup'], { encoding: 'utf8', env: Object.assign({}, process.env, { RTK_TEST_MODE: 'rewrite' }) });
-      break;
-    } catch (e) {
-      if (!/ETXTBSY/.test(String((e && e.message) || e))) break;
-    }
-  }
-  const resolveRtk = () => rtkBin;
   const envOn = (mode) => Object.assign({}, process.env, { PMZ_RTK_ENABLE: '1', RTK_TEST_MODE: mode || 'rewrite' });
 
   // -- Unitaires rewriteCommand : fonction pure (aucune décision de permission) --
@@ -5079,6 +5082,150 @@ section('Bridge RTK — socle optimizer + gate PreToolUse (lot #81, default OFF)
       { PATH: rtkDir + path.delimiter + process.env.PATH, RTK_TEST_MODE: 'rewrite' });
     ok(r.code === 0 && !r.out.trim(), 'GATE: default OFF → passThrough (pas de réécriture sans PMZ_RTK_ENABLE=1)');
   }
+}
+
+// ============================ RTK2. STATUT/ACTIVATION PERSISTÉE + CONFLITS (lot #82) ============================
+section('Bridge RTK — statut, activation persistée, conflits sur 3 canaux (lot #82)');
+{
+  const rtkStatus = require(path.join(PKG, 'lib', 'rtk-status'));
+  const RTK_CLI = path.join(PKG, 'scripts', 'rtk.js');
+
+  const rtkRoot = path.join(SANDBOX, 'rtk-root');
+  fs.mkdirSync(rtkRoot, { recursive: true });
+  const rtkClaudeDir = path.join(SANDBOX, 'rtk-claude-dir');
+  fs.mkdirSync(rtkClaudeDir, { recursive: true });
+  const rtkSettingsPath = path.join(rtkClaudeDir, 'settings.json');
+  const cleanSettings = { permissions: { allow: ['Bash(git *)'] }, hooks: {} };
+  fs.writeFileSync(rtkSettingsPath, JSON.stringify(cleanSettings, null, 2));
+
+  // -- computeStatus() unitaire : les 5 états --
+  rtkStatus.writeEnableState(false);
+  ok(rtkStatus.computeStatus({ resolve: () => null, settingsPath: rtkSettingsPath, root: rtkRoot }).state === 'absent',
+    'STATUS: binaire absent, aucun conflit → absent');
+  ok(rtkStatus.computeStatus({ resolve: resolveRtk, settingsPath: rtkSettingsPath, root: rtkRoot }).state === 'present-inactive',
+    'STATUS: binaire présent, désactivé, aucun conflit → présent-inactif');
+  {
+    const r = rtkStatus.computeStatus({
+      resolve: resolveRtk, settingsPath: rtkSettingsPath, root: rtkRoot,
+      env: { PMZ_RTK_ENABLE: '1', RTK_TEST_MODE: 'rewrite' },
+    });
+    ok(r.state === 'active' && r.bridgeEnabled === true, 'STATUS: binaire présent + activé → actif');
+  }
+  {
+    const oldMode = process.env.RTK_TEST_MODE;
+    process.env.RTK_TEST_MODE = 'noversion';
+    const r = rtkStatus.computeStatus({ resolve: resolveRtk, settingsPath: rtkSettingsPath, root: rtkRoot });
+    ok(r.state === 'incompatible', 'STATUS: `rtk --version` échoue → incompatible');
+    if (oldMode === undefined) delete process.env.RTK_TEST_MODE; else process.env.RTK_TEST_MODE = oldMode;
+  }
+
+  // -- Canal 1 : hook autonome dans les réglages Claude Code (détecté par CONTENU, pas par nom) --
+  const conflictSettings = {
+    hooks: {
+      PreToolUse: [
+        { matcher: 'Bash', hooks: [{ type: 'command', command: '/opt/some-tool/rtk-standalone-hook.sh' }] },
+        { matcher: 'Edit', hooks: [{ type: 'command', command: `"${process.execPath}" ${path.join(HOOKS, 'post-tool-use.js')}` }] },
+      ],
+    },
+  };
+  const conflictSettingsPath = path.join(rtkClaudeDir, 'settings-conflict.json');
+  fs.writeFileSync(conflictSettingsPath, JSON.stringify(conflictSettings, null, 2));
+  {
+    const c = rtkStatus.detectClaudeHookConflict(conflictSettingsPath);
+    ok(c.present === true && c.entries.length === 1, 'CONFLIT canal Claude Code : hook autonome « rtk » détecté (le hook PMZ légitime est ignoré)');
+  }
+  ok(rtkStatus.detectClaudeHookConflict(rtkSettingsPath).present === false,
+    'CONFLIT canal Claude Code : réglages propres → aucun conflit');
+
+  // -- Canal 2 : plugin RTK OpenCode (best-effort, fichier tiers) --
+  fs.writeFileSync(path.join(rtkRoot, 'opencode.json'), JSON.stringify({ plugin: ['rtk-opencode-plugin'] }));
+  ok(rtkStatus.detectOpenCodeConflict(rtkRoot).present === true, 'CONFLIT canal OpenCode : mention « rtk » dans opencode.json → détecté');
+  fs.unlinkSync(path.join(rtkRoot, 'opencode.json'));
+  ok(rtkStatus.detectOpenCodeConflict(rtkRoot).present === false, 'CONFLIT canal OpenCode : aucune config → pas de conflit');
+
+  // -- Canal 3 : instructions Codex (marqueur resserré, anti faux-positif) --
+  fs.writeFileSync(path.join(rtkRoot, 'AGENTS.md'), '<!-- rtk instructions -->\nRéécrit les commandes via rtk rewrite.\n');
+  ok(rtkStatus.detectCodexConflict(rtkRoot).present === true, 'CONFLIT canal Codex : bloc d\'instructions RTK détecté');
+  fs.writeFileSync(path.join(rtkRoot, 'AGENTS.md'), 'Ce projet documente rtk dans son changelog historique.\n');
+  ok(rtkStatus.detectCodexConflict(rtkRoot).present === false,
+    'CONFLIT canal Codex : simple mention en prose (sans marqueur) → PAS de faux positif');
+  fs.unlinkSync(path.join(rtkRoot, 'AGENTS.md'));
+
+  // -- Neutralisation automatique : bridge actif + conflit détecté → repassé à false --
+  rtkStatus.writeEnableState(true);
+  {
+    const r = rtkStatus.computeStatus({ resolve: resolveRtk, settingsPath: conflictSettingsPath, root: rtkRoot });
+    ok(r.state === 'conflict' && r.neutralized === true && r.bridgeEnabled === false,
+      'NEUTRALISATION: bridge actif + conflit constaté → neutralisé (bridgeEnabled=false)');
+    ok(rtkStatus.readEnableState().enabled === false, 'NEUTRALISATION: état persisté repassé à false');
+  }
+  rtkStatus.writeEnableState(false);
+
+  // -- CLI /pmz:rtk : enable/disable persistent réellement (survivent à un nouveau process) --
+  const cliEnv = (extra) => Object.assign(
+    { PATH: rtkDir + path.delimiter + process.env.PATH, RTK_TEST_MODE: 'rewrite', CLAUDE_CONFIG_DIR: rtkClaudeDir },
+    extra || {}
+  );
+  {
+    const r = runNode(RTK_CLI, ['enable', '--cwd', rtkRoot], cliEnv());
+    ok(r.code === 0 && /activé/.test(r.out), 'CLI enable: binaire présent, pas de conflit → accepté');
+    ok(rtkStatus.readEnableState().enabled === true, 'CLI enable: état persisté = true (nouveau process, lu via lib)');
+  }
+  {
+    const r = runNode(RTK_CLI, ['status', '--cwd', rtkRoot], cliEnv());
+    ok(r.code === 0 && /État : actif/.test(r.out), 'CLI status: reflète l\'activation persistée → « actif »');
+  }
+  {
+    const r = runNode(RTK_CLI, ['disable', '--cwd', rtkRoot], cliEnv());
+    ok(r.code === 0 && /désactivé/.test(r.out), 'CLI disable: accepté sans condition');
+    ok(rtkStatus.readEnableState().enabled === false, 'CLI disable: état persisté = false');
+  }
+  {
+    // Réglages EN CONFLIT injectés via CLAUDE_CONFIG_DIR → enable refusé, remédiation affichée.
+    const confDir = path.join(SANDBOX, 'rtk-claude-dir-conflict');
+    fs.mkdirSync(confDir, { recursive: true });
+    fs.writeFileSync(path.join(confDir, 'settings.json'), JSON.stringify(conflictSettings, null, 2));
+    const r = runNode(RTK_CLI, ['enable', '--cwd', rtkRoot], cliEnv({ CLAUDE_CONFIG_DIR: confDir }));
+    ok(r.code === 0 && /Refus/.test(r.out) && /rtk-standalone-hook\.sh/.test(r.out),
+      'CLI enable: conflit détecté → refus + remédiation exacte (commande du hook autonome citée)');
+    ok(rtkStatus.readEnableState().enabled === false, 'CLI enable: refus → état persisté INCHANGÉ (false)');
+  }
+  {
+    const r = runNode(RTK_CLI, ['enable', '--cwd', rtkRoot], cliEnv({ PATH: process.env.PATH }));
+    ok(r.code === 0 && /introuvable/.test(r.out), 'CLI enable: binaire absent → refus explicite');
+    rtkStatus.writeEnableState(false);
+  }
+
+  // -- Migration guidée (canal Claude Code UNIQUEMENT) : backup + retrait ciblé + activation --
+  {
+    const migDir = path.join(SANDBOX, 'rtk-claude-dir-migrate');
+    fs.mkdirSync(migDir, { recursive: true });
+    const migSettingsPath = path.join(migDir, 'settings.json');
+    fs.writeFileSync(migSettingsPath, JSON.stringify(conflictSettings, null, 2));
+
+    const r = runNode(RTK_CLI, ['migrate', '--cwd', rtkRoot], cliEnv({ CLAUDE_CONFIG_DIR: migDir }));
+    ok(r.code === 0 && /Migration effectuée/.test(r.out), 'CLI migrate: exécution OK');
+
+    const backups = fs.readdirSync(migDir).filter((f) => /pmz-backup-rtk-migrate/.test(f));
+    ok(backups.length === 1, 'CLI migrate: sauvegarde horodatée créée avant modification');
+    const backedUp = JSON.parse(fs.readFileSync(path.join(migDir, backups[0]), 'utf8'));
+    ok(JSON.stringify(backedUp) === JSON.stringify(conflictSettings), 'CLI migrate: le backup contient les réglages AVANT migration');
+
+    const after = JSON.parse(fs.readFileSync(migSettingsPath, 'utf8'));
+    const stillHasRtkHook = (after.hooks.PreToolUse || []).some((e) =>
+      e.hooks.some((h) => /rtk-standalone-hook/.test(h.command)));
+    const stillHasEditHook = (after.hooks.PreToolUse || []).some((e) =>
+      e.hooks.some((h) => h.command.includes('post-tool-use.js')));
+    ok(stillHasRtkHook === false, 'CLI migrate: hook RTK autonome retiré de settings.json');
+    ok(stillHasEditHook === true, 'CLI migrate: hook tiers NON concerné préservé');
+    ok(rtkStatus.readEnableState().enabled === true, 'CLI migrate: bridge PMZ activé après migration');
+    rtkStatus.writeEnableState(false);
+  }
+
+  // -- Double canal intact (manuel + plugin) : computeStatus n'utilise QUE des chemins
+  // découplés par claude-dir.js (déjà couvert par la section claude-dir dédiée) --
+  ok(typeof rtkStatus.stateFile() === 'string' && rtkStatus.stateFile().length > 0,
+    'DOUBLE CANAL: stateFile() résout un chemin quel que soit le canal d\'install (repose sur claude-dir.stateDir())');
 }
 
 // ============================ OC. OPENCODE ============================

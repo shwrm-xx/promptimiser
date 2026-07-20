@@ -306,6 +306,32 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   1/2/3, timeout (`RTK_REWRITE_MS`, 400 ms, `PMZ_RTK_REWRITE_TIMEOUT_MS`), binaire absent, stdout
   vide/identique → **commande originale** (fail-open). Pas de double préfixe : `rtk …` ou
   `RTK_DISABLED=1 …` déjà en tête → inchangé. Appel **sans shell** (argv, `execFileSync`).
+- **`/pmz:rtk` — statut, activation persistée, conflits sur 3 canaux** (lot #82, 2ᵉ brique de
+  l'epic « Bridge RTK ») : `lib/rtk-status.js` sépare la **détection** (RTK présent ? un hook
+  autonome existe-t-il déjà ailleurs qu'à travers le bridge PMZ ?) de l'**activation** du bridge
+  (lot #81). Cinq états : `absent` (binaire introuvable) / `présent-inactif` (binaire OK, bridge
+  éteint) / `actif` (bridge allumé) / `conflit` (hook autonome détecté) / `incompatible` (binaire
+  trouvé mais `rtk --version` échoue/timeout — `RTK_STATUS_MS`, 1 s, `PMZ_RTK_STATUS_TIMEOUT_MS`,
+  **hors chemin chaud**). **Activation persistée** : `PMZ_RTK_ENABLE=1/0` en env reste un override
+  ponctuel (tests, désactivation d'un seul appel) prioritaire ; en son absence, `optimizer.js` lit
+  l'état persisté sous `PMZ_STATE_DIR/rtk-state.json` — nécessaire car un hook Bash est un process
+  **jetable**, relancé à chaque appel outil, qui ne peut se souvenir d'un `enable` précédent que
+  via un fichier (et cet état, sous `stateDir()`, **survit à un update du plugin**, cf.
+  `claude-dir.js`). **Détection 3 canaux** (spec §9) : (1) réglages Claude Code — recherche
+  **par contenu** (`/rtk/i` sur la commande, hors tags PMZ) dans `settings.json`, pas par nom de
+  fichier attendu (un hook RTK autonome peut être vendoré sous un nom arbitraire — un hook
+  Claude Code « invisible » en tant que tel reste détecté) ; (2) plugin OpenCode et (3)
+  instructions Codex — **best-effort** sur des formats tiers non normalisés (fichiers candidats
+  `opencode.json`/`AGENTS.md`/`~/.codex/instructions.md`), marqueur Codex **resserré**
+  (`rtk` + mot-clé proche, ou balise `<!-- rtk`) pour éviter un faux positif sur un `AGENTS.md` de
+  projet qui mentionnerait « rtk » en prose. **Conflit → neutralisation automatique** : dès que
+  `status`/`enable`/`disable`/`migrate` constatent un conflit alors que le bridge était persisté
+  actif, l'état est repassé à `false` immédiatement (self-healing, pas d'action manuelle requise
+  pour le couper) ; la remédiation exacte (canal + preuve) est toujours affichée. `enable` refuse
+  sur `conflit`/`absent`/`incompatible`. `migrate` ne touche **que** le canal Claude Code
+  (sauvegarde horodatée de `settings.json` puis retrait ciblé des SEULES entrées en conflit,
+  reste préservé intact) — OpenCode/Codex restent à traiter manuellement (formats tiers).
+  Commande `/pmz:rtk [status|enable|disable|migrate]` → `scripts/rtk.js`.
 - **Plan de vagues — `pmz:parallelize`** (lot #79, 4ᵉ brique de
   [D3](docs/decisions/D3-parallelisation-gouvernee.md)) : `backlog.planWaves(b)` (fonction
   **pure** : ne lit/écrit rien, ne lance rien) calcule un plan de vagues parallèles à partir des
