@@ -2,6 +2,23 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-22 — lot #89 « Crochets littéraux [id] dans les périmètres » (epic « Périmètres fiables »)
+
+Les crochets d'un glob de périmètre sont désormais traités comme des **segments littéraux**,
+pas comme une classe de caractères de glob.
+
+- **Cause** : `staticPrefix` (lib/perimeter.js) comptait `[` parmi les jokers. Un périmètre de
+  route dynamique Next.js (`app/[id]/**`) voyait donc son préfixe statique s'effondrer sur
+  `app` (tout le dossier) — deux routes distinctes `[id]` et `[slug]` étaient jugées
+  chevauchantes, donc **jamais disjointes** : deux lots ciblant chacun sa route ne pouvaient
+  pas coexister en vague parallèle.
+- **Correctif** : `[` n'est plus un joker (seuls `*` et `?` le sont). `app/[id]/**` →
+  préfixe `app/[id]` ; `app/[id]/page.tsx` → glob concret. On ne développait de toute façon
+  aucune classe de caractères (matching par préfixe uniquement), donc traiter `[` comme joker
+  ne faisait qu'élargir à tort. `globsOverlap`, `disjoint` et `memberVerdict` restent corrects.
+- Tests : +7 assertions ([id] vs [slug] disjoints, même route non disjointe, member inside/
+  outside, catch-all `[[...all]]`, non-régression `lib/*.js`) ; **1205 OK, 0 échec**.
+
 ## 2026-07-22 — lot #88 « Troncature --scope bruyante » (epic « Périmètres fiables »)
 
 Garde anti-troncature silencieuse sur le CLI backlog : un flag mono-valeur non quoté ne rogne

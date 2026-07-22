@@ -30,11 +30,16 @@ function normalize(globs) {
   return out;
 }
 
-// Préfixe statique d'un glob = tout ce qui précède le 1er joker (*, ?, [), remonté au dernier
+// Préfixe statique d'un glob = tout ce qui précède le 1er joker (*, ?), remonté au dernier
 // séparateur pour ne garder que des segments entiers. Borne conservatrice pour la disjonction :
 //   « lib/*.js » → « lib » ; « lib/foo.js » → « lib/foo.js » ; « * » → « » (couvre tout).
+// NB (lot #89) : « [ » n'est PAS un joker ici. Les crochets sont des segments LITTÉRAUX — cas
+// dominant : les routes dynamiques Next.js (« app/[id]/page.tsx », « [slug] », « [...all] »).
+// Les traiter en classe de caractères rabattait « app/[id]/** » sur le préfixe « app » (tout le
+// dossier), rendant deux routes distinctes [id] et [slug] faussement chevauchantes (jamais
+// disjointes). On ne développe de toute façon aucune classe de caractères (matching par préfixe).
 function staticPrefix(glob) {
-  const i = glob.search(/[*?[]/);
+  const i = glob.search(/[*?]/);
   if (i === -1) return glob; // glob concret (dossier ou fichier) : préfixe = lui-même
   const head = glob.slice(0, i);
   const cut = head.lastIndexOf('/');

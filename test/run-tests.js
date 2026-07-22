@@ -4465,6 +4465,24 @@ section('perimeter — normalisation + disjonction (lib/perimeter.js, lot #76)')
   // P3. périmètre vide n'est disjoint de rien ; « * » chevauche tout (conservateur)
   ok(perimeter.disjoint([], ['lib/a']) === false, 'disjoint : périmètre vide -> false (pas de coexistence)');
   ok(perimeter.disjoint(['*'], ['lib/a']) === false, 'disjoint : « * » chevauche tout -> false');
+
+  // P4. crochets [id] littéraux — routes dynamiques Next.js (lot #89). « [ » n'est PAS un joker :
+  // [id] et [slug] sont des segments distincts, donc disjoints ; le préfixe statique ne s'effondre
+  // plus sur le dossier parent (« app »).
+  ok(perimeter.staticPrefix('app/[id]/page.tsx') === 'app/[id]/page.tsx',
+    'staticPrefix : [id] littéral -> glob concret (pas d\'effondrement sur « app »)');
+  ok(perimeter.staticPrefix('app/[id]/**') === 'app/[id]',
+    'staticPrefix : [id] littéral conservé, joker * seul coupé -> « app/[id] »');
+  ok(perimeter.disjoint(['app/[id]/**'], ['app/[slug]/**']) === true,
+    'disjoint : deux routes dynamiques distinctes [id] vs [slug] -> true');
+  ok(perimeter.disjoint(['app/[id]/**'], ['app/[id]/loading.tsx']) === false,
+    'disjoint : même route dynamique [id] -> false (chevauchement réel)');
+  ok(perimeter.memberVerdict(['app/[id]/**'], 'app/[id]/page.tsx', '/r') === 'inside',
+    'memberVerdict : fichier sous [id] -> inside');
+  ok(perimeter.memberVerdict(['app/[id]/**'], 'app/[slug]/page.tsx', '/r') === 'outside',
+    'memberVerdict : fichier sous [slug] hors périmètre [id] -> outside');
+  ok(perimeter.disjoint(['lib/[[...all]]/x'], ['lib/[[...all]]/x']) === false,
+    'disjoint : catch-all optionnel identique [[...all]] -> false (littéral, non expansé)');
 }
 
 section('backlog v2 — schéma perimeter/depends_on + coexistence multi-in_progress (lot #76)');
