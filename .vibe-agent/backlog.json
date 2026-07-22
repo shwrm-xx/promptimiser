@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 88,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-22T08:27:11.161Z",
+  "updated_at": "2026-07-22T08:33:28.956Z",
   "lots": [
     {
       "id": 1,
@@ -1915,18 +1915,18 @@
       "id": 87,
       "title": "Fiabilisation des sessions filles (vague)",
       "scope": "fait quand : consigne sous-agents dans le verbe de vague + fleetLines, demandes d'élargissement visibles côté orchestrateur, --perimeter répétable ET à virgules dans le CLI, tests verts",
-      "status": "in_progress",
+      "status": "done",
       "model_hint": "opus",
       "effort_hint": "high",
       "epic": "Verbe & Vagues",
       "verify": "node test/run-tests.js",
-      "closed_commit": null,
-      "closed_at": null,
+      "closed_commit": "d30faa5",
+      "closed_at": "2026-07-22T08:33:28.953Z",
       "closed_session_id": null,
       "closed_occupancy": null,
       "cost_tokens": 0,
       "started_at": "2026-07-22T08:14:09.271Z",
-      "lot_number": null,
+      "lot_number": 42,
       "note": "Ajout scope : lib/project.js runVerify() priorise e.stderr sur e.stdout pour le tail affiché par /close-batch — 2 tests légitimes (négatifs) polluent le stderr global de la suite, masquant systématiq…",
       "session_touches": 1,
       "perimeter": [
@@ -1935,15 +1935,7 @@
         "test/**"
       ],
       "depends_on": [],
-      "session_owner": null,
-      "integrations": {
-        "command_optimizer": {
-          "snapshot_start": {
-            "commands": 1,
-            "delivered_tokens": 4
-          }
-        }
-      }
+      "session_owner": null
     }
   ]
 }
