@@ -214,6 +214,15 @@ function main() {
   const root = gitRoot(parseCwd());
   if (!root) return out('Pas un dépôt git — backlog indisponible.');
   const cmd = (process.argv[2] || '').startsWith('--') ? 'show' : (process.argv[2] || 'show');
+  // Garde anti-troncature (#88) : un flag mono-valeur non quoté (« --title fait quand : X »)
+  // ne capte que le 1er token ; les tokens nus suivants seraient jetés en silence.
+  // On les repère et on rejette explicitement plutôt que de tronquer sans le dire.
+  const argStart = (process.argv[2] || '').startsWith('--') ? 2 : 3;
+  const orphans = backlog.orphanArgs(process.argv, argStart);
+  if (orphans.length) {
+    return out(`Refusé : argument(s) orphelin(s) ignoré(s) — ${orphans.map((o) => `« ${o} »`).join(', ')}. `
+      + 'Probablement une valeur non quotée : mets-la entre guillemets, ex. --title "fait quand : …".');
+  }
   const json = process.argv.includes('--json');
   const id = flag('id');
 

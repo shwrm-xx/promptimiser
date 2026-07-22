@@ -88,6 +88,34 @@ function now() {
   return new Date().toISOString();
 }
 
+// Détection de troncature silencieuse (lot #88). En argv NON quoté, un flag
+// mono-valeur ne capte que le 1er token (« --title fait quand : X » → title=fait) ;
+// les tokens nus suivants (« quand », « : », « X ») sont jetés en silence par flag().
+// On les repère ici pour permettre au CLI de REJETER explicitement plutôt que tronquer.
+// Flags qui consomment une valeur (mono ou liste répétable — cf. flag()/flagList()) :
+const VALUE_FLAGS = ['cwd', 'id', 'epic', 'set', 'model', 'effort', 'title', 'scope',
+  'verify', 'owner', 'commit', 'note', 'into', 'format', 'depends', 'perimeter'];
+// Flags booléens (ne consomment aucune valeur) — listés pour documentation ;
+// tout flag hors VALUE_FLAGS est traité comme booléen (ne consomme rien).
+const BOOL_FLAGS = ['json', 'suggest', 'execute'];
+
+// Retourne les tokens argv orphelins (nus, non consommés comme valeur de flag)
+// à partir de l'index argStart. [] si l'argv est bien formé.
+function orphanArgs(argv, argStart) {
+  const value = new Set(VALUE_FLAGS);
+  const orphans = [];
+  for (let i = argStart; i < argv.length; i++) {
+    const tok = argv[i];
+    if (typeof tok === 'string' && tok.startsWith('--')) {
+      if (value.has(tok.slice(2))) i++; // ce flag consomme le token suivant comme valeur
+      // sinon booléen/inconnu : ne consomme rien de plus
+    } else {
+      orphans.push(tok);
+    }
+  }
+  return orphans;
+}
+
 // Normalise la liste des dépendances d'un lot (ids d'autres lots — ordre de réintégration,
 // cf. D3) : entiers finis, self exclu, dédoublonnés, capé. Entrée non-array → [].
 function normalizeDepends(deps, selfId) {
@@ -720,7 +748,7 @@ module.exports = {
   touchLot, addCost, currentLot, nextLot, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
   epicBilan, estimateCost, canCoexist, pairwiseCoexist, planWaves, waveBranch,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot, modelEffortTag,
-  exportCsv, exportMarkdown,
+  exportCsv, exportMarkdown, orphanArgs, VALUE_FLAGS, BOOL_FLAGS,
   MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_OWNER, MAX_DEPENDS, MAX_NOTE, MAX_TODOS, EFFORT_LEVELS,
   COST_BUDGET_TOKENS, COST_WARN_TOKENS,
 };

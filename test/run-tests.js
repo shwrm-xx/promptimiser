@@ -579,6 +579,22 @@ section('Trigramme de projet (lot #35)');
   ok(/\[XYZ\]/.test(rSet.out) && /enregistré/.test(rSet.out), 'CLI trigram --set : confirmation');
   const rShow = runNode(BKLG0, ['trigram', '--cwd', repoCli]);
   ok(/\[XYZ\]/.test(rShow.out), 'CLI trigram sans --set : affiche le trigramme courant');
+
+  // Garde anti-troncature (#88) : orphanArgs (unité) + rejet CLI du cas non quoté.
+  const backlogLib88 = require(path.join(PKG, 'lib', 'backlog'));
+  ok(backlogLib88.orphanArgs(['node', 's', 'add', '--title', 'clean', '--model', 'sonnet'], 3).length === 0,
+    'orphanArgs : argv bien formé -> aucun orphelin');
+  ok(JSON.stringify(backlogLib88.orphanArgs(['node', 's', 'add', '--title', 'fait', 'quand', ':', 'x'], 3)) === JSON.stringify(['quand', ':', 'x']),
+    'orphanArgs : flag mono-valeur non quoté -> tokens nus suivants signalés');
+  ok(backlogLib88.orphanArgs(['node', 's', '--json'], 2).length === 0,
+    'orphanArgs : commande implicite (argv[2]=--json) -> pas de faux orphelin');
+  ok(backlogLib88.orphanArgs(['node', 's', 'add', '--cwd', '/some/repo', '--title', 'x'], 3).length === 0,
+    'orphanArgs : --cwd consomme sa valeur (pas de faux orphelin sur le chemin)');
+  const rOrphan = runNode(BKLG0, ['add', '--cwd', repoCli, '--model', 'sonnet', '--title', 'fait', 'quand', 'x']);
+  ok(/Refusé/.test(rOrphan.out) && /orphelin/.test(rOrphan.out),
+    'CLI add non quoté : rejet explicite (troncature signalée, pas silencieuse)');
+  const rShowAfter = runNode(BKLG0, ['show', '--cwd', repoCli]);
+  ok(/Aucun plan de lots/.test(rShowAfter.out), 'CLI add rejeté : aucune mutation du backlog');
 }
 
 section('suggestedTitle : suffixe « (partie N) » quand un lot dépasse une session (lot #35)');

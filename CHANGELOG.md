@@ -2,6 +2,21 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-22 — lot #88 « Troncature --scope bruyante » (epic « Périmètres fiables »)
+
+Garde anti-troncature silencieuse sur le CLI backlog : un flag mono-valeur non quoté ne rogne
+plus discrètement sa valeur.
+
+- **Cause** : `flag('title')` (et consorts) ne capte que le token juste après `--title` ; en
+  argv non quoté (`--title fait quand : X`), les tokens nus suivants (`quand`, `:`, `X`) étaient
+  **jetés en silence** — la valeur était tronquée sans le moindre signal.
+- **Correctif** : `lib/backlog.orphanArgs(argv, argStart)` (pur, testé) recense les tokens argv
+  orphelins — nus, non consommés comme valeur d'un flag connu (`VALUE_FLAGS`, dont `--cwd`).
+  `scripts/backlog.js` appelle la garde avant tout dispatch et **rejette explicitement** avec la
+  liste des orphelins + rappel de quoter la valeur. Le rejet précède toute mutation du backlog.
+- Tests : +6 assertions (unité `orphanArgs` + rejet CLI du cas non quoté + non-mutation) ;
+  **1198 OK, 0 échec**.
+
 ## 2026-07-22 — lot #87 « Fiabilisation des sessions filles (vague) » (epic « Verbe & Vagues »)
 
 Durcissement du dispositif de vagues parallèles + résolution de la dette de test traînée depuis
