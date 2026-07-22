@@ -2,6 +2,29 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-22 — lot #90 « Garde anti-troncature de champ (plafonds MAX_*) » (epic « Périmètres fiables »)
+
+2e vecteur de troncature silencieuse après le #88 : une valeur **quotée** mais au-delà de son
+plafond `MAX_*` était stockée coupée (« … » en pleine phrase) sans un mot dans la sortie du CLI.
+
+- **Cause** : `trunc(scope, MAX_SCOPE)` (et consorts) coupait au stockage dans `addLot`/
+  `noteLot`/`setVerify`/`dropLot` sans aucun signal. Cas réel (2026-07-22, projet SDD) : des
+  critères « fait quand » amputés, découverts seulement quand une session fille a refusé de
+  démarrer sur une spec incomplète.
+- **Correctif CLI** (`scripts/backlog.js`, garde `truncGuard` sur `add`/`note`/`verify`/`drop`) :
+  refus explicite avec **longueur reçue vs plafond** + pattern conseillé (résumé court sous le
+  plafond, spec complète dans un fichier du dépôt référencé en note) ; `--allow-trunc` accepte
+  sciemment, avec la coupe **annoncée**. `lib/backlog.js` : aides pures `overflowFields` /
+  `isTruncated` ; `trunc()` reste en normalisation défensive au chargement.
+- **`show` distingue donnée vs affichage** : marqueur `[⚠️ tronqué en donnée : …]` sur toute
+  valeur stockée portant la signature de `trunc()` (longueur pile au plafond + « … » final) —
+  `show` n'abrège rien à l'affichage, un « … » y révèle donc une donnée coupée (legacy ou
+  `--allow-trunc`).
+- Tests : +23 assertions (unité `overflowFields`/`isTruncated`, refus `add`/`note`/`verify` avec
+  longueurs, non-mutation sur refus, `--allow-trunc` stocké pile au plafond avec « … », marquage
+  `show`) ; **1221 OK, 0 échec**. Doc : puce « Toute troncature est bruyante côté CLI backlog »
+  dans ARCHITECTURE.md.
+
 ## 2026-07-22 — lot #89 « Crochets littéraux [id] dans les périmètres » (epic « Périmètres fiables »)
 
 Les crochets d'un glob de périmètre sont désormais traités comme des **segments littéraux**,

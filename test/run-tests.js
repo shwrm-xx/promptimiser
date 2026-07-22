@@ -597,6 +597,65 @@ section('Trigramme de projet (lot #35)');
   ok(/Aucun plan de lots/.test(rShowAfter.out), 'CLI add rejeté : aucune mutation du backlog');
 }
 
+section('Garde anti-troncature de champ (#90) : plafonds MAX_* bruyants + --allow-trunc');
+{
+  const backlogLib90 = require(path.join(PKG, 'lib', 'backlog'));
+  // Unité : overflowFields / isTruncated.
+  ok(backlogLib90.overflowFields([{ name: '--scope', value: 'court', max: 400 }]).length === 0,
+    'overflowFields : valeur sous le plafond -> rien');
+  const over = backlogLib90.overflowFields([{ name: '--scope', value: 'x'.repeat(450), max: 400 }]);
+  ok(over.length === 1 && over[0].name === '--scope' && over[0].length === 450 && over[0].max === 400,
+    'overflowFields : dépassement signalé avec longueur reçue vs plafond');
+  ok(backlogLib90.overflowFields([{ name: '--note', value: null, max: 200 }]).length === 0,
+    'overflowFields : valeur absente (null) ignorée');
+  ok(backlogLib90.isTruncated('x'.repeat(399) + '…', 400) === true,
+    'isTruncated : signature de trunc() (longueur au plafond + « … » final) reconnue');
+  ok(backlogLib90.isTruncated('x'.repeat(120), 400) === false,
+    'isTruncated : valeur courte -> non tronquée');
+  ok(backlogLib90.isTruncated('x'.repeat(400), 400) === false,
+    'isTruncated : pile au plafond sans « … » -> non tronquée');
+
+  const BKLG90 = path.join(PKG, 'scripts', 'backlog.js');
+  const repo = path.join(SANDBOX, 'repo-trunc-cli');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  const longScope = 'fait quand : ' + 'critère '.repeat(60); // ~490 caractères, > MAX_SCOPE (400)
+
+  // add : refus explicite (longueur reçue vs plafond + pattern conseillé), AUCUNE mutation.
+  const rAdd = runNode(BKLG90, ['add', '--cwd', repo, '--model', 'sonnet', '--title', 'Lot spec longue', '--scope', longScope]);
+  ok(/Refusé/.test(rAdd.out) && rAdd.out.includes(`--scope : ${longScope.trim().length} caractères reçus pour 400 max`),
+    'CLI add scope > plafond : refus avec longueur reçue vs plafond');
+  ok(/résumé court/.test(rAdd.out) && /fichier du dépôt/.test(rAdd.out) && /--allow-trunc/.test(rAdd.out),
+    'CLI add refusé : suggère résumé court + spec dans un fichier du dépôt, et mentionne --allow-trunc');
+  ok(/Aucun plan de lots/.test(runNode(BKLG90, ['show', '--cwd', repo]).out),
+    'CLI add refusé : aucune mutation du backlog');
+
+  // add --allow-trunc : accepté, coupe ANNONCÉE ; stocké = pile 400 signes finissant par « … ».
+  const rAllow = runNode(BKLG90, ['add', '--cwd', repo, '--model', 'sonnet', '--title', 'Lot spec longue', '--scope', longScope, '--allow-trunc']);
+  ok(/Troncature acceptée \(--allow-trunc\)/.test(rAllow.out) && /Lot #1 .* ajouté/.test(rAllow.out),
+    'CLI add --allow-trunc : lot créé, troncature annoncée');
+  const stored = JSON.parse(runNode(BKLG90, ['show', '--cwd', repo, '--json']).out);
+  ok(stored.lots[0].scope.length === 400 && stored.lots[0].scope.endsWith('…'),
+    'CLI add --allow-trunc : scope stocké coupé pile au plafond avec « … » final');
+
+  // show : la troncature EN DONNÉE est marquée (show n'abrège rien à l'affichage).
+  ok(/\[⚠️ tronqué en donnée : scope\]/.test(runNode(BKLG90, ['show', '--cwd', repo]).out),
+    'CLI show : valeur tronquée en donnée marquée explicitement');
+
+  // note / verify : mêmes caps, même garde.
+  const rNote = runNode(BKLG90, ['note', '--cwd', repo, '--id', '1', '--note', 'n'.repeat(230)]);
+  ok(/Refusé/.test(rNote.out) && /--note : 230 caractères reçus pour 200 max/.test(rNote.out),
+    'CLI note > plafond : refus explicite');
+  ok(!JSON.parse(runNode(BKLG90, ['show', '--cwd', repo, '--json']).out).lots[0].note,
+    'CLI note refusée : rien de stocké');
+  const rVerify = runNode(BKLG90, ['verify', '--cwd', repo, '--id', '1', '--set', 'v'.repeat(180)]);
+  ok(/Refusé/.test(rVerify.out) && /--set : 180 caractères reçus pour 150 max/.test(rVerify.out),
+    'CLI verify --set > plafond : refus explicite');
+  const rNoteOk = runNode(BKLG90, ['note', '--cwd', repo, '--id', '1', '--note', 'n'.repeat(230), '--allow-trunc']);
+  ok(/Troncature acceptée/.test(rNoteOk.out) && /Note posée/.test(rNoteOk.out),
+    'CLI note --allow-trunc : posée avec coupe annoncée');
+}
+
 section('suggestedTitle : suffixe « (partie N) » quand un lot dépasse une session (lot #35)');
 {
   const backlogLib0 = require(path.join(PKG, 'lib', 'backlog'));

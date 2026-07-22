@@ -612,7 +612,18 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   n'était pas suivi par git. À part : `.vibe-agent/todo-snapshot.json`, capture passive de la
   todo-list Claude Code (écrasée à chaque `TodoWrite`, sens unique outil→disque — granularité
   tâche ≠ lot, jamais de promotion todo→backlog).
-- **Trailers git du commit de clôture** (`scripts/close-batch.js: trailerBlock`, lot #60) : la
+- **Toute troncature est bruyante côté CLI backlog** (epic « Périmètres fiables », lots #88/#90) :
+  le backlog est la **spec** que lisent les sessions filles — une valeur amputée en silence (un
+  « fait quand » coupé) se découvre au pire moment, quand une fille refuse de démarrer. Deux
+  vecteurs, deux gardes dans `scripts/backlog.js` : (1) argv **non quoté** — tokens orphelins
+  recensés (`lib/backlog.js: orphanArgs`) et commande **refusée** avant tout dispatch (#88) ;
+  (2) valeur quotée **au-delà de son plafond `MAX_*`** — refus explicite (longueur reçue vs
+  plafond + pattern conseillé « résumé court + spec complète dans un fichier du dépôt référencé
+  en note »), sauf `--allow-trunc` qui accepte sciemment en **annonçant** la coupe (#90, sur
+  `add`/`note`/`verify`/`drop`). `trunc()` reste en dernière ligne dans la lib (normalisation
+  défensive au chargement, jamais supprimée) ; `show` marque `[⚠️ tronqué en donnée : …]` toute
+  valeur stockée portant la signature de `trunc()` (`isTruncated` : longueur pile au plafond +
+  « … » final) — `show` n'abrégeant rien à l'affichage, la distinction donnée/affichage est nette.
   checklist affiche, quand un lot est `in_progress`, un bloc `PMZ-Lot`/`PMZ-Cost`/`PMZ-Model`
   prêt à coller en pied du message de commit (id backlog, `cost_tokens` cumulé formaté
   `fmtK`, `model_hint`/`effort_hint` combinés) — traçabilité coût/modèle par commit,
