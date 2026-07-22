@@ -396,14 +396,18 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
 - **`/pmz:scope` propose le périmètre/dépendances au découpage** (fix 2026-07-20, ferme le
   dernier écart de D3 — le découpage pressenti listait 6 briques toutes livrées aux lots #76-80,
   mais `/scope` lui-même n'avait jamais été mis à jour pour s'en servir) : à la décomposition,
-  `commands/scope.md` propose désormais un périmètre par lot **quand il est clairement
-  déductible** du découpage (jamais deviné à l'aveugle), inclus dans l'unique question de
-  validation déjà utilisée pour modèle/effort/epic. Une fois les lots persistés, si ≥ 2 lots et
-  qu'au moins une vague de `parallelize --json` compte ≥ 2 lots (opportunité réelle — une vague
-  à 1 lot n'apporte rien), le plan est affiché et **une** question à choix tranche
-  parallèle/série ; sinon silence total (zéro bruit sur un découpage ordinaire). Le lancement
-  des sessions filles reste **manuel** dans les deux cas — aucun changement à la doctrine D3
-  palier 2, seule la découverte de la fonctionnalité devient automatique.
+  `commands/scope.md` propose désormais un périmètre par lot, durci au lot #85 en **réflexion
+  systématique** : chaque lot reçoit soit un périmètre proposé, soit « série » motivé en
+  quelques mots (jamais de silence, mais jamais non plus de périmètre deviné à l'aveugle — au
+  doute, série assumé), le tout inclus dans l'unique question de validation déjà utilisée pour
+  modèle/effort/epic. Une fois les lots persistés, si ≥ 2 lots, le **verdict parallélisation
+  est toujours restitué** (lot #85) : sans opportunité réelle (aucune vague de
+  `parallelize --json` à ≥ 2 lots), une seule ligne motivée tirée de la sortie du script ; avec
+  opportunité, plan affiché et **une** question à **3 choix** — tout parallèle / partiellement
+  (PMZ propose le sous-ensemble cohérent, `depends_on` et disjonction respectés, le reste
+  repasse en série) / série. Le lancement des sessions filles reste **manuel** dans tous les
+  cas — aucun changement à la doctrine D3 palier 2, seule la découverte et la visibilité du
+  raisonnement deviennent automatiques.
 - **Réintégration en pipeline — `pmz:reintegrate`** (lot #80, 5ᵉ/6ᵉ brique de
   [D3](docs/decisions/D3-parallelisation-gouvernee.md), principe **P3** « jamais de big-bang ») :
   `lib/reintegrate.js` sépare trois responsabilités. `planReintegration(fleet, backlog)` (**pur**)

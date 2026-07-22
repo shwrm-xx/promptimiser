@@ -23,7 +23,10 @@ jamais aboutir (cycle, dépend d'un non parallélisable) est « bloqué ».
 2. Restituer le plan tel quel : pour chaque vague, les lots avec leur **branche suggérée** et
    leur **périmètre**, puis les lots non parallélisables / bloqués.
 3. **NE RIEN LANCER.** La commande est une proposition : le lancement des sessions filles reste
-   **manuel et validé** (cf. D3, palier 2). Après validation humaine, chaque lot se démarre à la
-   main : `node ~/.claude/promptimizer/scripts/backlog.js start --id <id> --owner <session>`.
+   **manuel et validé** (cf. D3, palier 2). L'adoption peut être **partielle** : un sous-ensemble
+   d'une vague est valide tant que les périmètres retenus restent disjoints et les `depends_on`
+   satisfaits — les lots écartés repassent simplement en série. Après validation humaine, chaque
+   lot retenu se démarre à la main :
+   `node ~/.claude/promptimizer/scripts/backlog.js start --id <id> --owner <session>`.
 
 N'invente aucune vague absente de la sortie du script : le plan fait foi.

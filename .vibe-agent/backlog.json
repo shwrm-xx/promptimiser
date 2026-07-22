@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "next_id": 85,
+  "next_id": 88,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-20T15:07:32.545Z",
+  "updated_at": "2026-07-22T07:59:20.473Z",
   "lots": [
     {
       "id": 1,
@@ -1857,6 +1857,92 @@
         81,
         83
       ],
+      "session_owner": null
+    },
+    {
+      "id": 85,
+      "title": "Parallélisation pensée d'office dans /scope",
+      "scope": "fait quand : tout /scope avec ≥ 2 lots affiche un verdict parallélisation (plan de vagues ou raison en 1 ligne) et pose la question tout parallèle / partiel / série",
+      "status": "in_progress",
+      "model_hint": "opus",
+      "effort_hint": "medium",
+      "epic": "Verbe & Vagues",
+      "verify": "node test/run-tests.js",
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "cost_tokens": 0,
+      "started_at": "2026-07-21T07:22:41.731Z",
+      "lot_number": null,
+      "note": "Verify OK hormis 1 échec préexistant (CLI enable: binaire absent → refus explicite) — bug d'isolation test rtk (rtk réellement installé sur cette machine), sans rapport avec ce lot. Fix planifié au l…",
+      "session_touches": 3,
+      "perimeter": [
+        "promptimizer/commands/**",
+        "skills/**"
+      ],
+      "depends_on": [],
+      "session_owner": null,
+      "integrations": {
+        "command_optimizer": {
+          "snapshot_start": {
+            "commands": 1,
+            "delivered_tokens": 4
+          }
+        }
+      }
+    },
+    {
+      "id": 86,
+      "title": "RTK visible dans le verbe PMZ",
+      "scope": "fait quand : about, budget et l'injection session-start affichent l'état/gains RTK (silence si absent), node test/run-tests.js vert",
+      "status": "todo",
+      "model_hint": "sonnet",
+      "effort_hint": "medium",
+      "epic": "Verbe & Vagues",
+      "verify": "node test/run-tests.js",
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "cost_tokens": 0,
+      "started_at": null,
+      "lot_number": null,
+      "note": null,
+      "session_touches": 0,
+      "perimeter": [
+        "promptimizer/scripts/**",
+        "promptimizer/hooks/**",
+        "promptimizer/lib/messages.js",
+        "test/**"
+      ],
+      "depends_on": [],
+      "session_owner": null
+    },
+    {
+      "id": 87,
+      "title": "Fiabilisation des sessions filles (vague)",
+      "scope": "fait quand : consigne sous-agents dans le verbe de vague + fleetLines, demandes d'élargissement visibles côté orchestrateur, --perimeter répétable ET à virgules dans le CLI, tests verts",
+      "status": "todo",
+      "model_hint": "opus",
+      "effort_hint": "high",
+      "epic": "Verbe & Vagues",
+      "verify": "node test/run-tests.js",
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "cost_tokens": 0,
+      "started_at": null,
+      "lot_number": null,
+      "note": null,
+      "session_touches": 0,
+      "perimeter": [
+        "promptimizer/**",
+        "skills/**",
+        "test/**"
+      ],
+      "depends_on": [],
       "session_owner": null
     }
   ]

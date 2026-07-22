@@ -2,6 +2,23 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-22 — lot #85 « Parallélisation pensée d'office dans /scope » (epic « Verbe & Vagues »)
+
+`/pmz:scope` ne laisse plus la parallélisation dans l'angle mort : elle est désormais **pensée
+d'office**, l'utilisateur tranche, PMZ propose.
+
+- Étape 1 de découpage : pour **chaque** lot, périmètre proposé **ou** « série » motivé en
+  quelques mots — jamais de silence, mais jamais de périmètre deviné à l'aveugle (garde-fou
+  anti-invention conservé).
+- Étape 4bis : le **verdict parallélisation est toujours restitué** (≥ 2 lots posés) — une ligne
+  motivée si aucune opportunité réelle, sinon le plan de vagues **et** une question à **3 choix** :
+  tout parallèle / **partiellement** (PMZ propose le sous-ensemble cohérent, dépendances et
+  disjonction respectées) / série.
+- `commands/parallelize.md`, `skills/promptimizer/SKILL.md`, `ARCHITECTURE.md` alignés.
+- Vérification ciblée : `node test/run-tests.js` — 1168 OK, 1 échec **préexistant et sans rapport**
+  (bug d'isolation du test RTK statut : le binaire `rtk` est réellement présent sur cette machine ;
+  fix planifié au lot #87).
+
 ## 2026-07-20 — lot #84 « Fallback natif de sortie volumineuse (sans RTK) » (epic « Bridge RTK »)
 
 Épilogue de l'epic « Bridge RTK » : un filet **générique** qui réduit une sortie Bash très longue

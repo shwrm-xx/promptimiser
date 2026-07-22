@@ -20,11 +20,14 @@ quand : … » vérifiable** — au-delà, redécouper plutôt que grossir un lo
    session (`[XXX · #Y] NomDePlan · Lot #X · résumé` — `#Y` = id backlog global, `Lot #X` = rang
    du lot dans le plan) ; sinon l'omettre (epic = label optionnel, la session s'affichera
    `[XXX · #Y] Session Libre · résumé`).
-   Proposer aussi, **quand c'est clairement déductible du découpage** (lots qui touchent des
-   dossiers/modules distincts) : un **périmètre** par lot (globs de chemins que ce lot a le
-   droit de modifier) et, si un ordre s'impose entre lots, un `depends_on` (id des lots qui
-   doivent être clos avant). Jamais forcé : sans périmètre net, un lot reste périmètre-vide
-   (séquentiel classique, comportement inchangé) — ne pas deviner un périmètre incertain.
+   **Penser la parallélisation d'office** : pour **chaque** lot, statuer explicitement —
+   soit un **périmètre** proposé (globs de chemins que ce lot a le droit de modifier),
+   soit « série » avec la raison en quelques mots (périmètre incertain, chevauchement
+   inévitable avec un autre lot, ordre imposé…). Jamais de silence sur ce point ; le
+   garde-fou anti-invention demeure : ne **jamais** deviner un périmètre incertain — au
+   doute, « série » assumé et annoncé (le lot reste périmètre-vide, séquentiel classique).
+   Si un ordre s'impose entre lots, poser un `depends_on` (id des lots qui doivent être
+   clos avant).
 2. Faire valider le découpage, les modèles préconisés, l'epic éventuel **et le périmètre/les
    dépendances proposés** par l'utilisateur en **UNE** question (pas dix).
 3. Si un epic a été validé, l'enregistrer une fois pour la session/le titre :
@@ -43,14 +46,22 @@ quand : … » vérifiable** — au-delà, redécouper plutôt que grossir un lo
 4bis. **Si ≥ 2 lots viennent d'être persistés**, calculer le plan de vagues :
    `node ~/.claude/promptimizer/scripts/backlog.js parallelize --json` (ajouter `--epic "…"` si
    posé). Une **opportunité réelle** = au moins une vague contenant **≥ 2 lots** (une vague à 1
-   lot n'apporte rien). Si aucune opportunité : ne rien afficher, passer silencieusement à
-   l'étape 5 (comportement historique intact, zéro bruit sur un découpage ordinaire). Si
-   opportunité : afficher le plan lisible (`parallelize` sans `--json` : vagues, branches
-   suggérées, périmètres) puis poser **une** question à choix :
-   - **Lancer en parallèle** → afficher, pour chaque lot de la 1ʳᵉ vague, la commande de
-     démarrage suggérée (`backlog.js start --id <id> --owner <session>`) ; rappeler que
-     l'ouverture des sessions filles reste **manuelle** (PMZ ne lance rien tout seul).
-   - **Traiter en série** → comportement actuel, passer à l'étape 5.
+   lot n'apporte rien). Le verdict est **toujours restitué** — jamais de silence :
+   - **Aucune opportunité** : **une seule ligne** qui dit pourquoi, tirée de la sortie du
+     script (ex. « Parallélisation : aucune opportunité — lots posés en série / chaîne de
+     dépendances / périmètres chevauchants »), puis passer à l'étape 5. Pas de question,
+     pas de plan détaillé : le raisonnement est visible, le bruit s'arrête à cette ligne.
+   - **Opportunité** : afficher le plan lisible (`parallelize` sans `--json` : vagues,
+     branches suggérées, périmètres) puis poser **une** question à **3 choix** :
+     - **Tout en parallèle** → afficher, pour chaque lot de la 1ʳᵉ vague, la commande de
+       démarrage suggérée (`backlog.js start --id <id> --owner <session>`) ; rappeler que
+       l'ouverture des sessions filles reste **manuelle** (PMZ ne lance rien tout seul).
+     - **Partiellement** → proposer **le** sous-ensemble cohérent le plus utile (ex. les
+       lots les plus indépendants de la 1ʳᵉ vague en parallèle, le reste en série), en
+       respectant `depends_on` — jamais un panachage qui casse une dépendance ou marie
+       deux périmètres chevauchants. Même restitution que « tout en parallèle », limitée
+       au sous-ensemble retenu ; les lots écartés repassent en série.
+     - **En série** → comportement classique, passer à l'étape 5.
 5. Démarrer et traiter le lot voulu : `node ~/.claude/promptimizer/scripts/backlog.js start --id <id>`,
    afficher le plan (`show`, ou `show --epic "Nom de l'epic"` pour filtrer) et traiter
    **UNIQUEMENT** le(s) lot(s) démarré(s) (le premier lot en série ; la 1ʳᵉ vague si parallèle).
