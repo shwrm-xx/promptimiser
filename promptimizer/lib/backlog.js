@@ -97,7 +97,35 @@ const VALUE_FLAGS = ['cwd', 'id', 'epic', 'set', 'model', 'effort', 'title', 'sc
   'verify', 'owner', 'commit', 'note', 'into', 'format', 'depends', 'perimeter'];
 // Flags booléens (ne consomment aucune valeur) — listés pour documentation ;
 // tout flag hors VALUE_FLAGS est traité comme booléen (ne consomme rien).
-const BOOL_FLAGS = ['json', 'suggest', 'execute'];
+const BOOL_FLAGS = ['json', 'suggest', 'execute', 'allow-trunc'];
+
+// Garde anti-troncature de champ (lot #90), 2e vecteur après les orphelins argv (#88) :
+// une valeur QUOTÉE mais au-delà de son plafond MAX_* serait stockée coupée par trunc()
+// — un « … » en pleine phrase — sans que la sortie du CLI n'en dise rien (cas réel : des
+// critères « fait quand » amputés, découverts seulement quand une session fille a refusé
+// de démarrer sur une spec incomplète). Liste les champs en dépassement pour que le CLI
+// REFUSE explicitement (ou annonce la coupe, si --allow-trunc).
+// fields : [{ name, value, max }] — value nulle/vide ignorée ; longueur mesurée après
+// trim, comme le fait trunc().
+function overflowFields(fields) {
+  const over = [];
+  for (const f of Array.isArray(fields) ? fields : []) {
+    if (f == null || f.value == null) continue;
+    const len = String(f.value).trim().length;
+    if (len > f.max) over.push({ name: f.name, length: len, max: f.max });
+  }
+  return over;
+}
+
+// Une valeur STOCKÉE porte-t-elle la signature de trunc() (longueur pile au plafond,
+// « … » final) ? Sert à `show` pour marquer une troncature EN DONNÉE — celle qui a coupé
+// le contenu au stockage — par opposition aux troncatures d'affichage (summaryLines), qui
+// ne perdent rien. Faux positif possible (valeur volontairement à ras du plafond finissant
+// par « … ») : assumé, le marquage est purement informatif.
+function isTruncated(v, max) {
+  const s = String(v == null ? '' : v);
+  return s.length === max && s.endsWith('…');
+}
 
 // Retourne les tokens argv orphelins (nus, non consommés comme valeur de flag)
 // à partir de l'index argStart. [] si l'argv est bien formé.
@@ -748,7 +776,7 @@ module.exports = {
   touchLot, addCost, currentLot, nextLot, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
   epicBilan, estimateCost, canCoexist, pairwiseCoexist, planWaves, waveBranch,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot, modelEffortTag,
-  exportCsv, exportMarkdown, orphanArgs, VALUE_FLAGS, BOOL_FLAGS,
+  exportCsv, exportMarkdown, orphanArgs, overflowFields, isTruncated, VALUE_FLAGS, BOOL_FLAGS,
   MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_OWNER, MAX_DEPENDS, MAX_NOTE, MAX_TODOS, EFFORT_LEVELS,
   COST_BUDGET_TOKENS, COST_WARN_TOKENS,
 };

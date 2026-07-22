@@ -42,6 +42,24 @@ function estimateSuffix(b, l) {
 // Claude Code / exportée aux hooks), sinon l'emplacement de l'install manuelle.
 const PMZ_BASE = (process.env.CLAUDE_PLUGIN_ROOT || '').trim() || '~/.claude/promptimizer';
 
+// Garde anti-troncature de champ (#90) : une valeur au-delà de son plafond MAX_* serait
+// stockée coupée par trunc() (« … » en pleine phrase) sans un mot dans la sortie. On refuse
+// explicitement — longueur reçue vs plafond — sauf --allow-trunc (acceptation consciente,
+// coupe annoncée). Renvoie true si la commande doit s'arrêter (refus émis).
+function truncGuard(fields) {
+  const over = backlog.overflowFields(fields);
+  if (!over.length) return false;
+  const detail = over.map((o) => `${o.name} : ${o.length} caractères reçus pour ${o.max} max`).join(' ; ');
+  if (!process.argv.includes('--allow-trunc')) {
+    out(`Refusé : ${detail} — la valeur serait tronquée en silence au stockage (« … » en pleine phrase).`);
+    out('Préfère un résumé court sous le plafond + la spec complète dans un fichier du dépôt, référencé en note.');
+    out('Pour accepter sciemment la troncature : ajoute --allow-trunc.');
+    return true;
+  }
+  out(`⚠️ Troncature acceptée (--allow-trunc) : ${detail}.`);
+  return false;
+}
+
 function show(root, json, epicFilter) {
   const b = backlog.loadBacklog(root);
   const lots = epicFilter ? b.lots.filter((l) => l.epic === epicFilter) : b.lots;
@@ -67,6 +85,14 @@ function show(root, json, epicFilter) {
     if (l.status === 'done' && Number.isFinite(l.closed_occupancy)) line += ` (occupation à la clôture : ${l.closed_occupancy})`;
     if (Number.isFinite(l.cost_tokens) && l.cost_tokens > 0) line += ` (coût ~${fmtK(l.cost_tokens)} tokens de sortie)`;
     if (l.note) line += ` (note : ${l.note})`;
+    // Troncature EN DONNÉE (#90) : show n'abrège rien à l'affichage — un « … » ici signifie
+    // que le contenu STOCKÉ est coupé (legacy, ou --allow-trunc). On le rend explicite.
+    const cut = [
+      ['title', l.title, backlog.MAX_TITLE], ['scope', l.scope, backlog.MAX_SCOPE],
+      ['epic', l.epic, backlog.MAX_EPIC], ['verify', l.verify, backlog.MAX_VERIFY],
+      ['note', l.note, backlog.MAX_NOTE],
+    ].filter(([, v, max]) => v && backlog.isTruncated(v, max)).map(([name]) => name);
+    if (cut.length) line += ` [⚠️ tronqué en donnée : ${cut.join(', ')}]`;
     out(line);
   }
 }
@@ -256,6 +282,13 @@ function main() {
     if (effort && !backlog.EFFORT_LEVELS.includes(effort)) {
       return out(`Refusé : --effort invalide (« ${effort} »). Valeurs acceptées : ${backlog.EFFORT_LEVELS.join(' | ')}.`);
     }
+    if (truncGuard([
+      { name: '--title', value: flag('title'), max: backlog.MAX_TITLE },
+      { name: '--scope', value: flag('scope'), max: backlog.MAX_SCOPE },
+      { name: '--model', value: model, max: backlog.MAX_MODEL_HINT },
+      { name: '--epic', value: flag('epic'), max: backlog.MAX_EPIC },
+      { name: '--verify', value: flag('verify'), max: backlog.MAX_VERIFY },
+    ])) return;
     const depends = flagList('depends').map(Number).filter(Number.isFinite);
     const newLot = backlog.addLot(root, flag('title'), flag('scope'), model, flag('epic'), flag('verify'), effort, flagList('perimeter'), depends);
     if (!newLot) {
@@ -277,6 +310,7 @@ function main() {
       const l = b.lots.find((x) => x.id === Number(id));
       return out(l ? `Verify du lot #${l.id} : ${l.verify || '(aucune)'}` : `Lot #${id} introuvable.`);
     }
+    if (truncGuard([{ name: '--set', value: set, max: backlog.MAX_VERIFY }])) return;
     const l = backlog.setVerify(root, id, set);
     return out(l ? `Verify du lot #${l.id} enregistrée : ${l.verify}` : `Lot #${id} introuvable ou commande vide.`);
   }
@@ -296,12 +330,14 @@ function main() {
   }
 
   if (cmd === 'drop') {
+    if (truncGuard([{ name: '--note', value: flag('note'), max: backlog.MAX_NOTE }])) return;
     const lot = backlog.dropLot(root, id, flag('note'));
     return out(lot ? `Lot #${lot.id} « ${lot.title} » abandonné.`
       : `Lot #${id} introuvable ou déjà fait.`);
   }
 
   if (cmd === 'note') {
+    if (truncGuard([{ name: '--note', value: flag('note'), max: backlog.MAX_NOTE }])) return;
     const lot = backlog.noteLot(root, id, flag('note'));
     return out(lot ? `Note posée sur le lot #${lot.id}.` : `Lot #${id} introuvable ou --note manquante.`);
   }
