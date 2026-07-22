@@ -1,0 +1,16 @@
+{
+  "name": "pmz",
+  "version": "1.6.1",
+  "description": "Promptimizer — gouvernance de session vibecoding (Claude Code) : réduit la relecture de contexte, force une clôture propre des lots, injecte les handoffs entre sessions.",
+  "author": {
+    "name": "Marwan"
+  },
+  "keywords": [
+    "session",
+    "contexte",
+    "tokens",
+    "handoff",
+    "gouvernance",
+    "vibecoding"
+  ]
+}
