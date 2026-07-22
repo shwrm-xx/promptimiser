@@ -2,6 +2,30 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-22 — lot #92 « Étude — Archive à tiroirs des handoffs de lots » (epic « Archive à tiroirs (étude) »)
+
+Constat terrain : le handoff riche de fin de lot (décisions+pourquoi, non-vérifié, dette) n'a
+qu'une seule vie — injecté une fois au `SessionStart` suivant, puis écrasé par le handoff
+mécanique au premier `Stop`. Les handoffs riches des ~90 lots clos ont tous disparu sans trace,
+faute d'un référentiel durable et consultable sur demande.
+
+- **Étude multi-agents** (6 lecteurs de cartographie du code + conception + vérification
+  adversariale à 2 lentilles par point — existence du problème / respect des invariants PMZ) :
+  document produit, pas de code — cette entrée persiste la matière pour un chantier
+  d'implémentation ultérieur, découpé en lots séparés.
+- **`mwn/promptimizer-archive-handoffs/`** (nouveau) :
+  - `01-note-orientation-archive-tiroirs.md` — spec de l'« archive à tiroirs » (3 tiroirs :
+    index/fiche/brut, pare-feu absolu contre l'injection automatique, points d'écriture à la
+    clôture) + verdicts de vérification (ancrage des points d'intégration, tenue du pare-feu —
+    les deux **confirmés**, corrections mineures listées).
+  - `02-catalogue-deperditions-fiabilisation.md` — 29 opportunités vérifiées (déperdition du
+    narratif de clôture, écritures non atomiques, verify de clôture jamais persisté, gates de
+    vague absents, `depends_on` ignoré en série, état multi-session non isolé…).
+  - `03-cartographie-brute.md` — matière brute des 6 sous-systèmes cartographiés (handoff,
+    démarrage, orchestration, clôture, gates, invariants), pour référence sans déperdition.
+- Aucun invariant touché (zéro dépendance, fail-open, cross-platform) : lot documentaire,
+  `test/run-tests.js` non requis (aucun fichier `lib/`/`hooks/`/`install/` modifié).
+
 ## 2026-07-22 — lot #91 « Pointeur de vague dans le handoff auto » (epic « Verbe & Vagues »)
 
 Constat terrain : au démarrage d'une session fraîche pendant une vague parallèle en vol,
