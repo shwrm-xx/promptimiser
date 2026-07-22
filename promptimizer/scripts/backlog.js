@@ -18,10 +18,17 @@ function flag(name) {
   const i = process.argv.indexOf('--' + name);
   return i !== -1 && process.argv[i + 1] != null ? process.argv[i + 1] : null;
 }
-// Liste séparée par virgules (« --perimeter "lib/a,lib/b" ») → tableau nettoyé. [] si absent.
+// Liste de valeurs, RÉPÉTABLE (« --perimeter a --perimeter b ») ET à virgules
+// (« --perimeter "lib/a,lib/b" ») — les deux formes se cumulent dans l'ordre d'apparition.
+// Nettoyée (trim, vides écartés). [] si le flag est absent.
 function flagList(name) {
-  const v = flag(name);
-  return v ? v.split(',').map((s) => s.trim()).filter(Boolean) : [];
+  const out = [];
+  for (let i = 0; i < process.argv.length; i++) {
+    if (process.argv[i] === '--' + name && process.argv[i + 1] != null) {
+      for (const s of String(process.argv[i + 1]).split(',').map((x) => x.trim()).filter(Boolean)) out.push(s);
+    }
+  }
+  return out;
 }
 function out(s) { process.stdout.write(s + '\n'); }
 // Suffixe texte de l'estimation prédictive (lot #63) : vide si backlog.estimateCost n'a
@@ -121,6 +128,7 @@ function reintegrate(root, json, execute, into) {
   const byId = new Map(b.lots.map((l) => [l.id, l]));
   const dateOf = () => new Date().toISOString().slice(0, 10);
 
+  const extensions = require('../lib/fleet').pendingExtensions(fleet);
   if (!execute) {
     if (json) {
       return out(JSON.stringify({
@@ -129,6 +137,7 @@ function reintegrate(root, json, execute, into) {
         steps: plan.steps,
         notReady: plan.notReady,
         blocked: plan.blocked,
+        extensions,
         complete: plan.complete,
       }, null, 2));
     }
@@ -155,6 +164,13 @@ function reintegrate(root, json, execute, into) {
     if (plan.blocked.length) {
       out('');
       for (const x of plan.blocked) out(`Bloqué : #${x.id} « ${x.title || '?'} » — ${x.reason}.`);
+    }
+    if (extensions.length) {
+      out('');
+      out('Demandes d\'élargissement de périmètre en attente (à arbitrer avant de merger) :');
+      for (const e of extensions) {
+        out(`- #${e.id}${e.title ? ` « ${e.title} »` : ''} a voulu écrire hors zone : ${e.paths.join(', ')}.`);
+      }
     }
     out('');
     out('⚠️ Proposition seule : aucune branche n\'a été mergée, fleet.json inchangé.');

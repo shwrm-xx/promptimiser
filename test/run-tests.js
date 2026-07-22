@@ -42,8 +42,11 @@ function section(name) { console.log('\n— ' + name + ' —'); }
 function runHook(file, inputObj, extraEnv) {
   const input = typeof inputObj === 'string' ? inputObj : JSON.stringify(inputObj);
   try {
+    // stdio piped EXPLICITEMENT : sans quoi execFileSync répercute le stderr de l'enfant sur
+    // CELUI du parent (défaut Node), ce qui laisse fuir la sortie des tests négatifs légitimes
+    // sur le vrai stderr de la suite (et masque le tail honnête de /close-batch, cf. lot #87).
     const out = execFileSync(process.execPath, [path.join(HOOKS, file)], {
-      input, encoding: 'utf8', env: Object.assign({}, process.env, extraEnv || {}),
+      input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], env: Object.assign({}, process.env, extraEnv || {}),
     });
     return { code: 0, out };
   } catch (e) {
@@ -62,8 +65,11 @@ function bashVerdict(command) {
 }
 function runNode(file, args, env) {
   try {
+    // stdio piped explicitement (cf. runHook) : empêche la fuite du stderr enfant vers le stderr
+    // du parent — sinon les tests négatifs (merge-settings JSON invalide, build-plugin commande
+    // absente) polluent le vrai stderr de la suite. e.stderr reste capturé pour les assertions.
     const out = execFileSync(process.execPath, [file].concat(args || []), {
-      encoding: 'utf8', env: Object.assign({}, process.env, env || {}),
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], env: Object.assign({}, process.env, env || {}),
     });
     return { code: 0, out, err: '' };
   } catch (e) {
@@ -4597,6 +4603,10 @@ section('fleet — registre de vague fleet.json + injection SessionStart (lib/fl
   const lines = fleet.fleetLines(repoF, 'sA');
   ok(lines.length > 0 && lines.length < 10, 'fleet.fleetLines : non vide et < 10 lignes (coût de contexte)');
   ok(lines.some((l) => /Périmètre EXCLUSIF/.test(l) && /lib\/a/.test(l)), 'fleet.fleetLines : périmètre exclusif présent');
+  // Lot #87 : consigne sous-agents — le garde-fou d'écriture ne couvre que la session
+  // propriétaire, jamais ses sous-agents (autre session_id). fleetLines doit le rappeler.
+  ok(lines.some((l) => /[Ss]ous-agents?/.test(l) && /périmètre/.test(l)),
+    'fleet.fleetLines : consigne sous-agents (transmettre le périmètre) présente');
   ok(lines.some((l) => /Tête d'intégration/.test(l) && /integration@abc1234/.test(l)), 'fleet.fleetLines : tête d\'intégration présente');
   ok(lines.some((l) => /sœur/.test(l)), 'fleet.fleetLines : mention des lots sœurs');
   ok(fleet.fleetLines(repoF, 'sZ').length === 0, 'fleet.fleetLines : session non-propriétaire -> [] (silencieux)');
@@ -4734,6 +4744,15 @@ section('fleet — demande d\'extension de périmètre requestExtension (lib/fle
   fleet.upsertLot(repoE, { id: 2, session_owner: 'sB', perimeter: ['lib/b'] });
   const lot2 = fleet.loadFleet(repoE).lots.find((l) => l.id === 2);
   ok(JSON.stringify(lot2.ext_requests) === JSON.stringify([]), 'lot : ext_requests par défaut = [] (rétrocompat)');
+
+  // E5. pendingExtensions : agrégat POUR L'ORCHESTRATEUR — seuls les lots ayant une demande,
+  // sous forme { id, title, paths } (lot #87). repoE : lot 1 = 2 demandes, lot 2 = aucune.
+  const pend = fleet.pendingExtensions(repoE);
+  ok(pend.length === 1 && pend[0].id === 1 && pend[0].paths.length === 2 &&
+    pend[0].paths.includes('lib/b/x.js') && pend[0].paths.includes('lib/c/y.js'),
+    'fleet.pendingExtensions : agrège le seul lot concerné (#1, 2 chemins)');
+  ok(fleet.pendingExtensions(path.join(SANDBOX, 'repo-ext-absent')).length === 0,
+    'fleet.pendingExtensions : hors vague / repo inconnu -> [] (fail-safe)');
 }
 
 section('backlog — planWaves + waveBranch : plan de vagues parallèles (lib, lot #79)');
@@ -4841,6 +4860,16 @@ section('backlog — CLI parallelize : plan proposé, rien lancé (scripts/backl
   execFileSync('git', ['-C', repoEmpty, 'commit', '-q', '-m', 'init']);
   const re = runNode(BKLG, ['parallelize', '--cwd', repoEmpty]);
   ok(/rien à paralléliser/.test(re.out), 'CLI parallelize : backlog vide -> « rien à paralléliser »');
+
+  // C5. --perimeter RÉPÉTABLE (« --perimeter a --perimeter b ») ET à virgules (« "a,b" ») : les
+  // deux formes se CUMULENT dans un même add (lot #87). Avant #87, seul le 1er --perimeter était
+  // lu (flag() = première occurrence) → le 2ᵉ chemin était silencieusement perdu.
+  runNode(BKLG, ['add', '--cwd', repoPz, '--title', 'Multi périmètre', '--model', 'sonnet',
+    '--perimeter', 'lib/x,lib/y', '--perimeter', 'lib/z']);
+  const lotMulti = backlogLib.loadBacklog(repoPz).lots.find((l) => l.title === 'Multi périmètre');
+  ok(lotMulti && lotMulti.perimeter.length === 3 &&
+    ['lib/x', 'lib/y', 'lib/z'].every((p) => lotMulti.perimeter.includes(p)),
+    'CLI add : --perimeter répétable ET à virgules cumulés (lib/x, lib/y, lib/z)');
 }
 
 // ============ D3-5/6. RÉINTÉGRATION EN PIPELINE + VIGIES DE VAGUE (lot #80) ============
@@ -5035,6 +5064,17 @@ section('backlog — CLI reintegrate : plan proposé (défaut) + exécution (--e
   let parsed = null; try { parsed = JSON.parse(rj.out); } catch (_) { /* null */ }
   ok(parsed && parsed.executed === false && Array.isArray(parsed.steps) && parsed.steps.length === 1 && parsed.steps[0].id === 1,
     'CR2 : --json plan -> executed:false + steps');
+
+  // CR2b. Demandes d'élargissement EN ATTENTE remontées à l'orchestrateur dans le plan (lot #87) :
+  // une session fille a tenté d'écrire hors zone (trace requestExtension) → visible pour arbitrage.
+  fleet.requestExtension(repo, 1, 'lib/other/z.js');
+  const rpe = runNode(BKLG, ['reintegrate', '--cwd', repo]);
+  ok(/Demandes d'élargissement de périmètre en attente/.test(rpe.out) && /#1[^\n]*lib\/other\/z\.js/.test(rpe.out),
+    'CR2b : plan surface les demandes d\'élargissement (texte)');
+  let parsedE = null; try { parsedE = JSON.parse(runNode(BKLG, ['reintegrate', '--cwd', repo, '--json']).out); } catch (_) { /* null */ }
+  ok(parsedE && Array.isArray(parsedE.extensions) && parsedE.extensions.length === 1 &&
+    parsedE.extensions[0].id === 1 && parsedE.extensions[0].paths.includes('lib/other/z.js'),
+    'CR2b : --json plan -> extensions[] (lot + chemin hors zone)');
 
   // CR3. --execute : merge réel + fleet reintegrated + changelog agrégé.
   const re = runNode(BKLG, ['reintegrate', '--cwd', repo, '--execute']);
@@ -5255,7 +5295,11 @@ section('Bridge RTK — statut, activation persistée, conflits sur 3 canaux (lo
     ok(rtkStatus.readEnableState().enabled === false, 'CLI enable: refus → état persisté INCHANGÉ (false)');
   }
   {
-    const r = runNode(RTK_CLI, ['enable', '--cwd', rtkRoot], cliEnv({ PATH: process.env.PATH }));
+    // PATH VIDE (jamais le PATH réel) : un vrai `rtk` installé sur la machine de dev — p. ex.
+    // ~/.local/bin/rtk, présent dans le PATH réel mais HORS des EXTRA_DIRS de findTool — sinon
+    // contamine ce test négatif (bug #87). findTool ne scanne alors que les EXTRA_DIRS fixes,
+    // sans rtk → binaire réputé absent, quel que soit le poste (cf. NO_RTK_PATH plus bas).
+    const r = runNode(RTK_CLI, ['enable', '--cwd', rtkRoot], cliEnv({ PATH: '' }));
     ok(r.code === 0 && /introuvable/.test(r.out), 'CLI enable: binaire absent → refus explicite');
     rtkStatus.writeEnableState(false);
   }

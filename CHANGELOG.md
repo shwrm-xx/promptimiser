@@ -2,6 +2,31 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-22 — lot #87 « Fiabilisation des sessions filles (vague) » (epic « Verbe & Vagues »)
+
+Durcissement du dispositif de vagues parallèles + résolution de la dette de test traînée depuis
+les lots #85/#86 :
+
+- **Consigne sous-agents** dans le verbe de vague : `fleetLines` (session fille) et
+  `commands/parallelize.md` (briefing orchestrateur) rappellent désormais que le garde-fou
+  d'écriture ne protège que la session propriétaire — un sous-agent (Task/Agent) écrit sous un
+  autre `session_id` et y échappe ; la fille doit lui transmettre le périmètre explicitement.
+- **Demandes d'élargissement visibles côté orchestrateur** : `lib/fleet.pendingExtensions(root)`
+  agrège les `ext_requests` par lot ; `/reintegrate` (proposition, texte + `--json.extensions`)
+  les affiche pour arbitrage **avant merge**. La friction hors-périmètre cesse d'être une trace
+  dormante dans `fleet.json`.
+- **CLI `--perimeter` répétable ET à virgules** : `--perimeter a,b --perimeter c` cumule les deux
+  syntaxes (avant, seule la 1ʳᵉ occurrence était lue → chemins silencieusement perdus).
+- **Isolation stderr des tests** : les helpers `runNode`/`runHook` forcent `stdio` piped — sans
+  quoi le stderr des tests négatifs légitimes (merge-settings JSON invalide, build-plugin commande
+  absente) fuyait sur le vrai stderr de la suite et **masquait le tail honnête** de `/close-batch`
+  (`runVerify` priorise `e.stderr`). Le stderr de la suite est désormais **vierge** (0 ligne).
+- **Fix test RTK « binaire absent »** : le test forçait `PATH` = PATH réel, qui contient le `rtk`
+  réellement installé (`~/.local/bin`, hors `EXTRA_DIRS` de `findTool`) → contamination. `PATH`
+  vide → `findTool` ne scanne que les `EXTRA_DIRS` fixes (sans rtk) → binaire réputé absent, quel
+  que soit le poste. C'est l'échec « préexistant » signalé aux lots #85/#86.
+- Tests : +6 assertions ; **1192 OK, 0 échec**, stderr propre.
+
 ## 2026-07-22 — lot #86 « RTK visible dans le verbe PMZ » (epic « Verbe & Vagues »)
 
 RTK n'était visible que via `/pmz:rtk` — invisible partout ailleurs dans le verbe. Cette

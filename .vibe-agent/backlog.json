@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 88,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-22T08:11:19.133Z",
+  "updated_at": "2026-07-22T08:27:11.161Z",
   "lots": [
     {
       "id": 1,
@@ -1888,9 +1888,36 @@
       "id": 86,
       "title": "RTK visible dans le verbe PMZ",
       "scope": "fait quand : about, budget et l'injection session-start affichent l'état/gains RTK (silence si absent), node test/run-tests.js vert",
-      "status": "in_progress",
+      "status": "done",
       "model_hint": "sonnet",
       "effort_hint": "medium",
+      "epic": "Verbe & Vagues",
+      "verify": "node test/run-tests.js",
+      "closed_commit": "b458686",
+      "closed_at": "2026-07-22T08:11:25.712Z",
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "cost_tokens": 0,
+      "started_at": "2026-07-22T08:00:19.136Z",
+      "lot_number": 40,
+      "note": "Verify OK hormis 1 échec préexistant (CLI enable: binaire absent → refus explicite) — même bug d'isolation test rtk que #85, sans rapport avec ce lot. Fix planifié au lot #87.",
+      "session_touches": 0,
+      "perimeter": [
+        "promptimizer/scripts/**",
+        "promptimizer/hooks/**",
+        "promptimizer/lib/messages.js",
+        "test/**"
+      ],
+      "depends_on": [],
+      "session_owner": null
+    },
+    {
+      "id": 87,
+      "title": "Fiabilisation des sessions filles (vague)",
+      "scope": "fait quand : consigne sous-agents dans le verbe de vague + fleetLines, demandes d'élargissement visibles côté orchestrateur, --perimeter répétable ET à virgules dans le CLI, tests verts",
+      "status": "in_progress",
+      "model_hint": "opus",
+      "effort_hint": "high",
       "epic": "Verbe & Vagues",
       "verify": "node test/run-tests.js",
       "closed_commit": null,
@@ -1898,14 +1925,13 @@
       "closed_session_id": null,
       "closed_occupancy": null,
       "cost_tokens": 0,
-      "started_at": "2026-07-22T08:00:19.136Z",
+      "started_at": "2026-07-22T08:14:09.271Z",
       "lot_number": null,
-      "note": "Verify OK hormis 1 échec préexistant (CLI enable: binaire absent → refus explicite) — même bug d'isolation test rtk que #85, sans rapport avec ce lot. Fix planifié au lot #87.",
-      "session_touches": 0,
+      "note": "Ajout scope : lib/project.js runVerify() priorise e.stderr sur e.stdout pour le tail affiché par /close-batch — 2 tests légitimes (négatifs) polluent le stderr global de la suite, masquant systématiq…",
+      "session_touches": 1,
       "perimeter": [
-        "promptimizer/scripts/**",
-        "promptimizer/hooks/**",
-        "promptimizer/lib/messages.js",
+        "promptimizer/**",
+        "skills/**",
         "test/**"
       ],
       "depends_on": [],
@@ -1918,32 +1944,6 @@
           }
         }
       }
-    },
-    {
-      "id": 87,
-      "title": "Fiabilisation des sessions filles (vague)",
-      "scope": "fait quand : consigne sous-agents dans le verbe de vague + fleetLines, demandes d'élargissement visibles côté orchestrateur, --perimeter répétable ET à virgules dans le CLI, tests verts",
-      "status": "todo",
-      "model_hint": "opus",
-      "effort_hint": "high",
-      "epic": "Verbe & Vagues",
-      "verify": "node test/run-tests.js",
-      "closed_commit": null,
-      "closed_at": null,
-      "closed_session_id": null,
-      "closed_occupancy": null,
-      "cost_tokens": 0,
-      "started_at": null,
-      "lot_number": null,
-      "note": "Ajout scope : lib/project.js runVerify() priorise e.stderr sur e.stdout pour le tail affiché par /close-batch — 2 tests légitimes (négatifs) polluent le stderr global de la suite, masquant systématiq…",
-      "session_touches": 0,
-      "perimeter": [
-        "promptimizer/**",
-        "skills/**",
-        "test/**"
-      ],
-      "depends_on": [],
-      "session_owner": null
     }
   ]
 }

@@ -28,5 +28,8 @@ jamais aboutir (cycle, dépend d'un non parallélisable) est « bloqué ».
    satisfaits — les lots écartés repassent simplement en série. Après validation humaine, chaque
    lot retenu se démarre à la main :
    `node ~/.claude/promptimizer/scripts/backlog.js start --id <id> --owner <session>`.
+4. En briefant chaque **session fille**, rappelle-lui que le périmètre exclusif vaut AUSSI pour
+   ses **sous-agents** (Task/Agent) : le garde-fou d'écriture ne protège que la session
+   propriétaire, pas les sous-agents qu'elle délègue — elle doit leur transmettre le périmètre.
 
 N'invente aucune vague absente de la sortie du script : le plan fait foi.

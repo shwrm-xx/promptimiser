@@ -259,7 +259,10 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   `setIntegrationHead`) en lecture-modification-écriture atomique (temp+rename) pour réduire les
   fenêtres de course ; la perte-de-MàJ résiduelle est assumée au palier 2 (lancement manuel).
   `session-start.js` injecte les lignes **courtes** de `fleetLines(root, sessionId)` (périmètre
-  exclusif + branche + tête d'intégration + nb de lots sœurs, `< 10` lignes) — et **uniquement**
+  exclusif + **consigne sous-agents** — le garde-fou d'écriture ne couvre que la session
+  propriétaire, pas ses sous-agents Task/Agent qui écrivent sous un autre `session_id`, donc elle
+  doit leur transmettre le périmètre (lot #87) — + branche + tête d'intégration + nb de lots
+  sœurs, `< 10` lignes) — et **uniquement**
   si la session tient un lot en vol ; sinon silence total. Deux points d'ancrage : au
   **startup/clear** (via `withFleet`, en plus de MSG_ACTIF/handoff) **et après compaction** (bloc
   **prioritaire** de `compactResumeMessage`, placé en 2ᵉ position pour survivre au rognage du cap —
@@ -288,6 +291,10 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   `ext_requests` de l'entrée du lot — trace **passive** pour l'orchestrateur (jamais un droit
   d'écriture : l'écriture reste refusée). L'appel est **best-effort** (try/catch, jamais
   bloquant), idempotent (même chemin déjà tracé → pas de réécriture), et no-op hors fleet actif.
+  **Remontée à l'orchestrateur** (lot #87) : `fleet.pendingExtensions(root)` agrège ces demandes
+  par lot (`{ id, title, paths }`, lots sans demande écartés) et `/reintegrate` (proposition, texte
+  + `--json.extensions`) les **affiche pour arbitrage avant merge** — la friction cesse d'être une
+  simple trace dans le fichier, elle devient visible là où l'orchestrateur décide d'élargir ou non.
 - **Bridge RTK — réécriture de commande sûre** (lot #81, 1re brique de l'epic « Bridge RTK ») :
   `pre-tool-use.js` peut faire transiter une commande Bash **jugée sûre** par un moteur de
   compression externe (RTK) via une **réécriture d'input** (`updatedInput`, **sans**

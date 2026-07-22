@@ -268,6 +268,10 @@ function fleetLines(root, sessionId) {
     lines.push(`Vague parallèle active : ${f.lots.length} lot(s) en vol${f.wave_id ? ` (${f.wave_id})` : ''}. Tu tiens le lot #${mine.id}${mine.title ? ` « ${mine.title} »` : ''} (état : ${mine.state}).`);
     if (mine.perimeter.length) {
       lines.push(`Périmètre EXCLUSIF — ne modifie QUE : ${mine.perimeter.join(', ')}.`);
+      // Le garde-fou d'écriture (hook PreToolUse) n'attribue le périmètre qu'à TA session :
+      // un sous-agent (Task/Agent) écrit avec un autre session_id et échappe donc au refus.
+      // Consigne comportementale explicite → transmets-lui le périmètre, il n'est pas protégé.
+      lines.push('Sous-agents (Task/Agent) : transmets-leur ce périmètre — le garde-fou d\'écriture ne couvre QUE ta session, pas eux.');
     }
     if (mine.branch) lines.push(`Branche : ${mine.branch}${mine.worktree ? ` (worktree ${mine.worktree})` : ''}.`);
     if (f.integration_branch || f.integration_head) {
@@ -276,6 +280,22 @@ function fleetLines(root, sessionId) {
     const peers = f.lots.length - 1;
     if (peers > 0) lines.push(`${peers} lot(s) sœur(s) en parallèle : reste dans ton périmètre, ne clôture pas la vague seul.`);
     return lines;
+  } catch (_) {
+    return [];
+  }
+}
+
+// Demandes d'élargissement de périmètre EN ATTENTE, agrégées POUR L'ORCHESTRATEUR : pour chaque
+// lot en vol ayant tenté d'écrire hors de sa zone (verdict `outside` tracé par requestExtension),
+// { id, title, paths[] }. Rend la friction arbitrable en un coup d'œil (cf. /reintegrate). []
+// si aucune demande ou hors vague. Purement dérivé (lecture seule) — fail-open au moindre doute.
+function pendingExtensions(fleetOrRoot) {
+  try {
+    const f = fleetOrRoot && Array.isArray(fleetOrRoot.lots) ? fleetOrRoot : loadFleet(fleetOrRoot);
+    if (!f.active) return [];
+    return f.lots
+      .filter((l) => l.ext_requests && l.ext_requests.length)
+      .map((l) => ({ id: l.id, title: l.title, paths: l.ext_requests.slice() }));
   } catch (_) {
     return [];
   }
@@ -291,6 +311,7 @@ module.exports = {
   setIntegrationHead,
   removeLot,
   requestExtension,
+  pendingExtensions,
   lotForSession,
   fleetLines,
   STATES,
