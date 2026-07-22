@@ -9,6 +9,18 @@ const { loadReadLedger, loadContextLedger, WASTE_BUCKETS } = require('../lib/led
 const { BUCKETS, stateFileFor } = require('../lib/occupancy');
 const { readJson } = require('../lib/fsjson');
 const { parseCwd } = require('../lib/cli');
+const rtkStatus = require('../lib/rtk-status');
+const rtkMetrics = require('../lib/rtk-metrics');
+const { rtkStatusLine } = require('../lib/messages');
+
+// Best-effort, jamais bloquant : une panne RTK ne doit jamais faire échouer /pmz:budget.
+function rtkLine(root) {
+  try {
+    return rtkStatusLine(rtkStatus.computeStatus({ root }), rtkMetrics.snapshot());
+  } catch (_) {
+    return null;
+  }
+}
 
 // Sparkline (lot #61) : restitue turnstats.turns[] (FIFO 40, écrit à chaque Stop mais
 // jamais relu jusqu'ici) sans reparser le transcript — juste le miroir d'état par session.
@@ -87,6 +99,8 @@ function main() {
   lines.push('');
   lines.push(`Statut : ${statut} — ${baseLabel}`);
   if (hitRate != null) lines.push(`Cache hitRate (dernier tour) : ${Math.round(hitRate * 100)}%`);
+  const rtk = rtkLine(root);
+  if (rtk) lines.push(rtk);
 
   // Courbe des tours (lot #61) : miroir turnstats.turns[] pour la session courante
   // (cl.session_id, posé par recordOccupancy). Rien à montrer hors session connue.

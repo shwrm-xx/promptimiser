@@ -534,6 +534,45 @@ function modelMismatchMessage(lot, actualModel) {
   ].join('\n');
 }
 
+// Libellés d'état RTK (lot #86) — même 5 états que rtk-status.computeStatus(), centralisés
+// ici pour que about/budget/session-start restent alignés sans se dupliquer les uns les autres.
+const RTK_STATE_LABEL = {
+  absent: 'absent',
+  'present-inactive': 'présent — inactif',
+  active: 'actif',
+  conflict: 'conflit',
+  incompatible: 'incompatible',
+};
+
+// Ligne descriptive pour une surface EXPLICITE (/pmz:about, /pmz:budget) : toujours affichée,
+// y compris à l'état absent (l'utilisateur a demandé l'info, pas de raison de la taire).
+// `cumulative` = rtk-metrics.snapshot() (compteur monotone, jamais un « gain » — cf. gainLines
+// pour la preuve de gain par lot, distincte de ce simple compteur cumulé).
+function rtkStatusLine(status, cumulative) {
+  const s = status || {};
+  const label = RTK_STATE_LABEL[s.state] || s.state || 'inconnu';
+  let line = `Bridge RTK : ${label}`;
+  if (s.neutralized) line += ' (neutralisé — conflit détecté)';
+  const commands = cumulative && Number.isFinite(cumulative.commands) ? cumulative.commands : 0;
+  if (commands > 0) line += ` — ${commands} commande(s) réécrite(s) au total`;
+  return line;
+}
+
+// Ligne COURTE pour l'injection de démarrage (session-start.js) : silence total à l'état
+// absent (zéro bruit sur l'immense majorité des sessions, RTK n'étant pas installé) ; sinon
+// 1 ligne qui pointe vers /pmz:rtk pour les 4 états notables.
+function rtkStartupLine(status) {
+  const s = status || {};
+  if (!s.state || s.state === 'absent') return null;
+  if (s.state === 'active') return 'Bridge RTK actif (/pmz:rtk pour le statut détaillé).';
+  if (s.state === 'present-inactive') return 'RTK détecté, bridge inactif — /pmz:rtk pour l’activer.';
+  if (s.state === 'conflict') {
+    return 'Bridge RTK en conflit' + (s.neutralized ? ' (neutralisé automatiquement)' : '') + ' — /pmz:rtk pour le détail.';
+  }
+  if (s.state === 'incompatible') return 'RTK détecté mais incompatible (`--version` échoue) — /pmz:rtk pour diagnostiquer.';
+  return null;
+}
+
 module.exports = {
   MSG_ACTIF, MSG_ACTIF_SLIM, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, redZonePrescriptionMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
@@ -541,5 +580,5 @@ module.exports = {
   costlyTurnMessage, driftMessage, loopingCommandMessage, gitDebtMessage, claudeMdMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
   closureWithDraftMessage, epicBilanMessage, lotClosureCardMessage,
-  fmtK, statusLineText,
+  fmtK, statusLineText, rtkStatusLine, rtkStartupLine,
 };

@@ -361,6 +361,19 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   4 colonnes dérivées ajoutées — `command_optimizer_provider`, `command_tokens_saved`
   (mesuré seulement), `command_saving_ratio` (mesuré seulement), `command_evidence` — vides pour
   un lot sans métrologie.
+- **RTK visible dans le verbe PMZ** (lot #86, epic « Verbe & Vagues ») : avant ce lot, seul
+  `/pmz:rtk` montrait l'état du bridge — invisible du reste du verbe. `lib/messages.js` expose
+  deux primitives pures, réutilisant les 5 états de `rtk-status.computeStatus()` :
+  `rtkStatusLine(status, cumulative)` (surface **explicite** — `/pmz:about`, `/pmz:budget` — 
+  **toujours affichée**, y compris à l'état absent : l'utilisateur a demandé l'info) et
+  `rtkStartupLine(status)` (injection **implicite** au démarrage de session — **silence total**
+  à l'état absent, zéro bruit sur l'immense majorité des sessions qui n'ont pas RTK installé ;
+  1 ligne pointant `/pmz:rtk` sur les 4 états notables). `scripts/about.js` et
+  `scripts/audit-context.js` (support `/pmz:budget`) affichent désormais l'état + le compteur
+  cumulé de commandes réécrites (`rtk-metrics.snapshot()`, jamais le « gain » d'un lot — cf. lot
+  #83 — un simple cumul). `hooks/session-start.js` ajoute la ligne courte au même point que le
+  rappel `MSG_ACTIF`/`MSG_ACTIF_SLIM` (1×/session, anti-spam). Best-effort strict partout : une
+  panne RTK (binaire, fs) ne fait jamais échouer ces surfaces, elle fait juste disparaître la ligne.
 - **Fallback natif de sortie volumineuse** (lot #84, épilogue de l'epic « Bridge RTK ») :
   `lib/output-fallback.js` + branche `Bash` de `post-tool-use.js`. Filet **générique** quand RTK est
   absent — pas un remplacement fonctionnel de RTK. C'est un hook **PostToolUse (sortie)**, distinct

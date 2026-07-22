@@ -5412,6 +5412,76 @@ section('Bridge RTK — métrologie honnête des gains + bilan de clôture (lot 
   });
 }
 
+// ============================ RTK-VIS. RTK VISIBLE DANS LE VERBE PMZ (lot #86) ============================
+section('RTK visible dans le verbe PMZ (about/budget/session-start, lot #86)');
+{
+  const rtkStatusLib = require(path.join(PKG, 'lib', 'rtk-status'));
+  rtkStatusLib.writeEnableState(false); // déterministe, indépendant de l'ordre des sections précédentes
+
+  // -- Unitaire : messages.rtkStatusLine / rtkStartupLine (pur, aucun accès disque) --
+  ok(/Bridge RTK : absent/.test(messages.rtkStatusLine({ state: 'absent' }, { commands: 0 })),
+    'rtkStatusLine: état absent affiché (surface explicite, jamais tu)');
+  ok(/Bridge RTK : actif$/.test(messages.rtkStatusLine({ state: 'active' }, { commands: 0 })),
+    'rtkStatusLine: état actif affiché sans mention de compteur à 0');
+  ok(/3 commande/.test(messages.rtkStatusLine({ state: 'active' }, { commands: 3 })),
+    'rtkStatusLine: cumul de commandes réécrites affiché quand > 0');
+  ok(/neutralisé/.test(messages.rtkStatusLine({ state: 'conflict', neutralized: true }, {})),
+    'rtkStatusLine: conflit neutralisé annoncé explicitement');
+
+  ok(messages.rtkStartupLine({ state: 'absent' }) === null, 'rtkStartupLine: absent → silence total (null)');
+  ok(messages.rtkStartupLine(null) === null, 'rtkStartupLine: statut indéfini → silence (fail-open)');
+  ok(/pmz:rtk/.test(messages.rtkStartupLine({ state: 'present-inactive' })),
+    'rtkStartupLine: présent-inactif → pointeur /pmz:rtk');
+  ok(/actif/.test(messages.rtkStartupLine({ state: 'active' })),
+    'rtkStartupLine: actif → 1 ligne courte');
+  ok(/conflit/.test(messages.rtkStartupLine({ state: 'conflict', neutralized: false })),
+    'rtkStartupLine: conflit → signalé');
+  ok(/neutralisé/.test(messages.rtkStartupLine({ state: 'conflict', neutralized: true })),
+    'rtkStartupLine: conflit neutralisé → précision affichée');
+  ok(/incompatible/.test(messages.rtkStartupLine({ state: 'incompatible' })),
+    'rtkStartupLine: incompatible → signalé');
+
+  // -- Intégration about.js / audit-context.js / session-start.js : ligne selon l'état réel du
+  // binaire, piloté par un PATH contrôlé (jamais le PATH réel de la machine — cf. bug #87 sur
+  // le test RTK2 "binaire absent", contaminé par un vrai `rtk` installé sur cette machine).
+  const repoRtk = path.join(SANDBOX, 'repo-rtk-visible');
+  fs.mkdirSync(repoRtk, { recursive: true });
+  execFileSync('git', ['init', '-q', repoRtk]);
+  fs.mkdirSync(path.join(repoRtk, '.vibe-agent'), { recursive: true });
+  fs.writeFileSync(path.join(repoRtk, 'CLAUDE.md'), 'règles');
+  fs.writeFileSync(path.join(repoRtk, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoRtk, 'add', '.']);
+  execFileSync('git', ['-C', repoRtk, 'commit', '-q', '-m', 'init']);
+
+  const NO_RTK_PATH = ''; // aucun répertoire → findTool ne peut pas trouver `rtk` (EXTRA_DIRS fixes, sans rtk)
+  // rtkDir EN TÊTE (trouvé en premier par findTool, déterministe) + PATH réel ENSUITE (requis pour
+  // que le shebang `#!/usr/bin/env node` de la fixture rtk résolve `node` — cf. fixture RTK1/RTK2).
+  const WITH_RTK_PATH = rtkDir + path.delimiter + process.env.PATH;
+
+  const aboutAbsent = runNode(path.join(PKG, 'scripts', 'about.js'), ['--cwd', repoRtk], { PATH: NO_RTK_PATH });
+  ok(/Bridge RTK : absent/.test(aboutAbsent.out), 'about.js : état absent affiché explicitement (surface explicite)');
+
+  const aboutPresent = runNode(path.join(PKG, 'scripts', 'about.js'), ['--cwd', repoRtk],
+    { PATH: WITH_RTK_PATH, RTK_TEST_MODE: 'rewrite' });
+  ok(/Bridge RTK : présent — inactif/.test(aboutPresent.out), 'about.js : binaire présent, bridge inactif → état affiché');
+
+  const auditAbsent = runNode(path.join(PKG, 'scripts', 'audit-context.js'), ['--cwd', repoRtk], { PATH: NO_RTK_PATH });
+  ok(/Bridge RTK : absent/.test(auditAbsent.out), 'audit-context.js (/pmz:budget) : état absent affiché explicitement');
+
+  const auditPresent = runNode(path.join(PKG, 'scripts', 'audit-context.js'), ['--cwd', repoRtk],
+    { PATH: WITH_RTK_PATH, RTK_TEST_MODE: 'rewrite' });
+  ok(/Bridge RTK : présent — inactif/.test(auditPresent.out), 'audit-context.js : binaire présent → état affiché');
+
+  const startAbsent = runHook('session-start.js', { source: 'startup', cwd: repoRtk, session_id: 's-rtk-absent' }, { PATH: NO_RTK_PATH });
+  let ctxAbsent = ''; try { ctxAbsent = JSON.parse(startAbsent.out).hookSpecificOutput.additionalContext || ''; } catch (_) { /* vide */ }
+  ok(!/Bridge RTK/.test(ctxAbsent), 'session-start.js : RTK absent → aucune ligne injectée (zéro bruit)');
+
+  const startPresent = runHook('session-start.js', { source: 'startup', cwd: repoRtk, session_id: 's-rtk-present' },
+    { PATH: WITH_RTK_PATH, RTK_TEST_MODE: 'rewrite' });
+  let ctxPresent = ''; try { ctxPresent = JSON.parse(startPresent.out).hookSpecificOutput.additionalContext || ''; } catch (_) { /* vide */ }
+  ok(/pmz:rtk/.test(ctxPresent), 'session-start.js : RTK détecté (présent-inactif) → ligne injectée, pointeur /pmz:rtk');
+}
+
 // ============================ OC. OPENCODE ============================
 section('OpenCode — squelette plugin + install sandbox (test/run-tests-opencode.js)');
 {

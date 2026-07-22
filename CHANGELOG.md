@@ -2,6 +2,23 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-22 — lot #86 « RTK visible dans le verbe PMZ » (epic « Verbe & Vagues »)
+
+RTK n'était visible que via `/pmz:rtk` — invisible partout ailleurs dans le verbe. Cette
+« fiabilisation par visibilité » lui donne 3 nouvelles surfaces :
+
+- `lib/messages.js` : `rtkStatusLine()` (surfaces explicites — `/pmz:about`, `/pmz:budget` —
+  toujours affichée, même absent) et `rtkStartupLine()` (démarrage de session — silence total
+  si absent, 1 ligne pointeur `/pmz:rtk` sur les 4 états notables).
+- `scripts/about.js` et `scripts/audit-context.js` (`/pmz:budget`) : état du bridge + compteur
+  cumulé de commandes réécrites.
+- `hooks/session-start.js` : ligne courte au même rappel 1×/session que `MSG_ACTIF`.
+- Best-effort strict partout (une panne RTK ne fait jamais échouer ces surfaces).
+- Tests : +20 assertions (unitaires `rtkStatusLine`/`rtkStartupLine` + intégration about/budget/
+  session-start avec fixture PATH contrôlée, jamais le PATH réel de la machine).
+- Vérification ciblée : `node test/run-tests.js` — 1185 OK, 1 échec **préexistant et sans
+  rapport** (même bug d'isolation du test RTK statut que noté au lot #85 ; fix planifié au #87).
+
 ## 2026-07-22 — lot #85 « Parallélisation pensée d'office dans /scope » (epic « Verbe & Vagues »)
 
 `/pmz:scope` ne laisse plus la parallélisation dans l'angle mort : elle est désormais **pensée

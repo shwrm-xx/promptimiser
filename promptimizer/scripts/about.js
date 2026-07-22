@@ -6,6 +6,19 @@ const { readEpic } = require('../lib/lot');
 const { loadBacklog, currentLot, nextLot, progress } = require('../lib/backlog');
 const { readVersion } = require('../lib/version');
 const { parseCwd } = require('../lib/cli');
+const rtkStatus = require('../lib/rtk-status');
+const rtkMetrics = require('../lib/rtk-metrics');
+const { rtkStatusLine } = require('../lib/messages');
+
+// Best-effort, jamais bloquant : une panne RTK (binaire, fs) ne doit jamais faire
+// disparaître le reste de /pmz:about.
+function rtkLine(root) {
+  try {
+    return rtkStatusLine(rtkStatus.computeStatus({ root }), rtkMetrics.snapshot());
+  } catch (_) {
+    return null;
+  }
+}
 
 function main() {
   const version = readVersion() || 'inconnue';
@@ -17,6 +30,8 @@ function main() {
     process.stdout.write(lines.join('\n') + '\n');
     return;
   }
+  const rtk = rtkLine(root);
+  if (rtk) lines.push(rtk, '');
 
   const b = loadBacklog(root);
   const p = progress(b);

@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 88,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-22T07:59:20.473Z",
+  "updated_at": "2026-07-22T08:11:19.133Z",
   "lots": [
     {
       "id": 1,
@@ -1863,8 +1863,33 @@
       "id": 85,
       "title": "Parallélisation pensée d'office dans /scope",
       "scope": "fait quand : tout /scope avec ≥ 2 lots affiche un verdict parallélisation (plan de vagues ou raison en 1 ligne) et pose la question tout parallèle / partiel / série",
-      "status": "in_progress",
+      "status": "done",
       "model_hint": "opus",
+      "effort_hint": "medium",
+      "epic": "Verbe & Vagues",
+      "verify": "node test/run-tests.js",
+      "closed_commit": "c7410ae",
+      "closed_at": "2026-07-22T07:59:56.834Z",
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "cost_tokens": 0,
+      "started_at": "2026-07-21T07:22:41.731Z",
+      "lot_number": 39,
+      "note": "Verify OK hormis 1 échec préexistant (CLI enable: binaire absent → refus explicite) — bug d'isolation test rtk (rtk réellement installé sur cette machine), sans rapport avec ce lot. Fix planifié au l…",
+      "session_touches": 3,
+      "perimeter": [
+        "promptimizer/commands/**",
+        "skills/**"
+      ],
+      "depends_on": [],
+      "session_owner": null
+    },
+    {
+      "id": 86,
+      "title": "RTK visible dans le verbe PMZ",
+      "scope": "fait quand : about, budget et l'injection session-start affichent l'état/gains RTK (silence si absent), node test/run-tests.js vert",
+      "status": "in_progress",
+      "model_hint": "sonnet",
       "effort_hint": "medium",
       "epic": "Verbe & Vagues",
       "verify": "node test/run-tests.js",
@@ -1873,13 +1898,15 @@
       "closed_session_id": null,
       "closed_occupancy": null,
       "cost_tokens": 0,
-      "started_at": "2026-07-21T07:22:41.731Z",
+      "started_at": "2026-07-22T08:00:19.136Z",
       "lot_number": null,
-      "note": "Verify OK hormis 1 échec préexistant (CLI enable: binaire absent → refus explicite) — bug d'isolation test rtk (rtk réellement installé sur cette machine), sans rapport avec ce lot. Fix planifié au l…",
-      "session_touches": 3,
+      "note": "Verify OK hormis 1 échec préexistant (CLI enable: binaire absent → refus explicite) — même bug d'isolation test rtk que #85, sans rapport avec ce lot. Fix planifié au lot #87.",
+      "session_touches": 0,
       "perimeter": [
-        "promptimizer/commands/**",
-        "skills/**"
+        "promptimizer/scripts/**",
+        "promptimizer/hooks/**",
+        "promptimizer/lib/messages.js",
+        "test/**"
       ],
       "depends_on": [],
       "session_owner": null,
@@ -1891,33 +1918,6 @@
           }
         }
       }
-    },
-    {
-      "id": 86,
-      "title": "RTK visible dans le verbe PMZ",
-      "scope": "fait quand : about, budget et l'injection session-start affichent l'état/gains RTK (silence si absent), node test/run-tests.js vert",
-      "status": "todo",
-      "model_hint": "sonnet",
-      "effort_hint": "medium",
-      "epic": "Verbe & Vagues",
-      "verify": "node test/run-tests.js",
-      "closed_commit": null,
-      "closed_at": null,
-      "closed_session_id": null,
-      "closed_occupancy": null,
-      "cost_tokens": 0,
-      "started_at": null,
-      "lot_number": null,
-      "note": null,
-      "session_touches": 0,
-      "perimeter": [
-        "promptimizer/scripts/**",
-        "promptimizer/hooks/**",
-        "promptimizer/lib/messages.js",
-        "test/**"
-      ],
-      "depends_on": [],
-      "session_owner": null
     },
     {
       "id": 87,
@@ -1935,7 +1935,7 @@
       "cost_tokens": 0,
       "started_at": null,
       "lot_number": null,
-      "note": null,
+      "note": "Ajout scope : lib/project.js runVerify() priorise e.stderr sur e.stdout pour le tail affiché par /close-batch — 2 tests légitimes (négatifs) polluent le stderr global de la suite, masquant systématiq…",
       "session_touches": 0,
       "perimeter": [
         "promptimizer/**",

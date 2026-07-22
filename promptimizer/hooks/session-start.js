@@ -25,10 +25,22 @@ const { seedAvoidReread, seedSummaries, avoidRereadNotes, topSummaries } = requi
 const { loadBacklog, currentLot, nextLot, progress, readTodoSnapshot } = require('../lib/backlog');
 const { fleetLines } = require('../lib/fleet');
 const occupancy = require('../lib/occupancy');
+const rtkStatus = require('../lib/rtk-status');
 const {
   MSG_ACTIF, MSG_ACTIF_SLIM, MSG_NON_INIT, MSG_HANDOFF, sessionTitleMessage, autoInitMessage,
-  compactResumeMessage, backlogResumeMessage, occupancyMessage,
+  compactResumeMessage, backlogResumeMessage, occupancyMessage, rtkStartupLine,
 } = require('../lib/messages');
+
+// 1 ligne si l'état RTK est notable, RIEN si absent (zéro bruit sur l'immense majorité des
+// sessions, RTK n'étant pas installé). Best-effort strict : jamais bloquant au démarrage.
+function withRtk(root, msg) {
+  try {
+    const line = rtkStartupLine(rtkStatus.computeStatus({ root }));
+    return line ? msg + '\n\n' + line : msg;
+  } catch (_) {
+    return msg;
+  }
+}
 
 const OCC_RESUME_THRESHOLD = 300000;
 
@@ -133,6 +145,7 @@ function main() {
     // Projet dont le CLAUDE.md porte déjà le bloc pmz:rules : rappel slim (pas de
     // redite des règles déjà chargées). Sinon, rappel plein.
     let msg = carriesRules(root) ? MSG_ACTIF_SLIM : MSG_ACTIF;
+    msg = withRtk(root, msg);
     try {
       // suggestedTitle (via previousSessionId) doit lire session-state.json AVANT le
       // saveSessionState ci-dessous, qui l'écrase avec le session_id de CETTE session.
