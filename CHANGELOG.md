@@ -2,6 +2,27 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-22 — lot #91 « Pointeur de vague dans le handoff auto » (epic « Verbe & Vagues »)
+
+Constat terrain : au démarrage d'une session fraîche pendant une vague parallèle en vol,
+rien n'indiquait qu'une parallélisation était en cours — la session repartait à fouiller le
+code au lieu de relancer `/pmz:parallelize`, gaspillant du contexte sur une reconstruction
+manuelle d'un plan pourtant recalculable en une commande.
+
+- **`fleet.waveHandoffLines(root)`** (`lib/fleet.js`) : une ligne courte, dérivée de
+  `fleet.json` — wave_id, décompte de lots en vol/prêts à réintégrer, renvoi vers
+  `/pmz:parallelize`. `[]` si la vague est inactive (silence par défaut, cas
+  ultra-majoritaire). Distinct de `fleetLines` (destiné à une session **fille** inscrite dans
+  la vague, avec périmètre exclusif) : celui-ci s'adresse à la session **orchestratrice** qui
+  reprend la main, sans lot propre.
+- **Jamais le plan complet** : conformément à `/pmz:parallelize` (« sans rien lancer », plan
+  recalculé depuis le backlog, jamais stocké) — la ligne est un pointeur, pas une copie
+  (anti-péremption).
+- **`writeAutoHandoff`** (`lib/handoff.js`) intègre cette ligne juste après la branche, avant
+  le bloc `pmz:skip` (donc elle survit à la troncature 6000c de `readHandoff`).
+- Tests : +8 assertions (`fleet.waveHandoffLines` seule + intégrée à `writeAutoHandoff`,
+  vague active/inactive) ; **1228 OK, 0 échec**.
+
 ## 2026-07-22 — lot #90 « Garde anti-troncature de champ (plafonds MAX_*) » (epic « Périmètres fiables »)
 
 2e vecteur de troncature silencieuse après le #88 : une valeur **quotée** mais au-delà de son

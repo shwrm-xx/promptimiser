@@ -270,6 +270,12 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   contrainte « ne modifie que X »). Le hook installé v1.3.0 **ignore** ces champs : sans impact tant qu'aucune vague n'est
   posée, mais la 1ʳᵉ vague réelle exigera un redéploiement du plugin. L'écriture par les sessions
   (inscription, transitions) et le calcul de vague viennent aux lots #79–#80.
+  **`fleet.waveHandoffLines(root)`** (lot #91) : pointeur d'**une** ligne pour la session
+  **orchestratrice** (pas d'inscription dans la vague, contrairement à `fleetLines` ci-dessus) —
+  wave_id + décompte de lots + renvoi vers `/pmz:parallelize`, jamais le plan complet (celui-ci
+  se recalcule depuis le backlog, cf. « Plan de vagues » plus bas). Intégré par
+  `handoff.writeAutoHandoff` juste après la branche (survit à la troncature 6000c). `[]` si
+  vague inactive.
 - **Garde de périmètre — PreToolUse mode fleet-fille** (lot #78, 3ᵉ brique de
   [D3](docs/decisions/D3-parallelisation-gouvernee.md)) : `pre-tool-use.js` s'étend à
   `Edit`/`Write`/`MultiEdit` **pour le seul test d'appartenance au périmètre**, et **uniquement**
@@ -649,8 +655,9 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
 - **Handoff de session** (`.vibe-agent/handoff.md`, `lib/handoff.js`) : UN fichier, **écrasé à
   chaque fin de tour** par `stop.js` (jamais cumulé — pas de bloat). Deux origines distinguées
   par marqueur en 1re ligne : `<!-- pmz:handoff:auto -->` (mécanique : epic/lot, branche,
-  dernier commit, section `pmz:skip` (voir ci-dessous), plan de lots x/y + lot en cours +
-  suivants, dernières todos, working tree filtré) et `<!-- pmz:handoff:manual -->` (riche, écrit
+  dernier commit, pointeur de vague active (`fleet.waveHandoffLines`, lot #91 — voir §
+  « Registre de vague » plus haut), section `pmz:skip` (voir ci-dessous), plan de lots x/y + lot
+  en cours + suivants, dernières todos, working tree filtré) et `<!-- pmz:handoff:manual -->` (riche, écrit
   par l'assistant via `/fresh-session` ou `/close-batch` — jamais écrasé par l'auto tant qu'il
   n'est pas consommé). Au SessionStart suivant (`startup`/`clear` uniquement, jamais
   `resume`/`compact`), le handoff est **injecté** (cap 6 000 caractères) puis **marqué consommé**

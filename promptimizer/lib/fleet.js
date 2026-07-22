@@ -301,6 +301,24 @@ function pendingExtensions(fleetOrRoot) {
   }
 }
 
+// Ligne courte pour le handoff AUTO (session orchestratrice reprenant la main, pas un enfant
+// de vague inscrit — cf. fleetLines pour ce cas). Pointeur, jamais le plan : /pmz:parallelize
+// recalcule le plan complet depuis le backlog (non périmé, cf. sa doc « sans rien lancer »).
+// [] si fleet inactif — le handoff reste muet sur la parallélisation hors vague en vol.
+function waveHandoffLines(root) {
+  try {
+    if (!root) return [];
+    const f = loadFleet(root);
+    if (!f.active) return [];
+    const ready = f.lots.filter((l) => l.state === 'ready').length;
+    const line = `Vague parallèle en vol${f.wave_id ? ` (${f.wave_id})` : ''} : ${f.lots.length} lot(s)` +
+      `${ready ? `, ${ready} prêt(s) à réintégrer` : ''}. Plan complet : relancer /pmz:parallelize (recalculé depuis le backlog, jamais stocké).`;
+    return [line];
+  } catch (_) {
+    return [];
+  }
+}
+
 module.exports = {
   fleetFile,
   findFleetRoot,
@@ -314,5 +332,6 @@ module.exports = {
   pendingExtensions,
   lotForSession,
   fleetLines,
+  waveHandoffLines,
   STATES,
 };

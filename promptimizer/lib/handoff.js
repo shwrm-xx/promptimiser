@@ -12,6 +12,7 @@ const { vibeDir, git, gitStatusMeaningful, lastCommitEpoch } = require('./projec
 const { loadContextLedger, topWaste, scoredSummaries } = require('./ledger');
 const { readEpic, getLotCounter } = require('./lot');
 const { summaryLines, readTodoSnapshot } = require('./backlog');
+const { waveHandoffLines } = require('./fleet');
 
 const AUTO_MARKER = '<!-- pmz:handoff:auto -->';
 const MANUAL_MARKER = '<!-- pmz:handoff:manual -->';
@@ -149,6 +150,7 @@ function writeAutoHandoff(root) {
       `- Epic / lot en cours : « ${readEpic(root)} » — lot ${getLotCounter(root) + 1}`,
       `- Branche : ${branch} — dernier commit : ${last}`,
     ];
+    for (const l of waveHandoffLines(root)) lines.push(`- ${l}`);
     // Format machine pmz:skip: <chemin> — parsé par parseSkipPaths et semé dès le tour 1
     // (seedAvoidReread côté session-start.js). Émis AVANT les blocs volumineux ci-dessous :
     // readHandoff tronque à 6000c avant le parse, ces lignes doivent survivre en premier.

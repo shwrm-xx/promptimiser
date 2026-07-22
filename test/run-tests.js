@@ -942,6 +942,20 @@ const handoff = require(path.join(PKG, 'lib', 'handoff'));
   const ctx1 = startCtx('sess-h2');
   ok(/handoff/i.test(ctx1) && /b\.txt/.test(ctx1), 'session-start : handoff injecté dans additionalContext');
 
+  // K2b. vague fleet active -> le handoff auto porte le pointeur waveHandoffLines, jamais le
+  // plan complet (lot #91 : « la vague 2 » retrouvable sans grep sur une session fraîche)
+  const fleetLib = require(path.join(PKG, 'lib', 'fleet'));
+  fleetLib.upsertLot(repo, { id: 7, session_owner: 'sess-h1', perimeter: ['lib/x'], branch: 'lot-7' });
+  fleetLib.saveFleet(repo, { ...fleetLib.loadFleet(repo), wave_id: 'vague-2' });
+  runHook('stop.js', { session_id: 'sess-h1', cwd: repo, transcript_path: empty });
+  const cWave = fs.readFileSync(hf, 'utf8');
+  ok(/vague-2/.test(cWave) && /pmz:parallelize/.test(cWave), 'handoff auto : pointeur de vague active présent (pas le plan)');
+  fleetLib.removeLot(repo, 7); // redevient inerte pour la suite des tests K
+
+  // K3b. vague inactive -> aucune mention (silence par défaut, cas ultra-majoritaire)
+  runHook('stop.js', { session_id: 'sess-h1', cwd: repo, transcript_path: empty });
+  ok(!/pmz:parallelize/.test(fs.readFileSync(hf, 'utf8')), 'handoff auto : vague inerte -> aucun pointeur (silencieux)');
+
   // K4. un handoff manuel (/fresh-session) n'est jamais écrasé par stop.js
   fs.writeFileSync(hf, handoff.MANUAL_MARKER + '\n## Handoff session fraîche\nCONTENU-RICHE\n');
   runHook('stop.js', { session_id: 'sess-h2', cwd: repo, transcript_path: empty });
@@ -4704,8 +4718,18 @@ section('fleet — registre de vague fleet.json + injection SessionStart (lib/fl
   ok(lines.some((l) => /sœur/.test(l)), 'fleet.fleetLines : mention des lots sœurs');
   ok(fleet.fleetLines(repoF, 'sZ').length === 0, 'fleet.fleetLines : session non-propriétaire -> [] (silencieux)');
 
+  // F7b. waveHandoffLines : pointeur COURT pour le handoff auto (session orchestratrice, pas
+  // un enfant de vague) — jamais le plan complet, juste un renvoi vers /pmz:parallelize (lot #91)
+  fleet.saveFleet(repoF, { ...fleet.loadFleet(repoF), wave_id: 'vague-2' });
+  const wl = fleet.waveHandoffLines(repoF);
+  ok(wl.length === 1, 'fleet.waveHandoffLines : une ligne unique (pas le plan complet)');
+  ok(/vague-2/.test(wl[0]) && /2 lot/.test(wl[0]), 'fleet.waveHandoffLines : wave_id + décompte des lots en vol');
+  ok(/1 prêt.*réintégrer/.test(wl[0]), 'fleet.waveHandoffLines : lots à l\'état ready comptés');
+  ok(/\/pmz:parallelize/.test(wl[0]), 'fleet.waveHandoffLines : pointeur vers /pmz:parallelize (pas de plan stocké)');
+
   // F8. removeLot : vidage -> redevient inerte
   ok(fleet.removeLot(repoF, 1) === true && fleet.removeLot(repoF, 2) === true, 'fleet.removeLot : retrait OK');
+  ok(fleet.waveHandoffLines(repoF).length === 0, 'fleet.waveHandoffLines : vague vidée -> [] (silencieux)');
   ok(fleet.loadFleet(repoF).active === false, 'fleet : vague vidée -> inerte');
   ok(fleet.removeLot(repoF, 1) === false, 'fleet.removeLot : lot déjà absent -> false');
 
