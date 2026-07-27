@@ -20,7 +20,7 @@ const { gitRoot, isFullyInitialized, hasAnyCommit, carriesRules } = require('../
 const { runBootstrap, commitScaffold } = require('../lib/bootstrap');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { suggestedTitle } = require('../lib/lot');
-const { readHandoff, parseSkipPaths, parseSummaryLines, markConsumed } = require('../lib/handoff');
+const { readHandoff, parseSkipPaths, parseSummaryLines, markConsumed, purgeOrphanLotHandoffs } = require('../lib/handoff');
 const { seedAvoidReread, seedSummaries, avoidRereadNotes, topSummaries } = require('../lib/ledger');
 const { loadBacklog, currentLot, nextLot, blockedByOf, progress, readTodoSnapshot } = require('../lib/backlog');
 const { fleetLines } = require('../lib/fleet');
@@ -145,6 +145,11 @@ function main() {
     if (src !== 'startup' && src !== 'clear') return passThrough();
     const st = loadSessionState(root, input.session_id || null);
     if (st.session_start_reminded) return passThrough();
+    // Rangement opportuniste, muet (jamais dans le message injecté) : une vague ABANDONNÉE
+    // (jamais réintégrée ni quittée lot par lot) laisse ses handoff-lot-*.md orphelins sur
+    // disque indéfiniment (dette #100). Un seul point de passage garanti (au moins un
+    // startup/clear par session) suffit ; best-effort strict, ne doit jamais gêner le rappel.
+    try { purgeOrphanLotHandoffs(root); } catch (_) { /* fail-open */ }
     // Projet dont le CLAUDE.md porte déjà le bloc pmz:rules : rappel slim (pas de
     // redite des règles déjà chargées). Sinon, rappel plein.
     let msg = carriesRules(root) ? MSG_ACTIF_SLIM : MSG_ACTIF;

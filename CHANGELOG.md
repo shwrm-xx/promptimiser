@@ -2,6 +2,39 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-27 — lot #101 « Purge logs/handoffs orphelins + FIA-23 » (epic « Archive à tiroirs »)
+
+Solde la dette laissée par le lot #100 (croissance non bornée de `.vibe-agent/logs/`, handoffs de
+lot orphelins d'une vague abandonnée) et comble le dernier trou FIA du catalogue (tests
+d'atomicité/corruption/concurrence).
+
+- **`purgeLogs` — plafond de `.vibe-agent/logs/`** (`lib/output-fallback.js`) — le dossier
+  (`*.log` de sortie réduite + `reintegrate-*.md`) croissait indéfiniment, aucun code ne le
+  purgeait jamais. Même patron que `clearWave`/`purgeLotHandoffs` : une passe de tri par `mtime`,
+  retire les plus anciens au-delà du plafond (`MAX_LOG_FILES = 200`), best-effort, jamais
+  bloquant. Câblé à chaque écriture (`writeFullLog` et `reintegrate.writeReintegrateReport`) —
+  la purge est incrémentale, pas un job séparé à oublier de lancer.
+- **`purgeOrphanLotHandoffs` — vague ABANDONNÉE** (`lib/handoff.js`) — `purgeLotHandoffs`
+  existait déjà mais n'était appelé que par `closeWave` (réintégration réussie) ou `fleet leave`
+  (lot par lot) : une vague redevenue inerte par un autre chemin (reset manuel, `clearWave` direct
+  hors réintégration) laissait ses `handoff-lot-*.md` sur disque pour toujours. Détection : fleet
+  inactif + fichiers de lot encore présents = vague « inerte mais avec des fichiers restants » ;
+  purge alors tout (aucune vague active ne les revendique), no-op si la vague est encore en vol.
+  Câblé au `SessionStart` (`startup`/`clear`, projet initialisé) : rangement muet, jamais dans le
+  message injecté.
+- **FIA-23 — tests d'atomicité/corruption/concurrence** (`test/run-tests.js`) — trous confirmés
+  par le catalogue (`grep writeAtomic`/`grep -i concurren` → 0 hit) : (1) `writeAtomic` sous
+  rafale → contenu final valide, aucun `.tmp` résiduel ; (2) `readJson` sur fichier corrompu →
+  fallback + quarantaine `<file>.corrupt`, jamais d'exception, un seul exemplaire conservé ; (3)
+  `handoff.md` vide/sans marqueur → `readHandoff` `null`, chemin de déblocage vérifié (un handoff
+  auto redevient lisible une fois le fichier sans marqueur retiré) ; (4) deux processus **séparés**
+  (vraie concurrence OS via backgrounding shell, pas un entrelacement simulé dans un seul process
+  Node) en `upsertLot` rapides sur le même `fleet.json` → fichier final **toujours JSON parsable**
+  (la perte de mise à jour reste assumée, ce n'est jamais l'objet de l'assertion — correction
+  adversariale du catalogue, point b).
+
+Tests : 1631 OK / 0 échec (3 nouvelles sections, lot #101).
+
 ## 2026-07-27 — lot #100 « Dette #98/#99 : export reopened, reset au reopen, --depends strict, fleet leave » (epic « Archive à tiroirs »)
 
 Solde les cinq dettes laissées par les lots #98 et #99. Toutes étaient des **silences** : une

@@ -27,6 +27,7 @@ function trigLines(env) {
 const HEAD_LINES = 40; // en-tête conservé (§10, stratégie 2)
 const TAIL_LINES = 40; // fin conservée (§10, stratégie 4)
 const MAX_ERROR_LINES = 80; // borne les lignes d'erreur gardées (évite qu'une sortie 100 % « error » explose)
+const MAX_LOG_FILES = 200; // plafond de .vibe-agent/logs/ (même famille que clearWave/purgeLotHandoffs)
 // Marqueurs d'erreur conservés en priorité (§10, stratégie 3). Insensible à la casse.
 const ERROR_RE = /\b(error|errors|fail|failed|failure|exception|traceback|panic|fatal|assert|✗|✘|✖)\b|^\s*at\s+.+\(.+:\d+/i;
 
@@ -86,6 +87,37 @@ function countErrors(lines) {
   return c;
 }
 
+// Plafonne .vibe-agent/logs/ à `max` fichiers (tous confondus : *.log de sortie réduite,
+// reintegrate-*.md) : sans purge, le dossier croît indéfiniment (dette #100). Même patron que
+// clearWave (une seule passe, pas de boucle par-fichier réécrivant l'état) — ici bornée par le
+// nombre de unlink, incompressible pour un tri par ancienneté. Garde les plus RÉCENTS (mtime),
+// retire l'excédent le plus ancien. No-op si le dossier n'existe pas ou est déjà sous le plafond.
+// Renvoie le nombre de fichiers retirés. Best-effort intégral (jamais bloquant).
+function purgeLogs(root, max) {
+  const cap = Number.isFinite(max) && max > 0 ? max : MAX_LOG_FILES;
+  try {
+    const dir = path.join(root, '.vibe-agent', 'logs');
+    const names = fs.readdirSync(dir);
+    if (names.length <= cap) return 0;
+    const files = names
+      .map((name) => {
+        const p = path.join(dir, name);
+        let mtimeMs = 0;
+        try { mtimeMs = fs.statSync(p).mtimeMs; } catch (_) { /* fichier disparu entre-temps */ }
+        return { p, mtimeMs };
+      })
+      .sort((a, b) => a.mtimeMs - b.mtimeMs); // plus ancien d'abord
+    const excess = files.length - cap;
+    let n = 0;
+    for (let i = 0; i < excess; i++) {
+      try { fs.unlinkSync(files[i].p); n++; } catch (_) { /* fail-open */ }
+    }
+    return n;
+  } catch (_) {
+    return 0;
+  }
+}
+
 // Écrit la sortie complète (stdout + stderr) sous .vibe-agent/logs/<id>.log. Renvoie le chemin
 // RELATIF au repo (pour affichage) ou null si l'écriture échoue. best-effort, jamais throw.
 function writeFullLog(root, command, stdout, stderr) {
@@ -98,6 +130,7 @@ function writeFullLog(root, command, stdout, stderr) {
     const file = path.join(dir, `${id}.log`);
     const body = `# Commande : ${command}\n\n## stdout\n${stdout}\n${stderr ? `\n## stderr\n${stderr}\n` : ''}`;
     fs.writeFileSync(file, body);
+    try { purgeLogs(root); } catch (_) { /* fail-open : la purge ne doit jamais invalider l'écriture */ }
     return path.relative(root, file);
   } catch (_) {
     return null;
@@ -160,4 +193,4 @@ function reduceBashOutput(opts) {
   return { updatedToolOutput, summary: header, logPath };
 }
 
-module.exports = { reduceBashOutput, dedupeConsecutive, keepSalient, countErrors };
+module.exports = { reduceBashOutput, dedupeConsecutive, keepSalient, countErrors, purgeLogs };

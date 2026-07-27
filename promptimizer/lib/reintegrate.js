@@ -410,7 +410,9 @@ function writeReintegrateReport(root, res, opts) {
       date: now.toISOString().slice(0, 10),
       stamp: `${now.toISOString().slice(0, 16).replace('T', ' ')} UTC`,
     }, opts || {}));
-    return writeAtomicText(file, body + '\n') ? path.relative(root, file) : null;
+    const ok = writeAtomicText(file, body + '\n');
+    if (ok) { try { require('./output-fallback').purgeLogs(root); } catch (_) { /* fail-open */ } }
+    return ok ? path.relative(root, file) : null;
   } catch (_) {
     return null;
   }

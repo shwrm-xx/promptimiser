@@ -21,7 +21,7 @@ const { writeAtomicText } = require('./fsjson');
 const { loadContextLedger, topWaste, scoredSummaries } = require('./ledger');
 const { readEpic, getLotCounter } = require('./lot');
 const { summaryLines, readTodoSnapshot } = require('./backlog');
-const { waveHandoffLines, lotForSession } = require('./fleet');
+const { waveHandoffLines, lotForSession, loadFleet } = require('./fleet');
 
 const AUTO_MARKER = '<!-- pmz:handoff:auto -->';
 const MANUAL_MARKER = '<!-- pmz:handoff:manual -->';
@@ -99,6 +99,23 @@ function purgeLotHandoffs(root, ids) {
     /* fail-open */
   }
   return n;
+}
+
+// Purge les handoffs de lot d'une vague ABANDONNÉE : jamais réintégrée (closeWave n'est donc
+// jamais passé) ni quittée lot par lot (fleet leave), le fleet redevient inerte par un autre
+// chemin (reset manuel, clearWave direct, fleet.json supprimé) et les handoff-lot-*.md restent
+// sur disque en péremption pour toujours — même famille que purgeLotHandoffs mais SANS dépendre
+// de closeWave. Détection : fleet inactif (aucun lot en vol) alors que des fichiers de lot
+// existent encore — la vague est « inerte mais avec des fichiers restants ». Une vague ENCORE
+// active garde légitimement ses handoffs, on n'y touche pas. Renvoie le nombre de fichiers
+// retirés (0 si vague active, absente, ou aucun fichier orphelin). Best-effort, jamais throw.
+function purgeOrphanLotHandoffs(root) {
+  try {
+    if (loadFleet(root).active) return 0;
+    return purgeLotHandoffs(root);
+  } catch (_) {
+    return 0;
+  }
 }
 
 // Extrait les chemins des lignes `pmz:skip: <chemin>` d'un handoff manuel — sème
@@ -292,6 +309,7 @@ module.exports = {
   handoffFile,
   lotHandoffFile,
   purgeLotHandoffs,
+  purgeOrphanLotHandoffs,
   readHandoff,
   parseSkipPaths,
   parseSummaryLines,

@@ -6823,6 +6823,170 @@ section('OpenCode — squelette plugin + install sandbox (test/run-tests-opencod
   if (r.code !== 0) console.log(r.out + r.err);
 }
 
+// ============ R101. Purge logs + handoffs orphelins + FIA-23 (lot #101) ============
+section('output-fallback.purgeLogs — plafond de .vibe-agent/logs/ (lot #101)');
+{
+  const of = require(path.join(PKG, 'lib', 'output-fallback'));
+  const repoL = path.join(SANDBOX, 'repo-r101-logs');
+  const logsDir = path.join(repoL, '.vibe-agent', 'logs');
+  fs.mkdirSync(logsDir, { recursive: true });
+  for (let i = 0; i < 12; i++) {
+    const f = path.join(logsDir, `f${i}.log`);
+    fs.writeFileSync(f, 'x');
+    const t = new Date(1000 * i); // mtime croissant déterministe (indépendant du timing du test)
+    fs.utimesSync(f, t, t);
+  }
+  ok(of.purgeLogs(repoL, 10) === 2, 'purgeLogs : retire l\'excédent au-delà du plafond (12 fichiers, plafond 10 -> 2 retirés)');
+  ok(fs.readdirSync(logsDir).length === 10, 'purgeLogs : le dossier ne dépasse plus le plafond');
+  ok(!fs.existsSync(path.join(logsDir, 'f0.log')) && !fs.existsSync(path.join(logsDir, 'f1.log')),
+    'purgeLogs : retire les PLUS ANCIENS (mtime), garde les plus récents');
+  ok(of.purgeLogs(repoL, 10) === 0, 'purgeLogs : idempotent (déjà sous le plafond -> 0)');
+  ok(of.purgeLogs(path.join(SANDBOX, 'repo-r101-logs-absent'), 10) === 0,
+    'purgeLogs : dossier logs absent -> 0, jamais d\'exception');
+}
+
+section('handoff.purgeOrphanLotHandoffs — vague ABANDONNÉE (jamais réintégrée, ni quittée lot par lot) (lot #101)');
+{
+  const fleetR = require(path.join(PKG, 'lib', 'fleet'));
+  const handoffR = require(path.join(PKG, 'lib', 'handoff'));
+  const repoO = path.join(SANDBOX, 'repo-r101-orphan');
+  fs.mkdirSync(repoO, { recursive: true });
+  execFileSync('git', ['init', '-q', repoO]);
+  fs.writeFileSync(path.join(repoO, 'CLAUDE.md'), 'règles');
+  fs.writeFileSync(path.join(repoO, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoO, 'add', '.']);
+  execFileSync('git', ['-C', repoO, 'commit', '-q', '-m', 'init']);
+  const vd = path.join(repoO, '.vibe-agent');
+  fs.mkdirSync(vd, { recursive: true });
+  fleetR.upsertLot(repoO, { id: 1, session_owner: 's1', perimeter: [], branch: 'b1' });
+  fs.writeFileSync(path.join(vd, 'handoff-lot-1.md'), 'état de la fille #1');
+
+  // Vague encore ACTIVE : la purge est un no-op (les handoffs de lot sont légitimes).
+  ok(handoffR.purgeOrphanLotHandoffs(repoO) === 0, 'purgeOrphanLotHandoffs : vague active -> no-op (0)');
+  ok(fs.existsSync(path.join(vd, 'handoff-lot-1.md')), 'purgeOrphanLotHandoffs : fichier intact tant que la vague est active');
+
+  // Vague ABANDONNÉE : redevenue inerte SANS passer par closeWave (clearWave direct simule un
+  // reset hors du chemin de réintégration nominal — exactement le trou laissé par le lot #100).
+  fleetR.clearWave(repoO);
+  ok(fleetR.loadFleet(repoO).active === false, '(préalable) vague redevenue inerte');
+  ok(fs.existsSync(path.join(vd, 'handoff-lot-1.md')),
+    '(préalable) clearWave seul NE PURGE PAS les handoffs de lot — c\'était la dette #100');
+  ok(handoffR.purgeOrphanLotHandoffs(repoO) === 1,
+    'purgeOrphanLotHandoffs : vague inerte + fichier restant -> détecté et purgé (1)');
+  ok(!fs.existsSync(path.join(vd, 'handoff-lot-1.md')), 'purgeOrphanLotHandoffs : le fichier orphelin a disparu');
+  ok(handoffR.purgeOrphanLotHandoffs(repoO) === 0, 'purgeOrphanLotHandoffs : idempotent (plus rien à purger -> 0)');
+
+  // handoff.md de l'orchestrateur n'est jamais concerné par cette purge (réservée aux handoffs
+  // DE LOT — même garde que purgeLotHandoffs).
+  fs.writeFileSync(path.join(vd, 'handoff.md'), handoffR.AUTO_MARKER + '\nétat orchestrateur');
+  ok(handoffR.purgeOrphanLotHandoffs(repoO) === 0 && fs.existsSync(path.join(vd, 'handoff.md')),
+    'purgeOrphanLotHandoffs : ne touche jamais handoff.md (réservé à l\'orchestrateur)');
+
+  // Câblage SessionStart : la purge tourne au démarrage, silencieusement (jamais dans le message).
+  fleetR.upsertLot(repoO, { id: 2, session_owner: 's2', perimeter: [], branch: 'b2' });
+  fs.writeFileSync(path.join(vd, 'handoff-lot-2.md'), 'état de la fille #2');
+  fleetR.clearWave(repoO);
+  const startR = runHook('session-start.js', { source: 'startup', cwd: repoO, session_id: 's-r101-new' });
+  ok(!fs.existsSync(path.join(vd, 'handoff-lot-2.md')),
+    'SessionStart : purge des handoffs de lot orphelins déclenchée au démarrage (best-effort)');
+  let ctxNoise = '';
+  try { ctxNoise = JSON.parse(startR.out).hookSpecificOutput.additionalContext || ''; } catch (_) { /* vide */ }
+  ok(!/handoff-lot/.test(ctxNoise), 'SessionStart : la purge ne fuit jamais dans le message injecté (silencieuse)');
+}
+
+section('FIA-23 — atomicité, corruption, concurrence : trous de couverture comblés (lot #101)');
+{
+  const { writeAtomic, readJson } = require(path.join(PKG, 'lib', 'fsjson'));
+  const handoffR23 = require(path.join(PKG, 'lib', 'handoff'));
+  const dirA = path.join(SANDBOX, 'r101-fia23');
+  fs.mkdirSync(dirA, { recursive: true });
+
+  // (1) writeAtomic — rafale d'écritures : contenu final valide, aucun .tmp résiduel.
+  const target = path.join(dirA, 'state.json');
+  for (let i = 0; i < 50; i++) writeAtomic(target, { i });
+  ok(JSON.parse(fs.readFileSync(target, 'utf8')).i === 49, 'FIA-23 : writeAtomic — contenu final = dernière écriture, JSON valide');
+  ok(fs.readdirSync(dirA).filter((f) => f.endsWith('.tmp')).length === 0,
+    'FIA-23 : writeAtomic — aucun .tmp résiduel après une rafale de 50 écritures (rename systématique)');
+
+  // (2) readJson sur fichier corrompu -> fallback + quarantaine, jamais d'exception.
+  const corruptFile = path.join(dirA, 'corrupt.json');
+  fs.writeFileSync(corruptFile, '{ceci nest pas du json');
+  let thrown = false;
+  let val;
+  try { val = readJson(corruptFile, { fallback: true }); } catch (_) { thrown = true; }
+  ok(!thrown, 'FIA-23 : readJson sur JSON corrompu — jamais d\'exception');
+  ok(!!val && val.fallback === true, 'FIA-23 : readJson sur JSON corrompu — renvoie le fallback fourni');
+  ok(fs.existsSync(`${corruptFile}.corrupt`), 'FIA-23 : readJson quarantaine le fichier corrompu (<file>.corrupt)');
+  ok(!fs.existsSync(corruptFile), 'FIA-23 : readJson retire l\'original corrompu (renommé en quarantaine, pas dupliqué)');
+  fs.writeFileSync(corruptFile, '{encore cassé, second passage');
+  readJson(corruptFile, {});
+  ok(fs.readFileSync(`${corruptFile}.corrupt`, 'utf8') === '{ceci nest pas du json',
+    'FIA-23 : readJson — un seul exemplaire de quarantaine conservé (pas d\'écrasement, POSIX = Windows)');
+
+  // (3) handoff.md tronqué/sans marqueur -> readHandoff null, jamais d'exception, chemin débloqué.
+  const repoH = path.join(SANDBOX, 'repo-r101-fia23-handoff');
+  fs.mkdirSync(path.join(repoH, '.vibe-agent'), { recursive: true });
+  execFileSync('git', ['init', '-q', repoH]);
+  fs.writeFileSync(path.join(repoH, '.vibe-agent', 'handoff.md'), 'notes libres, sans marqueur PMZ');
+  ok(handoffR23.readHandoff(repoH, null) === null, 'FIA-23 : handoff.md sans marqueur PMZ -> readHandoff null');
+  fs.writeFileSync(path.join(repoH, '.vibe-agent', 'handoff.md'), '');
+  ok(handoffR23.readHandoff(repoH, null) === null, 'FIA-23 : handoff.md vide (tronqué) -> readHandoff null');
+  // Chemin de déblocage vérifié : un handoff AUTO valide redevient lisible juste après. Un fichier
+  // sans marqueur PMZ (vide inclus) est délibérément PROTÉGÉ contre l'écrasement auto (notes
+  // utilisateur potentielles, cf. header handoff.js) — il faut donc le retirer explicitement
+  // avant que writeAutoHandoff puisse (re)créer un handoff valide, exactement comme un humain
+  // supprimerait des notes devenues obsolètes.
+  fs.unlinkSync(path.join(repoH, '.vibe-agent', 'handoff.md'));
+  ok(handoffR23.writeAutoHandoff(repoH, null), 'FIA-23 : (préalable) writeAutoHandoff réussit une fois le fichier sans marqueur retiré');
+  const after = handoffR23.readHandoff(repoH, null);
+  ok(!!after && !!after.text, 'FIA-23 : après un handoff.md tronqué, un handoff AUTO valide redevient lisible (pas de blocage permanent)');
+
+  // (4) Deux processus SÉPARÉS (vraie concurrence OS, pas un entrelacement simulé en un seul
+  // process Node) font des upsertLot rapides sur le MÊME fleet.json : la garantie testée est
+  // UNIQUEMENT « fichier final toujours JSON parsable » (rename atomique) — la perte de mise à
+  // jour reste assumée (fleet.js:14-18) et n'est jamais l'objet de l'assertion (cf. correction
+  // adversariale du catalogue FIA-23, point b).
+  const repoC = path.join(SANDBOX, 'repo-r101-fia23-concurrent');
+  fs.mkdirSync(repoC, { recursive: true });
+  execFileSync('git', ['init', '-q', repoC]);
+  fs.writeFileSync(path.join(repoC, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoC, 'add', '.']);
+  execFileSync('git', ['-C', repoC, 'commit', '-q', '-m', 'init']);
+  const workerScript = path.join(SANDBOX, 'r101-fia23-worker.js');
+  fs.writeFileSync(workerScript, [
+    "const fleet = require(" + JSON.stringify(path.join(PKG, 'lib', 'fleet')) + ");",
+    'const root = process.argv[2];',
+    'const tag = process.argv[3];',
+    'for (let i = 0; i < 40; i++) {',
+    "  fleet.upsertLot(root, { id: i % 5, session_owner: tag + '-' + i, perimeter: [], branch: 'b' });",
+    '}',
+  ].join('\n'));
+  let concurrencyRan = false;
+  try {
+    // Backgrounding shell : les deux node démarrent VRAIMENT en parallèle (concurrence OS réelle),
+    // `wait` bloque spawnSync jusqu'à ce que les DEUX soient finis — pas de bricolage d'event-loop
+    // Node (Atomics.wait bloquerait aussi la livraison des events 'exit', ce qui ne marcherait pas).
+    const shCmd = `"${process.execPath}" "${workerScript}" "${repoC}" wA & `
+      + `"${process.execPath}" "${workerScript}" "${repoC}" wB & wait`;
+    const r = spawnSync('/bin/sh', ['-c', shCmd], { encoding: 'utf8' });
+    concurrencyRan = r.status === 0;
+  } catch (_) {
+    /* environnement sans /bin/sh (ex. Windows) : ce sous-test est sauté, pas marqué en échec */
+  }
+  if (concurrencyRan) {
+    const fleetFileC = path.join(repoC, '.vibe-agent', 'fleet.json');
+    let parseOk = true;
+    let parsed = null;
+    try { parsed = JSON.parse(fs.readFileSync(fleetFileC, 'utf8')); } catch (_) { parseOk = false; }
+    ok(parseOk && parsed && Array.isArray(parsed.lots),
+      'FIA-23 : deux processus en écriture concurrente -> fleet.json final TOUJOURS JSON parsable');
+    ok(fs.readdirSync(path.join(repoC, '.vibe-agent')).filter((f) => f.endsWith('.tmp')).length === 0,
+      'FIA-23 : écritures concurrentes -> aucun .tmp résiduel (rename atomique, jamais de fuite)');
+  } else {
+    console.log('  (FIA-23 concurrence : /bin/sh indisponible, sous-test sauté — pas un échec)');
+  }
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

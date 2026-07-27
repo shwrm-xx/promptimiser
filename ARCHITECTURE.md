@@ -309,6 +309,13 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   + `handoff.purgeLotHandoffs`. `clearWave` ne crée jamais un `fleet.json` absent. La composition
   de la vague n'est pas perdue : un **snapshot pris avant le vidage** part dans le rapport de
   réintégration (ci-dessous).
+  **Purge d'une vague ABANDONNÉE** (lot #101, dette #100) : `purgeLotHandoffs` n'était appelé que
+  par `closeWave` (réintégration réussie) ou `fleet leave` — une vague redevenue inerte par un
+  autre chemin (`clearWave` direct, reset manuel) laissait ses `handoff-lot-*.md` orphelins pour
+  toujours. `handoff.purgeOrphanLotHandoffs(root)` détecte ce cas (fleet inactif + fichiers de lot
+  encore présents) et purge alors tout ; no-op si la vague est encore en vol. Câblé au
+  `SessionStart` (`startup`/`clear`, projet initialisé) : rangement muet, jamais dans le message
+  injecté — un simple point de passage garanti suffit, pas besoin d'un job dédié.
   **`fleet.waveHandoffLines(root)`** (lot #91) : pointeur d'**une** ligne pour la session
   **orchestratrice** (pas d'inscription dans la vague, contrairement à `fleetLines` ci-dessus) —
   wave_id + décompte de lots + renvoi vers `/pmz:parallelize`, jamais le plan complet (celui-ci
@@ -443,6 +450,11 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   en-tête technique `[PMZ sortie réduite]` (commande / lignes brutes / transmises / erreurs / chemin
   du log). **Petite sortie intacte** (jamais de filtrage silencieux), **image/binaire jamais réduit**,
   désactivable `PMZ_OUTPUT_FALLBACK_DISABLE=1`.
+  **Plafond de `.vibe-agent/logs/`** (`purgeLogs`, lot #101, dette #100) : le dossier (`*.log` +
+  `reintegrate-*.md`, cf. rapport de réintégration ci-dessous) croissait sans purge. Même patron
+  que `clearWave`/`purgeLotHandoffs` : tri par `mtime`, retire les plus anciens au-delà de
+  `MAX_LOG_FILES` (200), best-effort. Câblé à **chaque écriture** (`writeFullLog` et
+  `writeReintegrateReport`) — la purge est incrémentale, jamais un job séparé à penser à lancer.
 - **Plan de vagues — `pmz:parallelize`** (lot #79, 4ᵉ brique de
   [D3](docs/decisions/D3-parallelisation-gouvernee.md)) : `backlog.planWaves(b)` (fonction
   **pure** : ne lit/écrit rien, ne lance rien) calcule un plan de vagues parallèles à partir des
