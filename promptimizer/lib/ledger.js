@@ -23,6 +23,15 @@ function normPath(p) {
   return String(p).split('\\').join('/');
 }
 
+// PARE-FEU de l'archive à tiroirs (lot #95). Un résumé est RÉ-INJECTÉ de session en session
+// (handoff auto puis topSummaries au compact) : si l'assistant écrit une ligne
+// `pmz:summary: .vibe-agent/archive/… — <texte>` après avoir ouvert un tiroir, ce distillat
+// d'archive se réinstalle en boucle dans le contexte automatique — exactement ce que
+// l'archive existe pour éviter. Les clés d'archive sont donc refusées à la source (semis)
+// ET à l'émission (ledgers déjà pollués par une version antérieure).
+const ARCHIVE_KEY_RE = /(^|\/)\.vibe-agent\/archive\//;
+function isArchiveKey(p) { return ARCHIVE_KEY_RE.test(normPath(p)); }
+
 // Paliers de gaspillage de relecture (tokens cumulés, trans-session) — plus fins que les
 // paliers d'occupation d'occupancy.js car le gaspillage est un signal évitable qu'on veut
 // surfacer tôt. Au-delà du dernier palier fixe, rappel flottant tous les +100k. Source de
@@ -217,6 +226,7 @@ function seedSummaries(root, entries) {
   let dirty = false;
   for (const e of entries) {
     if (!e || !e.path || !e.text) continue;
+    if (isArchiveKey(e.path)) continue; // pare-feu : jamais de distillat d'archive en boucle
     const text = String(e.text).trim().slice(0, MAX_SUMMARY_CHARS);
     if (!text) continue;
     rl.summaries[normPath(e.path)] = { text, at: now };
@@ -244,7 +254,7 @@ function topSummaries(root, n) {
   try {
     const s = loadReadLedger(root).summaries;
     return Object.keys(s)
-      .filter((p) => s[p] && s[p].text)
+      .filter((p) => s[p] && s[p].text && !isArchiveKey(p))
       .sort((a, b) => (s[b].at || 0) - (s[a].at || 0))
       .slice(0, n)
       .map((p) => ({ path: p, text: s[p].text }));
@@ -292,7 +302,7 @@ function scoredSummaries(root, budgetChars, maxLines) {
     const rl = loadReadLedger(root);
     const cl = loadContextLedger(root);
     const sums = rl.summaries;
-    const keys = Object.keys(sums).filter((p) => sums[p] && sums[p].text);
+    const keys = Object.keys(sums).filter((p) => sums[p] && sums[p].text && !isArchiveKey(p));
     if (!keys.length) return empty;
     const bytesBy = readBytes(rl);
     const freqBy = rereadFreq(cl);

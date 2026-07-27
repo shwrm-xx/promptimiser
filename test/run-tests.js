@@ -990,6 +990,227 @@ section('Archive tier 0 — index.md versionné, filet doneLot, backfill (lot #9
   ok(!/EXCLUDE = new Set\(\[[^\]]*archive/.test(bpSrc), 'build-plugin : lib/archive.js et scripts/archive.js NON exclus du plugin');
 }
 
+// ============================ K ter. ARCHIVE TIER 1/2 + PARE-FEU (lot #95) ============================
+section('Archive tier 1/2 — fiches, CLI à tiroirs, commande, pare-feu canari (lot #95)');
+{
+  const archive = require(path.join(PKG, 'lib', 'archive'));
+  const backlog = require(path.join(PKG, 'lib', 'backlog'));
+  const ledger95 = require(path.join(PKG, 'lib', 'ledger'));
+  const handoff95 = require(path.join(PKG, 'lib', 'handoff'));
+  const ARCHIVE_CLI = path.join(PKG, 'scripts', 'archive.js');
+  const CANARY = 'PMZ_ARCHIVE_CANARY_9f3';
+  const EMPTY_TRANSCRIPT = path.join(SANDBOX, 'empty.jsonl');
+
+  // Dépôt bootstrappé + premier commit : socle commun des tests tier 1/2 et du pare-feu.
+  const mkRepo95 = (name) => {
+    const repo = path.join(SANDBOX, name);
+    fs.mkdirSync(repo, { recursive: true });
+    execFileSync('git', ['init', '-q', repo]);
+    fs.writeFileSync(path.join(repo, 'CLAUDE.md'), 'règles');
+    fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+    bootstrapLib.runBootstrap(repo);
+    return repo;
+  };
+  const gitIgnored = (repo, rel) => {
+    try { execFileSync('git', ['-C', repo, 'check-ignore', '-q', rel]); return true; } catch (_) { return false; }
+  };
+  // CLI avec stdin (runNode ne pipe rien) — le canal réel de `write --stdin`.
+  const cliStdin = (repo, args, input) => {
+    try {
+      return { code: 0, out: execFileSync(process.execPath, [ARCHIVE_CLI].concat(args, ['--stdin', '--cwd', repo]),
+        { input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }) };
+    } catch (e) { return { code: e.status == null ? 1 : e.status, out: (e.stdout || '').toString() }; }
+  };
+  const fiche = (id, extra) => `${archive.ficheMarker(id)}\n# Lot #${id} — titre\n\n## Décisions (et pourquoi)\n${extra || 'parce que.'}\n`;
+
+  // --- Squelette tier 1 : marqueur, en-tête, sections vides, résultat verify porté.
+  const repo = mkRepo95('repo-archive95');
+  const sk = archive.ficheSkeleton({ id: 12, title: 'Titre du lot', epic: 'Archive à tiroirs', date: '2026-07-27', commit: 'abc1234', verifyCmd: 'node test/run-tests.js', verify: 'OK' });
+  ok(sk.startsWith('<!-- pmz:archive:lot 12 -->\n# Lot #12 — Titre du lot'), 'ficheSkeleton : marqueur machine en 1re ligne puis titre');
+  ok(/- epic : Archive à tiroirs · clos : 2026-07-27 · commit : abc1234 · session : inconnue/.test(sk), 'ficheSkeleton : ligne méta complète (session inconnue par défaut)');
+  ok(/- verify : `node test\/run-tests\.js` → OK/.test(sk), 'ficheSkeleton : résultat verify porté (seul endroit où il existe)');
+  ok(['## Objectif', '## Décisions (et pourquoi)', '## Vérifié', '## Non vérifié', '## Dette restante', '## Périmètre', '## Liens'].every((h) => sk.includes(h)),
+    'ficheSkeleton : les 7 sections du gabarit présentes');
+  ok(/archive\/raw\/lot-0012\.md/.test(sk), 'ficheSkeleton : lien vers le brut tier 2 (id zero-paddé 4 chiffres)');
+  ok(archive.ficheSkeleton({ id: 3 }).includes('verify : aucune → inconnu'), 'ficheSkeleton : lot sans verify → « aucune → inconnu », jamais de valeur inventée');
+
+  // --- Écriture de la fiche : versionnée, stagée, index enrichi en fiche:oui.
+  const l1 = backlog.addLot(repo, 'Lot avec fiche', 'fait quand : …', null, 'Archive à tiroirs');
+  backlog.startLot(repo, l1.id);
+  backlog.doneLot(repo, l1.id, 'abc1234');
+  const w1 = archive.writeFiche(repo, l1.id, fiche(l1.id));
+  ok(w1.ok && w1.action === 'written', 'writeFiche : fiche écrite');
+  ok(fs.existsSync(path.join(repo, '.vibe-agent', 'archive', 'lots', 'lot-0001.md')), 'writeFiche : chemin lots/lot-NNNN.md (id zero-paddé)');
+  ok(!gitIgnored(repo, '.vibe-agent/archive/lots/lot-0001.md'), 'fiche tier 1 : versionnée (non gitignorée)');
+  ok(/\.vibe-agent\/archive\/lots\/lot-0001\.md/.test(execFileSync('git', ['-C', repo, 'diff', '--cached', '--name-only'], { encoding: 'utf8' })),
+    'writeFiche : fiche stagée (survit à git clean, part au prochain commit)');
+  const idxAfterFiche = archive.readIndex(repo).find((e) => e.id === l1.id);
+  ok(idxAfterFiche && idxAfterFiche.fiche === 'oui', 'writeFiche : ligne d\'index passée en fiche:oui');
+  ok(idxAfterFiche && idxAfterFiche.title === 'Lot avec fiche' && idxAfterFiche.commit === 'abc1234',
+    'writeFiche : la mise à jour d\'index ne dégrade pas les champs déjà connus');
+
+  // --- Immuabilité + gardes de validité : jamais de refus muet, jamais de coupe silencieuse.
+  const w2 = archive.writeFiche(repo, l1.id, fiche(l1.id, 'version 2'));
+  ok(!w2.ok && w2.action === 'exists', 'writeFiche : fiche existante jamais écrasée (immuable)');
+  ok(!/version 2/.test(archive.readFiche(repo, l1.id)), 'writeFiche : le contenu d\'origine est intact après refus');
+  ok(archive.writeFiche(repo, l1.id, fiche(l1.id, 'version 3'), { force: true }).action === 'written', 'writeFiche --force : remplacement explicite autorisé');
+  ok(/version 3/.test(archive.readFiche(repo, l1.id)), 'writeFiche --force : contenu remplacé');
+  ok(archive.writeFiche(repo, 42, '# Lot #42 sans marqueur').action === 'no-marker', 'writeFiche : marqueur pmz:archive:lot absent → refus explicite');
+  ok(archive.writeFiche(repo, 42, `${archive.ficheMarker(41)}\n# mauvais id`).action === 'no-marker', 'writeFiche : marqueur d\'un AUTRE lot → refus (pas de fiche mal rangée)');
+  const tooLong = fiche(43, 'x'.repeat(archive.MAX_FICHE_CHARS));
+  const wLong = archive.writeFiche(repo, 43, tooLong);
+  ok(wLong.action === 'too-long' && !fs.existsSync(archive.ficheFile(repo, 43)), 'writeFiche : au-delà de la borne dure → refus, jamais de coupe silencieuse');
+  ok(archive.writeFiche(repo, 44, '   ').action === 'error' && archive.writeFiche(null, 1, fiche(1)).action === 'error', 'writeFiche : corps vide / root nul → échec propre, jamais de throw');
+  ok(archive.readFiche(repo, 999) === null, 'readFiche : fiche inexistante → null');
+
+  // --- Tier 2 : écrit, jamais stagé, gitignoré ; rawInfo ne lit pas le contenu.
+  const rw = archive.writeRaw(repo, l1.id, 'RETOUR INTÉGRAL DU SOUS-AGENT\n'.repeat(20));
+  ok(rw.ok && rw.bytes > 0, 'writeRaw : brut écrit');
+  ok(gitIgnored(repo, '.vibe-agent/archive/raw/lot-0001.md'), 'brut tier 2 : gitignoré (non versionné)');
+  ok(!/archive\/raw/.test(execFileSync('git', ['-C', repo, 'diff', '--cached', '--name-only'], { encoding: 'utf8' })), 'writeRaw : jamais stagé');
+  const info = archive.rawInfo(repo, l1.id);
+  ok(info.exists && info.bytes === rw.bytes, 'rawInfo : taille connue sans lire le contenu');
+  ok(archive.rawInfo(repo, 777).exists === false, 'rawInfo : brut absent → exists:false');
+  ok(archive.writeRaw(repo, 5, '').ok === false && archive.writeRaw(null, 5, 'x').ok === false, 'writeRaw : corps vide / root nul → échec propre');
+
+  // --- CLI : un tiroir à la fois, tier 2 derrière --confirm, toujours exit 0.
+  const cIdx = runNode(ARCHIVE_CLI, ['index', '--cwd', repo]);
+  ok(cIdx.code === 0 && /#0001 \| /.test(cIdx.out) && /1 avec fiche/.test(cIdx.out), 'CLI index : tier 0 restitué avec le compte de fiches');
+  ok(!/RETOUR INTÉGRAL/.test(cIdx.out) && !/version 3/.test(cIdx.out), 'CLI index : n\'ouvre NI la fiche NI le brut (un tiroir à la fois)');
+  ok(runNode(ARCHIVE_CLI, ['--cwd', repo]).out === cIdx.out, 'CLI sans sous-commande : équivaut à `index`');
+  const cShow = runNode(ARCHIVE_CLI, ['show', '--id', String(l1.id), '--cwd', repo]);
+  ok(cShow.code === 0 && /version 3/.test(cShow.out) && !/RETOUR INTÉGRAL/.test(cShow.out), 'CLI show : la fiche seule, jamais le brut');
+  const cShowAbsent = runNode(ARCHIVE_CLI, ['show', '--id', '999', '--cwd', repo]);
+  ok(/absent de l'index/.test(cShowAbsent.out) && /Fiche jamais écrite/.test(cShowAbsent.out), 'CLI show : fiche absente → ligne d\'index + mention explicite');
+  const cRaw = runNode(ARCHIVE_CLI, ['raw', '--id', String(l1.id), '--cwd', repo]);
+  ok(cRaw.code === 0 && /octets\. Relance avec --confirm/.test(cRaw.out) && !/RETOUR INTÉGRAL/.test(cRaw.out), 'CLI raw sans --confirm : chemin + taille SEULEMENT (garde-fou tier 2)');
+  ok(/RETOUR INTÉGRAL/.test(runNode(ARCHIVE_CLI, ['raw', '--id', String(l1.id), '--confirm', '--cwd', repo]).out), 'CLI raw --confirm : brut affiché');
+  ok(/Aucun brut/.test(runNode(ARCHIVE_CLI, ['raw', '--id', '888', '--confirm', '--cwd', repo]).out), 'CLI raw : brut absent → message doux');
+  const cW = cliStdin(repo, ['write', '--id', '50'], fiche(50, 'écrit par stdin'));
+  ok(cW.code === 0 && /Fiche du lot #50 écrite/.test(cW.out) && /écrit par stdin/.test(archive.readFiche(repo, 50) || ''), 'CLI write --stdin : fiche écrite depuis le pipe');
+  ok(/déjà écrite \(immuable\)/.test(cliStdin(repo, ['write', '--id', '50'], fiche(50, 'bis')).out), 'CLI write : refus explicite sur fiche existante (pointe --force)');
+  ok(/écrite/.test(cliStdin(repo, ['write', '--id', '50', '--force'], fiche(50, 'ter')).out), 'CLI write --force : remplacement');
+  const srcFile = path.join(SANDBOX, 'fiche-51.md');
+  fs.writeFileSync(srcFile, fiche(51, 'depuis un fichier'));
+  ok(/Fiche du lot #51 écrite/.test(runNode(ARCHIVE_CLI, ['write', '--id', '51', '--file', srcFile, '--cwd', repo]).out), 'CLI write --file : fiche écrite depuis un chemin');
+  ok(/Brut du lot #52 écrit/.test(cliStdin(repo, ['raw', '--id', '52'], 'collage brut').out), 'CLI raw --stdin : écriture du tier 2');
+  ok(cliStdin(repo, ['write', '--id', '53'], '   ').code === 0 && !fs.existsSync(archive.ficheFile(repo, 53)), 'CLI write : stdin vide → exit 0, rien écrit');
+  ok(runNode(ARCHIVE_CLI, ['write', '--cwd', repo]).code === 0 && runNode(ARCHIVE_CLI, ['show', '--cwd', repo]).code === 0, 'CLI : --id manquant → usage, exit 0');
+  fs.writeFileSync(archive.indexFile(repo), 'index totalement corrompu\nsans aucune entrée\n');
+  ok(runNode(ARCHIVE_CLI, ['index', '--cwd', repo]).code === 0 && runNode(ARCHIVE_CLI, ['show', '--id', '1', '--cwd', repo]).code === 0, 'CLI : index corrompu → exit 0 (fail-open)');
+
+  // --- Commande /pmz:archive : contrat de frontmatter et consigne « un tiroir à la fois ».
+  const cmdMd = fs.readFileSync(path.join(PKG, 'commands', 'archive.md'), 'utf8');
+  ok(/^description: Consulte l'archive des lots clos/m.test(cmdMd) && /^allowed-tools: Bash\(node \*\)$/m.test(cmdMd), 'commands/archive.md : frontmatter conforme');
+  ok(/N'ouvre AUCUNE fiche sans demande explicite/.test(cmdMd), 'commands/archive.md : consigne explicite contre l\'ouverture spontanée d\'une fiche');
+  ok(/question à choix/.test(cmdMd) && /--confirm/.test(cmdMd), 'commands/archive.md : question à choix imposée avant tout --confirm (tier 2)');
+  ok(/~\/\.claude\/promptimizer\/scripts\/archive\.js/.test(cmdMd), 'commands/archive.md : chemin exact réécrit en ${CLAUDE_PLUGIN_ROOT} par build-plugin');
+  const bpSrc95 = fs.readFileSync(path.join(PKG, 'install', 'build-plugin.js'), 'utf8');
+  const reqList = (/REQUIRED_COMMANDS = \[([\s\S]*?)\]/.exec(bpSrc95) || [, ''])[1];
+  ok(/'archive\.md'/.test(reqList), 'build-plugin : archive.md dans REQUIRED_COMMANDS');
+  ok(/'rtk\.md'/.test(reqList), 'build-plugin : rtk.md ajouté à REQUIRED_COMMANDS (garde inopérante avant le lot #95)');
+  for (const c of reqList.match(/'([a-z-]+\.md)'/g).map((s) => s.slice(1, -1))) {
+    ok(fs.existsSync(path.join(PKG, 'commands', c)), `build-plugin : ${c} existe réellement dans commands/`);
+  }
+
+  // --- /close-batch : squelette de fiche + ligne de commande émis dans la checklist.
+  const cb = mkRepo95('repo-archive95-cb');
+  const lcb = backlog.addLot(cb, 'Lot en cours', 'fait quand : …', 'opus', 'Archive à tiroirs', 'node -e "process.exit(0)"');
+  backlog.startLot(cb, lcb.id);
+  const cbOut = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', cb]).out;
+  ok(/## Fiche d'archive \(tier 1\)/.test(cbOut), 'close-batch : bloc « Fiche d\'archive » présent');
+  ok(new RegExp(`archive\\.js write --id ${lcb.id} --stdin`).test(cbOut), 'close-batch : ligne de commande d\'écriture de la fiche');
+  ok(new RegExp(`<!-- pmz:archive:lot ${lcb.id} -->`).test(cbOut) && /## Décisions \(et pourquoi\)/.test(cbOut), 'close-batch : squelette pré-rempli (marqueur + sections)');
+  ok(/verify : `node -e "process\.exit\(0\)"` → OK/.test(cbOut), 'close-batch : résultat verify RÉEL injecté dans le squelette');
+  ok(/archive\.js raw --id \d+ --file \.vibe-agent\/handoff\.md/.test(cbOut), 'close-batch : archivage du handoff manuel AVANT sa destruction');
+  const cbMd = fs.readFileSync(path.join(PKG, 'commands', 'close-batch.md'), 'utf8');
+  ok(/^6bis\./m.test(cbMd) && /^6ter\./m.test(cbMd), 'close-batch.md : étapes 6bis (fiche) et 6ter (handoff archivé) posées avant le 7');
+  ok(cbMd.indexOf('6bis.') < cbMd.indexOf('7. Recommander'), 'close-batch.md : la fiche est rédigée avant la recommandation de session fraîche');
+
+  // --- PARE-FEU : l'archive empoisonnée ne fuit dans AUCUN canal d'injection automatique.
+  const pf = mkRepo95('repo-archive95-firewall');
+  const pfArchive = path.join(pf, '.vibe-agent', 'archive');
+  fs.mkdirSync(path.join(pfArchive, 'lots'), { recursive: true });
+  fs.mkdirSync(path.join(pfArchive, 'raw'), { recursive: true });
+  fs.mkdirSync(path.join(pfArchive, 'waves'), { recursive: true });
+  for (const rel of ['index.md', 'lots/lot-0001.md', 'raw/lot-0001.md', 'waves/wave-x.md']) {
+    fs.writeFileSync(path.join(pfArchive, rel), `contenu d'archive ${CANARY}\n`);
+  }
+  const lpf = backlog.addLot(pf, 'Lot pare-feu', 'fait quand : …'); // alimente le fallback backlog
+  backlog.startLot(pf, lpf.id);
+  const ctxOf95 = (r) => { try { return JSON.parse(r.out).hookSpecificOutput.additionalContext || ''; } catch (_) { return r.out || ''; } };
+  const hfPf = path.join(pf, '.vibe-agent', 'handoff.md');
+
+  for (const source of ['startup', 'clear', 'compact', 'resume']) {
+    const r = runHook('session-start.js', { source, cwd: pf, session_id: 'pf-' + source, transcript_path: EMPTY_TRANSCRIPT });
+    ok(r.code === 0 && !r.out.includes(CANARY), `pare-feu : session-start (${source}) n'injecte JAMAIS l'archive`);
+  }
+  // startup AVEC handoff auto présent, puis AVEC handoff manuel : les deux chemins d'injection.
+  runHook('stop.js', { session_id: 'pf-stop', cwd: pf, transcript_path: EMPTY_TRANSCRIPT });
+  ok(fs.existsSync(hfPf) && !fs.readFileSync(hfPf, 'utf8').includes(CANARY), 'pare-feu : le handoff AUTO écrit par stop.js ne contient pas l\'archive');
+  const ctxAuto = ctxOf95(runHook('session-start.js', { source: 'startup', cwd: pf, session_id: 'pf-auto', transcript_path: EMPTY_TRANSCRIPT }));
+  ok(!ctxAuto.includes(CANARY), 'pare-feu : startup avec handoff auto → aucune fuite');
+  fs.writeFileSync(hfPf, handoff95.MANUAL_MARKER + '\n## Handoff manuel\nreprise du lot.\n');
+  ok(!ctxOf95(runHook('session-start.js', { source: 'startup', cwd: pf, session_id: 'pf-manuel', transcript_path: EMPTY_TRANSCRIPT })).includes(CANARY),
+    'pare-feu : startup avec handoff manuel → aucune fuite');
+  const rPc = runHook('pre-compact.js', { session_id: 'pf-pc', cwd: pf, transcript_path: EMPTY_TRANSCRIPT });
+  ok(rPc.code === 0 && !rPc.out.includes(CANARY) && !fs.readFileSync(hfPf, 'utf8').includes(CANARY), 'pare-feu : pre-compact → ni stdout ni handoff ne portent l\'archive');
+
+  // (a) Consulter l'archive ne doit pas consommer les slots pmz:skip du handoff.
+  runHook('post-tool-use.js', { tool_name: 'Read', tool_input: { file_path: path.join(pfArchive, 'index.md') }, cwd: pf, session_id: 'pf-read' });
+  runHook('post-tool-use.js', { tool_name: 'Read', tool_input: { file_path: path.join(pfArchive, 'lots', 'lot-0001.md') }, cwd: pf, session_id: 'pf-read' });
+  runHook('stop.js', { session_id: 'pf-read', cwd: pf, transcript_path: EMPTY_TRANSCRIPT });
+  const hAfterRead = fs.readFileSync(hfPf, 'utf8');
+  ok(!hAfterRead.includes(CANARY), 'pare-feu (a) : après consultation de l\'archive, le handoff auto reste propre');
+  ok(!/pmz:skip:.*\.vibe-agent\//.test(hAfterRead), 'pare-feu (a) : l\'état PMZ (.vibe-agent/) ne consomme jamais un slot pmz:skip');
+
+  // (b) Un résumé pointant l'archive n'est jamais semé ni ré-injecté (boucle de distillat).
+  fs.writeFileSync(hfPf, `${handoff95.MANUAL_MARKER}\n## Handoff\npmz:summary: .vibe-agent/archive/lots/lot-0001.md — ${CANARY} distillat\npmz:summary: src/app.js — module principal\n`);
+  runHook('session-start.js', { source: 'startup', cwd: pf, session_id: 'pf-seed', transcript_path: EMPTY_TRANSCRIPT });
+  const sums = ledger95.loadReadLedger(pf).summaries;
+  ok(!Object.keys(sums).some((k) => /archive/.test(k)), 'pare-feu (b) : seedSummaries refuse une clé d\'archive');
+  ok(sums['src/app.js'], 'pare-feu (b) : les résumés légitimes passent toujours');
+  ledger95.seedSummaries(pf, [{ path: '.vibe-agent/archive/index.md', text: CANARY }]);
+  ok(!Object.keys(ledger95.loadReadLedger(pf).summaries).some((k) => /archive/.test(k)), 'pare-feu (b) : appel direct à seedSummaries filtré aussi');
+  {
+    // Ledger DÉJÀ pollué (version antérieure) : les émetteurs filtrent à la sortie.
+    const rl = ledger95.loadReadLedger(pf);
+    rl.summaries['.vibe-agent/archive/lots/lot-0001.md'] = { text: CANARY + ' ancien', at: Date.now() };
+    fs.writeFileSync(path.join(pf, '.vibe-agent', 'read-ledger.json'), JSON.stringify(rl));
+    ok(!ledger95.topSummaries(pf, 10).some((e) => /archive/.test(e.path)), 'pare-feu (b) : topSummaries (compact) filtre un ledger déjà pollué');
+    ok(!ledger95.scoredSummaries(pf, 6000, 10).entries.some((e) => /archive/.test(e.path)), 'pare-feu (b) : scoredSummaries (handoff auto) filtre un ledger déjà pollué');
+    runHook('stop.js', { session_id: 'pf-polluted', cwd: pf, transcript_path: EMPTY_TRANSCRIPT });
+    ok(!fs.readFileSync(hfPf, 'utf8').includes(CANARY), 'pare-feu (b) : le handoff auto ne réémet pas le distillat d\'archive');
+    const rCompact = runHook('session-start.js', { source: 'compact', cwd: pf, session_id: 'pf-compact2', transcript_path: EMPTY_TRANSCRIPT });
+    ok(!rCompact.out.includes(CANARY), 'pare-feu (b) : la reprise après compact ne réinjecte pas le distillat d\'archive');
+  }
+
+  // --- Verrou structurel : aucun branchement de l'archive dans la chaîne d'injection.
+  // Ce test casse AVANT le pare-feu : une future lecture d'archive dans un hook ou dans
+  // handoff/messages échoue ici, sans attendre qu'un canari fuie réellement.
+  const INJECTION_CHAIN = fs.readdirSync(HOOKS).filter((f) => f.endsWith('.js')).map((f) => ['hooks/' + f, path.join(HOOKS, f)])
+    .concat([['lib/handoff.js', path.join(PKG, 'lib', 'handoff.js')], ['lib/messages.js', path.join(PKG, 'lib', 'messages.js')]]);
+  ok(INJECTION_CHAIN.length >= 8, 'verrou : la chaîne d\'injection inspectée couvre tous les hooks + handoff + messages');
+  for (const [label, file] of INJECTION_CHAIN) {
+    const src = fs.readFileSync(file, 'utf8');
+    ok(!/require\([^)]*archive/.test(src), `verrou : ${label} ne requiert jamais lib/archive.js`);
+    ok(!src.includes('.vibe-agent/archive'), `verrou : ${label} ne référence jamais un chemin d'archive`);
+  }
+
+  // --- Fail-open de bout en bout : l'archive cassée n'empêche jamais une clôture.
+  const fo95 = mkRepo95('repo-archive95-failopen');
+  fs.rmSync(path.join(fo95, '.vibe-agent', 'archive'), { recursive: true, force: true });
+  fs.writeFileSync(path.join(fo95, '.vibe-agent', 'archive'), 'pas un dossier'); // mkdir impossible
+  ok(archive.writeFiche(fo95, 1, fiche(1)).ok === false, 'writeFiche : archive/ non créable → échec propre, jamais de throw');
+  ok(archive.writeRaw(fo95, 1, 'x').ok === false, 'writeRaw : archive/ non créable → échec propre');
+  const lfo = backlog.addLot(fo95, 'Lot fail-open 95', 'fait quand : …');
+  backlog.startLot(fo95, lfo.id);
+  ok((backlog.doneLot(fo95, lfo.id, 'ffff222') || {}).status === 'done', 'clôture backlog verte malgré une archive impossible');
+  ok(runNode(ARCHIVE_CLI, ['index', '--cwd', fo95]).code === 0, 'CLI : archive impossible → exit 0');
+}
+
 // ============================ L. INIT PROJET EN COURS (--augment) ============================
 section('Init d\'un projet en cours — augmentation taguée de CLAUDE.md/AGENTS.md existants');
 {

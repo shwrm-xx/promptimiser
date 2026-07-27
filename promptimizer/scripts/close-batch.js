@@ -3,7 +3,8 @@
 // Checklist de clôture (format spec). Pré-rempli via audit-batch quand détectable.
 const { compute } = require('./audit-batch');
 const { modelEffortTag } = require('../lib/backlog');
-const { runVerify } = require('../lib/project');
+const { runVerify, git } = require('../lib/project');
+const archive = require('../lib/archive');
 const { VERIFY_CLOSE_MS } = require('../lib/timeouts');
 const { parseCwd } = require('../lib/cli');
 const { fmtK } = require('../lib/messages');
@@ -26,6 +27,40 @@ function rtkGainBlock(cur) {
 }
 
 function yn(v) { return v ? 'oui' : 'non'; }
+
+// Bloc « Fiche d'archive » (lot #95) : squelette tier 1 pré-rempli + la ligne de commande
+// qui l'écrit. C'est ICI, et nulle part ailleurs, que le résultat de la vérification existe
+// (calculé quelques lignes plus bas) — il n'est persisté dans aucun champ du backlog. Émis
+// dans la checklist plutôt qu'écrit d'office : la machine ne sait pas rédiger un « pourquoi ».
+function ficheBlock(root, cur, verifyVerdict) {
+  try {
+    if (!cur) return '';
+    const md = archive.ficheSkeleton({
+      id: cur.id,
+      title: cur.title,
+      epic: cur.epic,
+      date: new Date().toISOString().slice(0, 10),
+      commit: (git(['rev-parse', '--short', 'HEAD'], root) || '').trim(),
+      verifyCmd: cur.verify,
+      verify: verifyVerdict,
+    });
+    return `
+## Fiche d'archive (tier 1)
+
+Remplis les sections puis écris-la (elle est immuable une fois posée) :
+\`\`\`
+node ${PMZ_BASE}/scripts/archive.js write --id ${cur.id} --stdin
+\`\`\`
+Squelette :
+\`\`\`markdown
+${md}\`\`\`
+Puis archive le handoff manuel avant qu'il ne soit détruit :
+\`node ${PMZ_BASE}/scripts/archive.js raw --id ${cur.id} --file .vibe-agent/handoff.md\`
+`;
+  } catch (_) {
+    return '';
+  }
+}
 
 // Trailers git à coller en pied du message de commit de clôture — traçabilité coût/modèle
 // par lot (lot #60), lisibles par `git log --format=%(trailers)` sans reparser le sujet.
@@ -53,8 +88,10 @@ function main() {
 
   const bl = d.backlog;
   let verifyLine = '';
+  let verifyVerdict = bl && bl.current && bl.current.verify ? 'inconnu' : 'aucune';
   if (bl && bl.current && bl.current.verify) {
     const v = runVerify(d.root, bl.current.verify, VERIFY_CLOSE_MS);
+    verifyVerdict = v.ok ? 'OK' : v.timedOut ? 'timeout' : 'ÉCHEC';
     verifyLine = v.ok
       ? `\n- Verify (\`${bl.current.verify}\`) : OK`
       : v.timedOut
@@ -81,7 +118,7 @@ Checklist :
 - CHANGELOG mis à jour : ${changelog}
 - Commit fait : ${commit}
 - Non vérifié explicitement listé : à confirmer
-${backlogBlock}${rtkGainBlock(bl && bl.current)}${trailerBlock(bl && bl.current)}
+${backlogBlock}${ficheBlock(d.root, bl && bl.current, verifyVerdict)}${rtkGainBlock(bl && bl.current)}${trailerBlock(bl && bl.current)}
 ## Économie de contexte
 
 - lectures évitées : voir .vibe-agent/read-ledger.json

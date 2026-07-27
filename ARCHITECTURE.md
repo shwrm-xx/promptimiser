@@ -686,8 +686,39 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   présents), source = `backlog.json` (`closed_at` n'est pas fiable, l'**id** est le seul ordre sûr).
   **Pare-feu** : aucun hook ni module de la chaîne d'injection (`session-start.js`, `handoff.js`,
   `messages.js`, `pre-compact.js`) ne requiert `lib/archive.js` en lecture — l'archive s'écrit à la
-  clôture et se lit **à la demande**, jamais toute seule. Tiroirs tier 1 (fiches narratives) et
-  tier 2 (brut, non versionné) : lot #95. Spec : `mwn/promptimizer-archive-handoffs/`.
+  clôture et se lit **à la demande**, jamais toute seule. Spec : `mwn/promptimizer-archive-handoffs/`.
+- **Archive des lots clos — tiroirs tier 1/2** (`lib/archive.js`, CLI `scripts/archive.js`,
+  commande `/pmz:archive`, lot #95) : les deux tiroirs profonds, ouverts **un à la fois**.
+  **Tier 1** = `archive/lots/lot-NNNN.md`, la fiche narrative (id zero-paddé 4 chiffres → tri
+  lexicographique = tri numérique), **versionnée** et **immuable** : `writeFiche` refuse d'écraser
+  une fiche existante sans `--force`. Un fichier par lot, écrit une fois à la clôture → zéro course
+  entre sessions filles, contrairement au handoff unique last-writer-wins. Trois gardes **explicites,
+  jamais muettes** (`exists` / `no-marker` / `too-long`) : le marqueur `<!-- pmz:archive:lot N -->`
+  doit porter le **bon** id (pas de fiche mal rangée) et la borne dure de 8 000 caractères refuse
+  plutôt que de rogner — une fiche trop longue est un symptôme (diff ou listing collé), pas un cas
+  à couper. Une fiche écrite passe sa ligne d'index en `fiche:oui` via la fusion non dégradante.
+  **Tier 2** = `archive/raw/lot-NNNN.md`, le brut (retour de sous-agent, handoff manuel intégral) :
+  **non versionné** (volumineux, porteur de chemins machine), jamais stagé, écrasable sans cérémonie
+  — sa perte au clone est acceptable puisque la fiche capture le stable.
+  **Points d'écriture** — `/close-batch` émet un squelette de fiche **pré-rempli** (étape 6bis) : c'est
+  le seul moment où le résultat de `verify` existe (il n'est persisté dans aucun champ du backlog),
+  et la machine s'arrête là où commence le « pourquoi ». L'étape 6ter copie le handoff manuel en
+  tier 2 **avant** que `markConsumed` ne le rebascule en auto : le handoff riche n'a qu'une vie.
+  **Consultation** — `/pmz:archive` : sans argument `index` (tier 0 seul), avec un id `show` (une
+  fiche seule), et le brut derrière `--confirm` — sans lui, `raw` n'affiche que chemin et taille,
+  la commande imposant une question à choix avant d'ouvrir des dizaines de Ko de contexte.
+  **Pare-feu, verrouillé par test** (`test/run-tests.js`, section « Archive tier 1/2 ») : un canari
+  semé dans les quatre fichiers d'archive ne doit apparaître ni dans `session-start` (les 4 sources,
+  avec et sans handoff), ni dans le handoff auto, ni dans `pre-compact` ; et un **verrou structurel**
+  relit les sources de `hooks/*.js` + `lib/handoff.js` + `lib/messages.js` pour asserter l'absence
+  de tout `require` d'archive et de tout chemin d'archive — il casse **avant** le pare-feu. Deux
+  canaux résiduels fermés au passage : `skipCandidates` exclut tout `.vibe-agent/` (consulter
+  l'archive ne consomme plus les slots `pmz:skip:` du handoff) et `seedSummaries` / `topSummaries` /
+  `scoredSummaries` refusent les clés sous `archive/` (un `pmz:summary:` d'archive se ré-injectait
+  de session en session — la boucle exacte que l'archive existe pour éviter ; filtré à la source
+  ET à l'émission, pour les ledgers déjà pollués).
+  **Reste à faire** : `/reintegrate` (fiches filles + `archive/waves/wave-<id>.md`) et la
+  persistance du résultat `verify` dans le backlog.
 - **`pmz:skip` du handoff → `avoid_reread_notes`** (`lib/handoff.js#parseSkipPaths`,
   `lib/ledger.js#seedAvoidReread`, lot T3 ; boucle fermée lot #51) : des lignes `pmz:skip:
   <chemin>` sèment `avoid_reread_notes` (read-ledger) dès l'injection du handoff au SessionStart

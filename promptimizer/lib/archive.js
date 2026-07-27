@@ -1,7 +1,14 @@
 'use strict';
-// Archive à tiroirs des lots clos — TIER 0 : .vibe-agent/archive/index.md.
-// Une ligne par lot, greppable, versionnée git. C'est le référentiel DURABLE qui
-// survit au handoff (fichier unique, gitignoré, écrasé à chaque Stop).
+// Archive à tiroirs des lots clos (.vibe-agent/archive/). Trois tiroirs, ouverts un
+// à la fois — c'est tout l'intérêt : la mémoire est DURABLE sans être injectée.
+//   tier 0 — index.md            : une ligne par lot, greppable, versionnée git ;
+//   tier 1 — lots/lot-NNNN.md    : la fiche narrative (décisions + pourquoi), versionnée,
+//                                  écrite UNE fois à la clôture puis immuable (zéro course
+//                                  entre sessions filles, contrairement au handoff unique) ;
+//   tier 2 — raw/lot-NNNN.md     : le brut (retour de sous-agent, handoff manuel intégral),
+//                                  NON versionné (volumineux, chemins machine) — perte au
+//                                  clone acceptable puisque la fiche capture le stable.
+// C'est le référentiel qui survit au handoff (fichier unique, gitignoré, écrasé à chaque Stop).
 //
 // PARE-FEU (invariant du chantier) : ce module n'est JAMAIS requis en lecture par
 // un hook ni par la chaîne d'injection (session-start.js, handoff.js, messages.js,
@@ -46,14 +53,26 @@ const GITIGNORE_BLOCK = [
 ];
 const GITIGNORE_ANCHOR = '!archive/';
 
+// Borne dure de la fiche tier 1 : ~600 tokens visés, refus au-delà. Jamais de coupe
+// silencieuse (même philosophie que la garde anti-troncature du titre de lot) — une fiche
+// trop longue est un symptôme (diff ou listing de code collé), pas un cas à rogner.
+const MAX_FICHE_CHARS = 8000;
+
 function archiveDir(root) { return path.join(vibeDir(root), 'archive'); }
 function indexFile(root) { return path.join(archiveDir(root), 'index.md'); }
+function ficheDir(root) { return path.join(archiveDir(root), 'lots'); }
+function rawDir(root) { return path.join(archiveDir(root), 'raw'); }
 
 function pad4(id) {
   const n = Number(id);
   if (!Number.isFinite(n) || n < 0) return '0000';
   return String(Math.round(n)).padStart(4, '0');
 }
+
+// Id zero-paddé 4 chiffres : le tri lexicographique des noms de fichiers vaut tri numérique.
+function ficheFile(root, id) { return path.join(ficheDir(root), `lot-${pad4(id)}.md`); }
+function rawFile(root, id) { return path.join(rawDir(root), `lot-${pad4(id)}.md`); }
+function ficheMarker(id) { return `<!-- pmz:archive:lot ${Number(id)} -->`; }
 
 // Un champ d'entrée ne doit jamais casser le format : le séparateur `|` devient `/` (on
 // garde une trace visible plutôt que de l'effacer), les sauts de ligne deviennent des
@@ -211,6 +230,123 @@ function appendIndexLine(root, entry) {
   }
 }
 
+// ------------------------------- TIER 1 : la fiche -------------------------------
+
+// Gabarit de fiche pré-rempli, émis par /close-batch au SEUL moment où le contexte riche
+// existe encore (résultat verify inclus — il n'est persisté nulle part ailleurs). Les
+// sections sont vides à dessein : c'est l'assistant qui les remplit, la machine ne sait
+// pas inventer un « pourquoi ». Interdits (anti-péremption) : diff, contenu de fichier,
+// listing de code, sortie de tests — le sha et le CHANGELOG font foi pour le volatil.
+function ficheSkeleton(meta) {
+  const m = meta || {};
+  const id = Number(m.id);
+  const date = cell(m.date);
+  const commit = cell(m.commit);
+  const verifyCmd = m.verifyCmd ? '`' + String(m.verifyCmd).replace(/`/g, "'") + '`' : 'aucune';
+  const verify = VERIFY_VALUES.includes(m.verify) ? m.verify : 'inconnu';
+  return [
+    ficheMarker(id),
+    `# Lot #${id} — ${cell(m.title, 'sans titre')}`,
+    '',
+    `- epic : ${cell(m.epic)} · clos : ${date} · commit : ${commit} · session : ${cell(m.session, 'inconnue')}`,
+    `- verify : ${verifyCmd} → ${verify} · coût : non mesuré`,
+    '',
+    '## Objectif',
+    '',
+    '## Décisions (et pourquoi)',
+    '',
+    '## Vérifié',
+    '',
+    '## Non vérifié',
+    '',
+    '## Dette restante',
+    '',
+    '## Périmètre',
+    '(globs / fichiers touchés — noms seulement, jamais de diff)',
+    '',
+    '## Liens',
+    `- commit ${commit} · entrée CHANGELOG du ${date} · brut : archive/raw/lot-${pad4(id)}.md (local)`,
+    '',
+  ].join('\n');
+}
+
+// Écrit la fiche tier 1. IMMUABLE par défaut : une fiche existante n'est jamais écrasée
+// sans `force` (elle est écrite une fois, à la clôture, et fait foi). Valide le marqueur
+// et la borne de taille AVANT d'écrire, met à jour la ligne d'index en `fiche:oui`.
+// Codes d'action explicites (jamais de refus muet) : exists | no-marker | too-long | error.
+function writeFiche(root, id, markdown, opts) {
+  const o = opts || {};
+  const n = Number(id);
+  const res = { ok: false, action: 'error', file: null, chars: 0 };
+  try {
+    if (!root || !Number.isFinite(n)) return res;
+    res.file = ficheFile(root, n);
+    const text = String(markdown == null ? '' : markdown).trim();
+    res.chars = text.length;
+    if (!text) return res;
+    if (!text.includes(ficheMarker(n))) { res.action = 'no-marker'; return res; }
+    if (text.length > MAX_FICHE_CHARS) { res.action = 'too-long'; return res; }
+    if (fs.existsSync(res.file) && !o.force) { res.action = 'exists'; return res; }
+    ensureArchiveGitignore(root);
+    try { fs.mkdirSync(ficheDir(root), { recursive: true }); } catch (_) { /* fail-open */ }
+    if (!writeAtomicText(res.file, text + '\n')) return res;
+    try { git(['add', '--', path.relative(root, res.file)], root); } catch (_) { /* fail-open */ }
+    appendIndexLine(root, { id: n, fiche: 'oui', title: o.title, epic: o.epic, date: o.date, commit: o.commit, verify: o.verify });
+    res.ok = true;
+    res.action = 'written';
+    return res;
+  } catch (_) {
+    return res;
+  }
+}
+
+// Lecture d'une fiche — CLI UNIQUEMENT (pare-feu : jamais depuis la chaîne d'injection).
+function readFiche(root, id) {
+  try { return fs.readFileSync(ficheFile(root, id), 'utf8'); } catch (_) { return null; }
+}
+
+// ------------------------------- TIER 2 : le brut --------------------------------
+
+// Écrit le brut. JAMAIS stagé (gitignoré par `archive/raw/`) : c'est un collage volumineux,
+// potentiellement porteur de chemins machine et de sorties de tests. Écrasable sans
+// cérémonie, contrairement à la fiche : on colle le dernier retour connu.
+function writeRaw(root, id, text) {
+  const n = Number(id);
+  const res = { ok: false, file: null, bytes: 0 };
+  try {
+    if (!root || !Number.isFinite(n)) return res;
+    res.file = rawFile(root, n);
+    const s = String(text == null ? '' : text);
+    if (!s.trim()) return res;
+    ensureArchiveGitignore(root);
+    try { fs.mkdirSync(rawDir(root), { recursive: true }); } catch (_) { /* fail-open */ }
+    if (!writeAtomicText(res.file, s.endsWith('\n') ? s : s + '\n')) return res;
+    res.bytes = Buffer.byteLength(s, 'utf8');
+    res.ok = true;
+    return res;
+  } catch (_) {
+    return res;
+  }
+}
+
+// Métadonnées du brut sans le lire : c'est ce que le tiroir tier 2 montre par défaut
+// (chemin + taille), l'affichage réel restant derrière `--confirm`. Des dizaines de Ko
+// de contexte ne s'ouvrent pas par accident.
+function rawInfo(root, id) {
+  const f = rawFile(root, id);
+  try {
+    const st = fs.statSync(f);
+    return { exists: true, file: f, bytes: st.size };
+  } catch (_) {
+    return { exists: false, file: f, bytes: 0 };
+  }
+}
+
+// Lecture du brut — CLI UNIQUEMENT, derrière --confirm (pare-feu).
+function readRaw(root, id) {
+  try { return fs.readFileSync(rawFile(root, id), 'utf8'); } catch (_) { return null; }
+}
+
 // Entrée machine dérivée d'un lot du backlog. `verify:inconnu` est la vérité : le
 // résultat de la vérification n'est persisté nulle part aujourd'hui (lot #96).
 function entryFromLot(lot) {
@@ -257,7 +393,8 @@ function backfill(root, opts) {
 }
 
 module.exports = {
-  archiveDir, indexFile, ensureArchiveGitignore,
+  archiveDir, indexFile, ficheDir, ficheFile, rawDir, rawFile, ficheMarker, ensureArchiveGitignore,
   appendIndexLine, readIndex, backfill, entryFromLot, formatEntry, parseEntry,
-  GITIGNORE_BLOCK, VERIFY_VALUES, FICHE_VALUES,
+  ficheSkeleton, writeFiche, readFiche, writeRaw, readRaw, rawInfo,
+  GITIGNORE_BLOCK, VERIFY_VALUES, FICHE_VALUES, MAX_FICHE_CHARS,
 };

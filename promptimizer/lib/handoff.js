@@ -88,11 +88,19 @@ function markConsumed(root) {
   }
 }
 
+// L'état interne PMZ n'est jamais un candidat anti-relecture : consulter le plan de lots,
+// un ledger ou la mémoire durable des lots clos est une action à la demande, pas une
+// relecture coûteuse à décourager. Sans ce filtre, une consultation consomme des slots
+// `pmz:skip:` (MAX_READ_LINES) au détriment des vrais fichiers du projet.
+const PMZ_STATE_RE = /(^|\/)\.vibe-agent\//;
+function isPmzState(p) { return PMZ_STATE_RE.test(String(p || '')); }
+
 // Fichiers lus le plus récemment (ledger contexte), pour la contrainte budget.
 function recentReads(root) {
   try {
     const fr = loadContextLedger(root).files_read;
     return Object.keys(fr)
+      .filter((p) => !isPmzState(p))
       .sort((a, b) => (fr[b] || 0) - (fr[a] || 0))
       .slice(0, MAX_READ_LINES);
   } catch (_) {
@@ -120,7 +128,7 @@ function skipCandidates(root, lastCommitMs) {
   const reads = excludeRecentlyModified(root, recentReads(root), lastCommitMs);
   const seen = new Set(reads);
   const waste = excludeRecentlyModified(root, topWaste(root, MAX_WASTE_LINES).map((e) => e.path), lastCommitMs)
-    .filter((p) => !seen.has(p));
+    .filter((p) => !seen.has(p) && !isPmzState(p));
   return { reads, waste };
 }
 

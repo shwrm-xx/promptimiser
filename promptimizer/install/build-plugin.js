@@ -49,6 +49,7 @@ const EXCLUDE = new Set(['install', '.DS_Store', 'statusline.md']);
 const REQUIRED_COMMANDS = [
   'budget.md', 'check-context.md', 'close-batch.md', 'fresh-session.md',
   'about.md', 'init.md', 'scope.md', 'help.md', 'parallelize.md', 'reintegrate.md',
+  'rtk.md', 'archive.md',
 ];
 
 function log(s) { process.stdout.write(s + '\n'); }

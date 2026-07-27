@@ -2,6 +2,54 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-27 — lot #95 « Archive tier 1/2 : fiches, commande /pmz:archive, test pare-feu » (epic « Archive à tiroirs ») — PMZ 1.7.0
+
+Les deux tiroirs profonds de l'archive, et le **verrou** qui garantit qu'ils ne s'inviteront jamais
+dans le contexte. L'index (tier 0, lot #94) disait *qu'un* lot avait été clos ; la fiche dit
+*pourquoi*. On ouvre **un tiroir à la fois** — c'est toute la raison d'être du dispositif.
+
+- **Tier 1 — la fiche narrative** (`lib/archive.js` : `ficheSkeleton`, `writeFiche`, `readFiche`) :
+  `.vibe-agent/archive/lots/lot-NNNN.md`, versionnée, stagée, et **immuable** (jamais écrasée sans
+  `--force`). Un fichier par lot écrit une fois à la clôture → zéro course entre sessions filles,
+  contrairement au handoff unique last-writer-wins. Trois refus **explicites, jamais muets** :
+  `exists`, `no-marker` (le marqueur `<!-- pmz:archive:lot N -->` doit porter le **bon** id — pas de
+  fiche mal rangée) et `too-long` (borne dure 8 000 caractères : on **refuse** plutôt que de rogner,
+  une fiche trop longue est un symptôme, pas un cas à couper). Une fiche écrite passe sa ligne
+  d'index en `fiche:oui` via la fusion non dégradante du lot #94.
+- **Tier 2 — le brut** (`writeRaw`, `rawInfo`, `readRaw`) : `archive/raw/lot-NNNN.md`, **non
+  versionné**, jamais stagé, écrasable sans cérémonie. `rawInfo` donne chemin et taille **sans lire
+  le contenu** — c'est ce que le tiroir montre par défaut.
+- **`/close-batch` écrit la mémoire au bon moment** — étape **6bis** : la checklist émet un
+  **squelette de fiche pré-rempli** (id, titre, epic, sha, et le **résultat réel de `verify`**).
+  C'est le seul instant où ce résultat existe : il n'est persisté dans aucun champ du backlog. La
+  machine pré-remplit le factuel et s'arrête où commence le « pourquoi ». Étape **6ter** : le
+  handoff manuel est copié en tier 2 **avant** que `markConsumed` ne le rebascule en auto — le
+  handoff riche n'a qu'une vie, injecté une fois puis écrasé au premier Stop.
+- **Commande `/pmz:archive`** (`commands/archive.md` + `scripts/archive.js`) — un tiroir à la fois :
+  sans argument `index` (tier 0 seul, avec consigne explicite de n'ouvrir **aucune** fiche sans
+  demande), avec un id `show` (la fiche seule), et le brut derrière `--confirm` — sans lui, `raw`
+  n'affiche que chemin et taille, la commande imposant une **question à choix** avant d'ouvrir des
+  dizaines de Ko de contexte. Écriture : `write --id N --stdin|--file [--force]`, `raw --id N
+  --stdin`, `backfill [--dry-run]`. CLI toujours `exit 0` (index corrompu, id inconnu, stdin vide).
+- **Test pare-feu (canari)** — nouvelle section de `test/run-tests.js`. Un canari semé dans les
+  quatre fichiers d'archive (`index.md`, `lots/`, `raw/`, `waves/`) n'apparaît ni dans
+  `session-start` (les **4 sources**, avec handoff auto **et** manuel), ni dans le handoff auto, ni
+  dans `pre-compact`. Plus un **verrou structurel** : les sources de `hooks/*.js`, `lib/handoff.js`
+  et `lib/messages.js` sont relues pour asserter l'absence de tout `require` d'archive et de tout
+  chemin d'archive — un futur branchement en lecture casse le test **avant** de casser le pare-feu.
+- **Deux canaux résiduels fermés** : `skipCandidates` (`lib/handoff.js`) exclut désormais tout
+  `.vibe-agent/` — consulter l'archive ne consomme plus les slots `pmz:skip:` du handoff au
+  détriment des vrais fichiers du projet ; et `seedSummaries` / `topSummaries` / `scoredSummaries`
+  (`lib/ledger.js`) refusent les clés sous `archive/` — un `pmz:summary:` pointant l'archive se
+  ré-injectait de session en session, exactement la boucle que l'archive existe pour éviter. Filtré
+  à la source **et** à l'émission (pour les ledgers déjà pollués par une version antérieure).
+- **Canal plugin** : `archive.md` **et** `rtk.md` ajoutés à `REQUIRED_COMMANDS` (`build-plugin.js`)
+  — `rtk.md` était livré mais absent de la liste, la garde anti-suppression était inopérante pour
+  lui. Un test vérifie en plus que chaque entrée de la liste existe réellement dans `commands/`.
+- **Tests** : +107 assertions (`node test/run-tests.js` → **1437 OK, 0 échec**).
+- **Reste à faire** (epic) : `/reintegrate` (fiches filles + `archive/waves/wave-<id>.md`) et la
+  persistance du résultat `verify` dans le backlog.
+
 ## 2026-07-27 — lot #94 « Archive tier 0 : index, filet doneLot, backfill des lots clos » (epic « Archive à tiroirs »)
 
 Premier tiroir de l'archive : un référentiel **durable et versionné** des lots clos, contrepartie
