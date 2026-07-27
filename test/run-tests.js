@@ -1001,6 +1001,76 @@ const handoff = require(path.join(PKG, 'lib', 'handoff'));
   runHook('stop.js', { session_id: 'sess-n1', cwd: repo, transcript_path: empty });
   ok(lot.getLotCounter(repo) === before + 1, 'lot clôturé malgré .vibe-agent non commité (ledgers/handoff)');
 }
+{
+  // K9. écriture atomique (lot #93) : writeAutoHandoff et markConsumed passent par
+  // writeAtomicText (tmp+rename) — plus aucun writeFileSync direct, aucun .tmp résiduel.
+  const repo = path.join(SANDBOX, 'repo-handoff-atomic');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const empty = path.join(SANDBOX, 'empty.jsonl');
+  for (let i = 0; i < 10; i++) runHook('stop.js', { session_id: 'sess-atomic', cwd: repo, transcript_path: empty });
+  const vibeDirAtomic = path.join(repo, '.vibe-agent');
+  ok(fs.readdirSync(vibeDirAtomic).filter((f) => f.includes('.tmp')).length === 0,
+    'writeAutoHandoff (rafale de 10) : aucun .tmp résiduel dans .vibe-agent/');
+  const hf2 = path.join(vibeDirAtomic, 'handoff.md');
+  fs.writeFileSync(hf2, handoff.MANUAL_MARKER + '\nCONTENU');
+  handoff.markConsumed(repo);
+  ok(fs.readdirSync(vibeDirAtomic).filter((f) => f.includes('.tmp')).length === 0,
+    'markConsumed : aucun .tmp résiduel après consommation');
+  ok(fs.readFileSync(hf2, 'utf8').includes(handoff.AUTO_MARKER), 'markConsumed : rebasculé en auto (écriture atomique)');
+}
+
+// ============================ L2. FSJSON — ÉCRITURE ATOMIQUE + QUARANTAINE ============================
+section('fsjson — writeAtomic/writeAtomicText (tmp+rename) et quarantaine JSON corrompu (lot #93)');
+{
+  const fsjson = require(path.join(PKG, 'lib', 'fsjson'));
+  const dir = path.join(SANDBOX, 'fsjson');
+  fs.mkdirSync(dir, { recursive: true });
+
+  // L2.1 — writeAtomic (JSON) : contenu final valide, aucun .tmp résiduel après une rafale
+  const jf = path.join(dir, 'obj.json');
+  for (let i = 0; i < 20; i++) ok(fsjson.writeAtomic(jf, { i }), `writeAtomic #${i} : succès`);
+  ok(JSON.parse(fs.readFileSync(jf, 'utf8')).i === 19, 'writeAtomic : contenu final = dernière écriture');
+  ok(fs.readdirSync(dir).filter((f) => f.includes('.tmp')).length === 0, 'writeAtomic : aucun .tmp résiduel après rafale');
+
+  // L2.2 — writeAtomicText (texte brut) : même garantie, pour handoff.md
+  const tf = path.join(dir, 'text.md');
+  for (let i = 0; i < 20; i++) ok(fsjson.writeAtomicText(tf, `contenu-${i}`), `writeAtomicText #${i} : succès`);
+  ok(fs.readFileSync(tf, 'utf8') === 'contenu-19', 'writeAtomicText : contenu final = dernière écriture');
+  ok(fs.readdirSync(dir).filter((f) => f.includes('.tmp')).length === 0, 'writeAtomicText : aucun .tmp résiduel après rafale');
+
+  // L2.3 — readJson sur fichier absent : fallback, jamais d'exception, aucune quarantaine
+  ok(fsjson.readJson(path.join(dir, 'absent.json'), 'FB') === 'FB', 'readJson : fichier absent -> fallback');
+  ok(!fs.existsSync(path.join(dir, 'absent.json.corrupt')), 'readJson : fichier absent -> pas de quarantaine');
+
+  // L2.4 — readJson sur JSON corrompu (fichier existant non vide) : fallback + quarantaine .corrupt
+  const cf = path.join(dir, 'corrupt.json');
+  fs.writeFileSync(cf, '{corrompu');
+  ok(fsjson.readJson(cf, 'FB') === 'FB', 'readJson : JSON corrompu -> fallback');
+  ok(!fs.existsSync(cf), "readJson : fichier corrompu déplacé (n'est plus à son emplacement d'origine)");
+  ok(fs.existsSync(`${cf}.corrupt`) && fs.readFileSync(`${cf}.corrupt`, 'utf8') === '{corrompu',
+    'readJson : contenu corrompu conservé dans <file>.corrupt');
+
+  // L2.5 — une seconde corruption ne remplace pas la quarantaine existante (1er exemplaire conservé)
+  fs.writeFileSync(cf, '{deuxième-corruption');
+  ok(fsjson.readJson(cf, 'FB') === 'FB', 'readJson : 2e corruption -> fallback aussi');
+  ok(fs.readFileSync(`${cf}.corrupt`, 'utf8') === '{corrompu', 'readJson : .corrupt existant préservé (1er exemplaire)');
+
+  // L2.6 — JSON valide mais non-objet (ex. un nombre) : fallback, PAS de quarantaine (pas une corruption)
+  const nf = path.join(dir, 'nonobject.json');
+  fs.writeFileSync(nf, '42');
+  ok(fsjson.readJson(nf, 'FB') === 'FB', 'readJson : JSON valide non-objet -> fallback');
+  ok(!fs.existsSync(`${nf}.corrupt`), 'readJson : JSON valide non-objet -> jamais quarantiné');
+
+  // L2.7 — JSON valide et objet : renvoyé tel quel
+  const vf = path.join(dir, 'valid.json');
+  fs.writeFileSync(vf, '{"a":1}');
+  const rv = fsjson.readJson(vf, null);
+  ok(!!rv && rv.a === 1, 'readJson : JSON valide -> objet renvoyé');
+}
 
 // ============================ M. LOT A0 — AUDIT-BATCH & CHAMPS MORTS ============================
 section('audit-batch — gitStatusMeaningful + champs morts retirés');
@@ -4671,12 +4741,13 @@ section('fleet — registre de vague fleet.json + injection SessionStart (lib/fl
   ok(f.active === false && f.lots.length === 0, 'fleet : absent -> vague inerte (active:false)');
   ok(fleet.fleetLines(repoF, 'sX').length === 0, 'fleet : pas de fleet -> aucune ligne injectée');
 
-  // F2. JSON corrompu -> fail-open, vague inerte (jamais d'exception)
+  // F2. JSON corrompu -> fail-open, vague inerte (jamais d'exception), quarantaine .corrupt (lot #93)
   fs.writeFileSync(ffile, '{ ceci n est pas du json');
   f = fleet.loadFleet(repoF);
   ok(f.active === false && f.lots.length === 0, 'fleet : JSON corrompu -> inerte (fail-open)');
   ok(fleet.fleetLines(repoF, 'sX').length === 0, 'fleet : JSON corrompu -> aucune ligne injectée');
-  fs.rmSync(ffile);
+  ok(!fs.existsSync(ffile) && fs.existsSync(`${ffile}.corrupt`), 'fleet : JSON corrompu -> quarantiné en fleet.json.corrupt');
+  fs.rmSync(`${ffile}.corrupt`, { force: true });
 
   // F3. upsert : inscription d'un lot -> active + persistance atomique
   ok(fleet.upsertLot(repoF, { id: 1, session_owner: 'sA', perimeter: ['lib/a'], branch: 'lot-1' }) === true,

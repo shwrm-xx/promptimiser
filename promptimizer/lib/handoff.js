@@ -9,6 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const { vibeDir, git, gitStatusMeaningful, lastCommitEpoch } = require('./project');
+const { writeAtomicText } = require('./fsjson');
 const { loadContextLedger, topWaste, scoredSummaries } = require('./ledger');
 const { readEpic, getLotCounter } = require('./lot');
 const { summaryLines, readTodoSnapshot } = require('./backlog');
@@ -81,7 +82,7 @@ function markConsumed(root) {
     const f = handoffFile(root);
     const raw = fs.readFileSync(f, 'utf8');
     if (!raw.includes(MANUAL_MARKER)) return;
-    fs.writeFileSync(f, raw.split(MANUAL_MARKER).join(AUTO_MARKER));
+    writeAtomicText(f, raw.split(MANUAL_MARKER).join(AUTO_MARKER));
   } catch (_) {
     /* fail-open */
   }
@@ -196,8 +197,7 @@ function writeAutoHandoff(root) {
     } else {
       lines.push('- Working tree : propre (lot précédent commité)');
     }
-    fs.writeFileSync(f, lines.join('\n') + '\n');
-    return true;
+    return writeAtomicText(f, lines.join('\n') + '\n');
   } catch (_) {
     return false;
   }

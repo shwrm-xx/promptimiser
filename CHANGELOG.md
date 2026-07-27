@@ -2,6 +2,30 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-22 — lot #93 « Socle d'écriture sûre : writeAtomicText + quarantaine JSON » (epic « Archive à tiroirs »)
+
+1er lot d'implémentation issu de l'étude du lot #92 (DEP-4, DEP-5/FIA-13, FIA-23) : `handoff.md`
+était le seul artefact écrit en `writeFileSync` direct, et un JSON corrompu était écrasé en
+silence par la prochaine écriture — sans ce socle, l'archive à venir (lots #94-#97) hériterait
+des deux mêmes failles.
+
+- **`fsjson.writeAtomicText(file, text)`** (nouveau) : même garantie que `writeAtomic` (tmp
+  pid+horodatage puis `renameSync`) pour du texte brut, pas seulement du JSON. `writeAtomic`
+  devient un simple appel à `writeAtomicText(file, JSON.stringify(...))`.
+- **`writeAutoHandoff`/`markConsumed`** (`lib/handoff.js`) branchés sur `writeAtomicText` —
+  plus aucun `writeFileSync` direct sur `handoff.md`. `writeAutoHandoff` renvoie désormais le
+  résultat réel de l'écriture (au lieu d'un `return true` inconditionnel).
+- **Quarantaine `readJson`** (`lib/fsjson.js`) : un JSON invalide sur un fichier existant non
+  vide (corruption, pas simple absence) est renommé en `<fichier>.corrupt` avant de renvoyer le
+  fallback — l'accumulé trans-session reste récupérable au lieu d'être écrasé sans trace. Un
+  seul exemplaire conservé (`existsSync` avant `rename`, comportement identique POSIX/Windows).
+  Exclu volontairement : JSON valide mais non-objet (ex. un nombre) — ce n'est pas une
+  corruption.
+- Tests : +34 assertions (écriture atomique JSON/texte sans `.tmp` résiduel après rafale,
+  quarantaine/non-quarantaine par cas, `markConsumed`/`writeAutoHandoff` sans résidu) ; le test
+  `fleet F2` (JSON corrompu) est mis à jour pour vérifier la quarantaine au lieu de la
+  contourner. **1286 OK, 0 échec.**
+
 ## 2026-07-22 — lot #92 « Étude — Archive à tiroirs des handoffs de lots » (epic « Archive à tiroirs (étude) »)
 
 Constat terrain : le handoff riche de fin de lot (décisions+pourquoi, non-vérifié, dette) n'a
