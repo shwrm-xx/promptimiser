@@ -150,7 +150,11 @@ function parallelize(root, json, epicFilter) {
 // l'ordre du graphe depends_on, gate `verify` à chaque étape, avance de la tête d'intégration
 // (signal de rebase) + changelog agrégé. Par défaut PROPOSE le plan (rien mergé) ; `--execute`
 // exécute réellement. `--into <branche>` force la branche d'intégration.
-function reintegrate(root, json, execute, into) {
+// Gates (lot #97) : `--gate <cmd>` = gate de REPLI pour les lots sans verify ; `--allow-no-gate` =
+// merge assumé sans filet (refus explicite sinon) ; `--final-gate <cmd>` = gate FINAL de vague
+// dédié (à défaut : union des verify de la vague, dédoublonnée de la dernière déjà passée verte).
+function reintegrate(root, json, execute, into, gates) {
+  const g = gates || {};
   const fleet = require('../lib/fleet').loadFleet(root);
   const b = backlog.loadBacklog(root);
   const plan = reint.planReintegration(fleet, b);
@@ -167,6 +171,8 @@ function reintegrate(root, json, execute, into) {
         notReady: plan.notReady,
         blocked: plan.blocked,
         extensions,
+        no_gate: reint.noGateSteps(plan, g.gate),
+        wave_gate: reint.waveGateCommands(fleet, b),
         complete: plan.complete,
       }, null, 2));
     }
@@ -181,8 +187,17 @@ function reintegrate(root, json, execute, into) {
       out(`${plan.steps.length} lot(s) à merger, dans l'ordre du graphe :`);
       plan.steps.forEach((s, i) => {
         const dep = s.depends_on.length ? ` (dépend de ${s.depends_on.map((d) => '#' + d).join(', ')})` : '';
-        out(`${i + 1}. #${s.id} « ${s.title || '?'} »${dep} — branche \`${s.branch || '?'}\` — gate : ${s.verify || '(aucune)'}`);
+        const gate = s.verify || g.gate || null;
+        out(`${i + 1}. #${s.id} « ${s.title || '?'} »${dep} — branche \`${s.branch || '?'}\` — gate : ${gate || '⚠️ (aucune)'}`);
       });
+      // FIA-16 : un lot sans gate est mergé sans filet ; si ce merge casse le build, c'est le gate
+      // du lot SUIVANT qui rougit et le pipeline nomme le mauvais coupable.
+      const ng = reint.noGateSteps(plan, g.gate);
+      if (ng.length) {
+        out('');
+        out(`⚠️ ${ng.length} lot(s) sans gate (${ng.map((x) => '#' + x.id).join(', ')}) : mergé(s) sans aucune vérification.`);
+        out('Le --execute REFUSERA tant que tu n\'auras pas tranché : --gate "<cmd>" (gate de repli) ou --allow-no-gate (merge assumé sans filet).');
+      }
     } else {
       out('Aucun lot « prêt à merger ».');
     }
@@ -204,17 +219,26 @@ function reintegrate(root, json, execute, into) {
     out('');
     out('⚠️ Proposition seule : aucune branche n\'a été mergée, fleet.json inchangé.');
     out(`Pour exécuter le pipeline (merge + gate à chaque étape) : node ${PMZ_BASE}/scripts/backlog.js reintegrate --execute.`);
+    const wg = reint.waveGateCommands(fleet, b);
+    out(wg.length
+      ? `Gate FINAL de vague (après le dernier merge, sur la branche d'intégration) : ${wg.join(' && ')} — ou --final-gate "<cmd>" pour une commande dédiée (typecheck + tests + build).`
+      : 'Gate FINAL de vague : aucun lot ne porte de verify — la vague se clôturerait sans preuve (pose --final-gate "<cmd>").');
     return;
   }
 
   // --execute : exécution réelle du pipeline.
-  const res = reint.runPipeline(root, { into });
+  const res = reint.runPipeline(root, { into, gate: g.gate, allowNoGate: g.allowNoGate, finalGate: g.finalGate });
   if (json) {
     return out(JSON.stringify({ executed: true, ...res }, null, 2));
   }
   if (res.reason === 'no-integration-branch') return out('Refusé : aucune branche d\'intégration (ni fleet.integration_branch, ni --into, ni branche courante).');
   if (res.reason === 'nothing-ready') return out('Rien à réintégrer : aucun lot « prêt à merger ».');
   if (res.reason === 'checkout-failed') return out(`Refusé : checkout de \`${res.integrationBranch}\` impossible (arbre sale ?).\n${(res.out || '').trim()}`);
+  if (res.reason === 'no-gate') {
+    out(`Refusé : ${res.noGate.length} lot(s) sans gate (${res.noGate.map((x) => '#' + x.id).join(', ')}) — rien n'a été mergé.`);
+    out('Un merge non vérifié fait rougir le gate du lot SUIVANT et nomme le mauvais coupable.');
+    return out('Tranche : --gate "<cmd>" (gate de repli pour ces lots) ou --allow-no-gate (merge assumé sans filet).');
+  }
 
   out('## Réintégration de vague');
   out(`Branche d'intégration : \`${res.integrationBranch}\`.`);
@@ -234,6 +258,18 @@ function reintegrate(root, json, execute, into) {
   out('');
   out(reint.aggregateChangelog(res.merged, { waveId: fleet.wave_id, date: dateOf(), integrationBranch: res.integrationBranch }));
   out('');
+  // Gate FINAL de vague (lot #97) : deux lots verts séparément peuvent être rouges combinés.
+  const fg = res.finalGate;
+  if (fg) {
+    if (fg.ran && fg.ok) out(`✅ Gate final de vague vert sur \`${res.integrationBranch}\` : ${fg.commands.join(' && ')}.`);
+    else if (fg.ran) out(`❌ Gate final de vague ROUGE : \`${fg.failed}\`.\n${(fg.out || '').trim().slice(-1500)}`);
+    else if (fg.reason === 'already-green') out('✅ Gate final de vague : déjà couvert (le gate du dernier lot a tourné vert sur l\'état final).');
+    else out('⚠️ Gate final de vague : AUCUN lot de la vague ne porte de verify — vague close sans preuve (pose --final-gate "<cmd>").');
+    out('');
+  }
+  if (res.reason === 'final-gate-failed') {
+    return out('⛔ Vague NON close : les merges restent faits (aucun rollback automatique), la branche d\'intégration est rouge. Corrige sur place, puis relance --execute (ou --final-gate) pour reclôturer.');
+  }
   out(res.waveClosed
     ? '🎉 Vague entièrement réintégrée et close. Colle le bloc ci-dessus dans CHANGELOG.md, puis commit.'
     : 'Lots prêts réintégrés. La vague reste ouverte (des lots sont encore en vol).');
@@ -364,10 +400,15 @@ function main() {
   }
 
   if (cmd === 'next') {
-    const lot = backlog.nextLot(backlog.loadBacklog(root));
-    if (json) return out(JSON.stringify(lot));
-    return out(lot ? `Prochain lot : #${lot.id} « ${lot.title} »${backlog.modelEffortTag(lot)}${lot.scope ? ` — ${lot.scope}` : ''}.`
-      : 'Aucun lot à faire.');
+    const bn = backlog.loadBacklog(root);
+    const lot = backlog.nextLot(bn);
+    // blockedBy calculé à la volée, jamais persisté : l'objet JSON sorti est une COPIE enrichie
+    // (annoter `lot` le ferait écrire dans backlog.json par un saveBacklog ultérieur).
+    const bl = backlog.blockedByOf(bn, lot);
+    if (json) return out(JSON.stringify(lot ? Object.assign({}, lot, { blockedBy: bl }) : null));
+    if (!lot) return out('Aucun lot à faire.');
+    const warn = bl.length ? ` ⚠️ Bloqué par ${bl.map((d) => '#' + d).join(', ')} encore ouvert (tous les lots restants le sont).` : '';
+    return out(`Prochain lot : #${lot.id} « ${lot.title} »${backlog.modelEffortTag(lot)}${lot.scope ? ` — ${lot.scope}` : ''}.${warn}`);
   }
 
   if (cmd === 'export') {
@@ -381,7 +422,11 @@ function main() {
 
   if (cmd === 'parallelize') return parallelize(root, json, flag('epic'));
 
-  if (cmd === 'reintegrate') return reintegrate(root, json, process.argv.includes('--execute'), flag('into'));
+  if (cmd === 'reintegrate') {
+    return reintegrate(root, json, process.argv.includes('--execute'), flag('into'), {
+      gate: flag('gate'), finalGate: flag('final-gate'), allowNoGate: process.argv.includes('--allow-no-gate'),
+    });
+  }
 
   if (cmd === 'reconcile') {
     const r = backlog.reconcile(root);

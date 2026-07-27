@@ -167,6 +167,7 @@ function statusLineText(info) {
   if (i.lot) {
     let s = `lot #${i.lot.id}`;
     if (i.lot.title) s += ` ${clip(i.lot.title, 24)}`;
+    if (i.lot.blocked) s += ' ⚠'; // lot #97 : prochain lot proposé mais bloqué par une dépendance ouverte
     parts.push(s);
   }
   if (Number.isFinite(i.done) && Number.isFinite(i.total) && i.total > 0) {
@@ -273,10 +274,14 @@ function autoInitMessage({ gitInitDone, committed }) {
 }
 
 // Annonce d'auto-clôture d'un lot du backlog (stop.js, systemMessage — jamais injecté).
-function lotClosedMessage(lot, next, prog) {
+// `blockedBy` (lot #97) : ids des dépendances encore ouvertes du lot suivant, calculés à la volée
+// par backlog.blockedByOf — jamais lus sur l'objet lot (le marqueur n'est pas persisté).
+function lotClosedMessage(lot, next, prog, blockedBy) {
   const lines = [`Lot « ${lot.title} » clos (${prog.done}/${prog.total}).`];
   if (next) {
     lines.push(`Suivant : « ${next.title} »${next.scope ? ` — ${String(next.scope).slice(0, 100)}` : ''}.`);
+    const bl = Array.isArray(blockedBy) ? blockedBy : [];
+    if (bl.length) lines.push(`⚠️ Bloqué par ${bl.map((d) => '#' + d).join(', ')} encore ouvert : clôture cette dépendance avant de démarrer (tous les lots restants sont bloqués).`);
     lines.push('Nouvelle session recommandée : le handoff reprendra ce plan au démarrage.');
   } else {
     lines.push('Plan de lots terminé.');
@@ -333,7 +338,10 @@ function compactResumeMessage(lot, prog, opts) {
 // pas (sinon il se clôturera « sans preuve »). Ordre = par priorité DÉCROISSANTE : les nudges
 // secondaires (/model surtout, déjà couvert par le tag) passent EN DERNIER pour être rognés en
 // premier par le cap 400c — l'identité du lot et l'instruction cœur survivent toujours.
-function backlogResumeMessage(cur, next, prog) {
+// `blockedBy` (lot #97) : ids des dépendances encore ouvertes de `next` (backlog.blockedByOf).
+// Non vide ⇒ tous les todos sont bloqués (cycle) : on remplace « Démarre-le » par l'avertissement
+// plutôt que d'inviter à démarrer un lot qui ne peut pas l'être.
+function backlogResumeMessage(cur, next, prog, blockedBy) {
   const lines = [];
   if (cur) {
     lines.push(`Plan de lots : ${prog.done}/${prog.total} faits. Lot en cours : « ${String(cur.title).slice(0, 60)} »${modelEffortTag(cur)}${cur.scope ? ` — ${String(cur.scope).slice(0, 100)}` : ''}.`);
@@ -346,7 +354,9 @@ function backlogResumeMessage(cur, next, prog) {
     }
   } else if (next) {
     lines.push(`Plan de lots : ${prog.done}/${prog.total} faits. Prochain lot : « ${String(next.title).slice(0, 60)} »${modelEffortTag(next)}${next.scope ? ` — ${String(next.scope).slice(0, 100)}` : ''}.`);
-    lines.push(`Démarre-le (node ~/.claude/promptimizer/scripts/backlog.js start --id ${next.id}) puis traite ce lot uniquement.`);
+    const bl = Array.isArray(blockedBy) ? blockedBy : [];
+    if (bl.length) lines.push(`⚠️ Bloqué par ${bl.map((d) => '#' + d).join(', ')} encore ouvert : ne le démarre pas, clôture d'abord cette dépendance.`);
+    else lines.push(`Démarre-le (node ~/.claude/promptimizer/scripts/backlog.js start --id ${next.id}) puis traite ce lot uniquement.`);
     if (hintResolvableClaude(next.model_hint)) {
       lines.push('Modèle préconisé ci-dessus : bascule via /model avant de démarrer si besoin.');
     }

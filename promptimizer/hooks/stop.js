@@ -19,7 +19,7 @@ const { writeAutoHandoff } = require('../lib/handoff');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { loadContextLedger, loadReadLedger, recordOccupancy, evaluateWaste } = require('../lib/ledger');
 const { incrementLot } = require('../lib/lot');
-const { loadBacklog, doneLot, setClosedVerify, nextLot, progress, currentLot, addCost, COST_WARN_TOKENS, epicBilan } = require('../lib/backlog');
+const { loadBacklog, doneLot, setClosedVerify, nextLot, blockedByOf, progress, currentLot, addCost, COST_WARN_TOKENS, epicBilan } = require('../lib/backlog');
 const occupancy = require('../lib/occupancy');
 const { readLastModel } = require('../lib/modelwatch');
 const turnstats = require('../lib/turnstats');
@@ -183,7 +183,8 @@ function main() {
         if (done) {
           notify.notifyLotClosed(done); // opt-in (#75) ; événement one-shot, pas d'anti-spam dédié nécessaire
           const after = loadBacklog(root);
-          parts.push(lotClosedMessage(done, nextLot(after), progress(after)));
+          const nxt = nextLot(after);
+          parts.push(lotClosedMessage(done, nxt, progress(after), blockedByOf(after, nxt)));
           // Bilan d'epic (lot #58) : émis en plus, seulement quand ce lot clôturait le
           // DERNIER lot en attente de son epic (epicBilan renvoie null sinon). Poussé AVANT
           // la carte de clôture (#59) : à sévérité INFO égale et sous plafond de l'arbitre

@@ -16,14 +16,14 @@ process.on('unhandledRejection', () => { process.exit(0); });
 function emit(line) { process.stdout.write((line || '') + '\n'); process.exit(0); }
 
 let parseHookInput, disabled, readVersion, gitRoot, isInitialized, readEpic,
-  loadBacklog, currentLot, nextLot, progress, readLastOccupancy, statusLineText;
+  loadBacklog, currentLot, nextLot, blockedByOf, progress, readLastOccupancy, statusLineText;
 try {
   ({ parseHookInput } = require('../lib/stdin'));
   ({ disabled } = require('../lib/env'));
   ({ readVersion } = require('../lib/version'));
   ({ gitRoot, isInitialized } = require('../lib/project'));
   ({ readEpic } = require('../lib/lot'));
-  ({ loadBacklog, currentLot, nextLot, progress } = require('../lib/backlog'));
+  ({ loadBacklog, currentLot, nextLot, blockedByOf, progress } = require('../lib/backlog'));
   ({ readLastOccupancy } = require('../lib/occupancy'));
   ({ statusLineText } = require('../lib/messages'));
 } catch (_) { emit(''); }
@@ -49,7 +49,9 @@ function main() {
       const nxt = nextLot(b);
       info.epic = (cur && cur.epic) || (nxt && nxt.epic) || readEpic(root) || null;
       const lot = cur || nxt;
-      if (lot) info.lot = { id: lot.id, title: lot.title };
+      // Un PROCHAIN lot bloqué par une dépendance ouverte porte un ⚠ (lot #97) : blockedByOf est
+      // pur et sans E/S, sûr à chaque refresh de statusline (et le try/catch englobant reste le filet).
+      if (lot) info.lot = { id: lot.id, title: lot.title, blocked: !cur && blockedByOf(b, nxt).length > 0 };
       if (b.lots && b.lots.length) {
         const p = progress(b);
         info.done = p.done;

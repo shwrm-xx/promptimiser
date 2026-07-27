@@ -3,7 +3,7 @@
 // Affichage court : version installée de PMZ + epic/lot en cours du projet courant.
 const { gitRoot, isInitialized } = require('../lib/project');
 const { readEpic } = require('../lib/lot');
-const { loadBacklog, currentLot, nextLot, progress } = require('../lib/backlog');
+const { loadBacklog, currentLot, nextLot, blockedByOf, progress } = require('../lib/backlog');
 const { readVersion } = require('../lib/version');
 const { parseCwd } = require('../lib/cli');
 const rtkStatus = require('../lib/rtk-status');
@@ -46,7 +46,11 @@ function main() {
   } else {
     lines.push(`Progression : ${p.done}/${p.total} lots faits`);
     if (cur) lines.push(`Lot en cours : #${cur.id} ${cur.title}`);
-    else if (nxt) lines.push(`Prochain lot : #${nxt.id} ${nxt.title}`);
+    else if (nxt) {
+      const bl = blockedByOf(b, nxt);
+      lines.push(`Prochain lot : #${nxt.id} ${nxt.title}`
+        + (bl.length ? ` — ⚠️ bloqué par ${bl.map((d) => '#' + d).join(', ')}` : ''));
+    }
     else lines.push('Lot en cours : (aucun — tous faits ou abandonnés)');
   }
   process.stdout.write(lines.join('\n') + '\n');

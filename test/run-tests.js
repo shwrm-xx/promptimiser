@@ -5696,6 +5696,283 @@ section('backlog — CLI reintegrate : plan proposé (défaut) + exécution (--e
   ok(fleet.loadFleet(repo).lots.find((l) => l.id === 1).state === 'reintegrated', 'CR3 : fleet -> lot reintegrated');
 }
 
+// ============ FIA-16/17/18. SÉRIE FIABLE : depends_on hors vague + gates de vague (lot #97) ============
+section('backlog — blockedByOf + nextLot respecte depends_on (pur, lib/backlog.js, lot #97)');
+{
+  const B = backlogLib;
+  const mk = (lots) => ({ lots });
+
+  // S1. Dépendance encore « à faire » -> le dépendant n'est jamais proposé avant elle.
+  const s1 = mk([{ id: 1, status: 'todo', depends_on: [] }, { id: 2, status: 'todo', depends_on: [1] }]);
+  ok(B.nextLot(s1).id === 1, 'S1 : nextLot propose la dépendance (#1) avant le dépendant');
+  ok(B.blockedByOf(s1, s1.lots[1]).join() === '1', 'S1 : blockedByOf(#2) = [1]');
+  ok(B.blockedByOf(s1, s1.lots[0]).length === 0, 'S1 : la dépendance elle-même n\'est pas bloquée');
+
+  // S2. Ordre du tableau INVERSE : le premier todo est bloqué -> on saute au premier débloqué.
+  const s2 = mk([{ id: 1, status: 'todo', depends_on: [2] }, { id: 2, status: 'todo', depends_on: [] }]);
+  ok(B.nextLot(s2).id === 2, 'S2 : premier todo bloqué -> nextLot renvoie le premier DÉBLOQUÉ (#2)');
+
+  // S3. Sémantique alignée sur planWaves : done / dropped / id inconnu = dépendance SATISFAITE
+  // (sinon un depends_on vers un lot abandonné gèlerait le plan pour toujours).
+  const s3done = mk([{ id: 1, status: 'done', depends_on: [] }, { id: 2, status: 'todo', depends_on: [1] }]);
+  ok(B.nextLot(s3done).id === 2 && B.blockedByOf(s3done, s3done.lots[1]).length === 0, 'S3 : dépendance `done` = satisfaite');
+  const s3drop = mk([{ id: 1, status: 'dropped', depends_on: [] }, { id: 2, status: 'todo', depends_on: [1] }]);
+  ok(B.nextLot(s3drop).id === 2 && B.blockedByOf(s3drop, s3drop.lots[1]).length === 0, 'S3 : dépendance `dropped` = satisfaite (tolérance hors-plan)');
+  const s3unk = mk([{ id: 2, status: 'todo', depends_on: [999] }]);
+  ok(B.nextLot(s3unk).id === 2 && B.blockedByOf(s3unk, s3unk.lots[0]).length === 0, 'S3 : dépendance id inconnu = satisfaite');
+
+  // S4. Une dépendance EN COURS bloque aussi (pas seulement `todo`).
+  const s4 = mk([{ id: 1, status: 'in_progress', depends_on: [] }, { id: 2, status: 'todo', depends_on: [1] }]);
+  ok(B.nextLot(s4) === null || B.nextLot(s4).id === 2, 'S4 : #2 reste le seul todo');
+  ok(B.blockedByOf(s4, s4.lots[1]).join() === '1', 'S4 : dépendance in_progress bloque');
+
+  // S5. Repli anti-régression : cycle -> on renvoie QUAND MÊME le premier todo (jamais null tant
+  // qu'il reste des todos, sinon lotClosedMessage annoncerait « Plan de lots terminé » à tort).
+  const s5 = mk([{ id: 1, status: 'todo', depends_on: [2] }, { id: 2, status: 'todo', depends_on: [1] }]);
+  const n5 = B.nextLot(s5);
+  ok(n5 && n5.id === 1, 'S5 : cycle -> nextLot renvoie le premier todo (jamais null)');
+  ok(B.blockedByOf(s5, n5).join() === '2', 'S5 : ... avec son marqueur de blocage');
+
+  // S6. Plus aucun todo -> null (le plan est terminé, le message « terminé » reste juste).
+  ok(B.nextLot(mk([{ id: 1, status: 'done', depends_on: [] }])) === null, 'S6 : aucun todo -> null');
+  ok(B.nextLot({ lots: [] }) === null && B.nextLot({}) === null, 'S6 : backlog vide/malformé -> null (null-safe)');
+
+  // S7. Le marqueur n'est JAMAIS persisté : ni nextLot ni blockedByOf n'annotent l'objet lot
+  // (un saveBacklog ultérieur l'écrirait dans backlog.json).
+  const s7 = mk([{ id: 1, status: 'todo', depends_on: [2] }, { id: 2, status: 'todo', depends_on: [] }]);
+  B.blockedByOf(s7, s7.lots[0]); B.nextLot(s7);
+  ok(!('blockedBy' in s7.lots[0]) && !('blockedBy' in s7.lots[1]), 'S7 : aucun champ blockedBy posé sur les lots (jamais persisté)');
+}
+
+section('messages — marqueur de blocage dans les 3 surfaces d\'annonce (lib/messages.js, lot #97)');
+{
+  const prog = { done: 1, total: 3 };
+  const closed = messages.lotClosedMessage({ title: 'Fait' }, { title: 'Suivant', scope: 'x' }, prog, [3]);
+  ok(/Bloqué par #3 encore ouvert/.test(closed), 'M1 : lotClosedMessage affiche le blocage du lot suivant');
+  ok(!/Bloqué par/.test(messages.lotClosedMessage({ title: 'Fait' }, { title: 'Suivant' }, prog, [])),
+    'M1 : rien d\'affiché quand rien ne bloque (aucun bruit)');
+  const res = messages.backlogResumeMessage(null, { id: 7, title: 'Suivant' }, prog, [3, 4]);
+  ok(/Bloqué par #3, #4/.test(res) && !/Démarre-le/.test(res), 'M2 : backlogResumeMessage remplace « Démarre-le » par l\'avertissement');
+  ok(/Démarre-le/.test(messages.backlogResumeMessage(null, { id: 7, title: 'Suivant' }, prog, [])),
+    'M2 : « Démarre-le » conservé quand le lot est démarrable');
+  ok(/⚠/.test(messages.statusLineText({ version: '1', lot: { id: 7, title: 'S', blocked: true } })) &&
+    !/⚠/.test(messages.statusLineText({ version: '1', lot: { id: 7, title: 'S', blocked: false } })),
+    'M3 : statusline marque ⚠ un prochain lot bloqué, rien sinon');
+}
+
+section('backlog — CLI next + about : prochain lot débloqué et blocage signalé (lot #97)');
+{
+  const repo = path.join(SANDBOX, 'repo-blocked-cli');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  execFileSync('git', ['-C', repo, 'config', 'user.email', 't@t.t']);
+  execFileSync('git', ['-C', repo, 'config', 'user.name', 'T']);
+  fs.writeFileSync(path.join(repo, '.gitignore'), '.vibe-agent/\n');
+  fs.writeFileSync(path.join(repo, 'x.txt'), 'a\n');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  // #1 dépend de #2 : l'ordre du tableau seul aurait proposé #1 (bloqué).
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Dépendant', '--model', 'opus', '--depends', '2']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Socle', '--model', 'opus']);
+
+  const nx = runNode(BKLG, ['next', '--cwd', repo]);
+  ok(/Prochain lot : #2/.test(nx.out) && !/Bloqué par/.test(nx.out), 'N1 : CLI next propose #2 (débloqué), sans avertissement');
+  const nj = runNode(BKLG, ['next', '--cwd', repo, '--json']);
+  let pj = null; try { pj = JSON.parse(nj.out); } catch (_) { /* null */ }
+  ok(pj && pj.id === 2 && Array.isArray(pj.blockedBy) && pj.blockedBy.length === 0, 'N1 : --json porte blockedBy (copie, jamais persisté)');
+  ok(!/blockedBy/.test(fs.readFileSync(path.join(repo, '.vibe-agent', 'backlog.json'), 'utf8')),
+    'N1 : backlog.json ne contient AUCUN blockedBy (jamais persisté)');
+
+  // Cycle #1<->#2 : repli sur le premier todo + avertissement explicite (setDepends n'a pas de
+  // sous-commande CLI — on pose la dépendance par la lib, le chemin testé reste nextLot/CLI next).
+  backlogLib.setDepends(repo, 2, [1]);
+  const nc = runNode(BKLG, ['next', '--cwd', repo]);
+  ok(/Prochain lot : #1/.test(nc.out) && /Bloqué par #2 encore ouvert/.test(nc.out), 'N2 : cycle -> premier todo + ⚠️ bloqué par #2');
+  const ab = runNode(path.join(PKG, 'scripts', 'about.js'), ['--cwd', repo]);
+  ok(/Prochain lot : #1/.test(ab.out) && /bloqué par #2/.test(ab.out), 'N2 : /pmz:about signale aussi le blocage');
+}
+
+section('reintegrate — gates : union de vague + steps sans gate (pur, lib/reintegrate.js, lot #97)');
+{
+  const reint = require(path.join(PKG, 'lib', 'reintegrate'));
+
+  // G1. Union DÉDOUBLONNÉE sur TOUS les lots de la vague, y compris ceux DÉJÀ réintégrés
+  // (pipeline multi-runs : l'union du dernier run raterait leurs verify).
+  const f = { lots: [
+    { id: 3, state: 'ready' }, { id: 1, state: 'reintegrated' }, { id: 2, state: 'in_flight' },
+  ] };
+  const b = { lots: [
+    { id: 1, verify: 'npm run build' }, { id: 2, verify: 'npm t' }, { id: 3, verify: 'npm t' },
+  ] };
+  ok(reint.waveGateCommands(f, b).join('|') === 'npm run build|npm t',
+    'G1 : union = verify de TOUTE la vague (dont les déjà-réintégrés), dédoublonnée, ordre par id');
+  ok(reint.waveGateCommands({ lots: [{ id: 9, state: 'ready' }] }, b).length === 0, 'G1 : lot hors backlog -> aucune commande');
+  ok(reint.waveGateCommands(null, null).length === 0, 'G1 : entrées nulles -> [] (null-safe)');
+
+  // G2. Steps sans gate listés ; une gate de repli (--gate) les couvre tous.
+  const plan = { steps: [{ id: 1, title: 'A', verify: 'npm t' }, { id: 2, title: 'B', verify: null }] };
+  ok(reint.noGateSteps(plan, null).length === 1 && reint.noGateSteps(plan, null)[0].id === 2, 'G2 : seul le step sans verify est listé');
+  ok(reint.noGateSteps(plan, 'npm t').length === 0, 'G2 : --gate de repli -> plus aucun step sans gate');
+}
+
+section('reintegrate — refus sans gate + gate FINAL de vague (git réel, lib/reintegrate.js, lot #97)');
+{
+  const reint = require(path.join(PKG, 'lib', 'reintegrate'));
+  const fleet = require(path.join(PKG, 'lib', 'fleet'));
+
+  function mkRepo2(name) {
+    const repo = path.join(SANDBOX, name);
+    fs.mkdirSync(path.join(repo, 'lib'), { recursive: true });
+    execFileSync('git', ['init', '-q', repo]);
+    execFileSync('git', ['-C', repo, 'config', 'user.email', 't@t.t']);
+    execFileSync('git', ['-C', repo, 'config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(repo, '.gitignore'), '.vibe-agent/\n');
+    fs.writeFileSync(path.join(repo, 'lib', 'a.js'), 'base\n');
+    fs.writeFileSync(path.join(repo, 'lib', 'b.js'), 'base\n');
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+    const def = execFileSync('git', ['-C', repo, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).trim();
+    return { repo, def };
+  }
+  function branch2(repo, def, branch, file, content) {
+    execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', branch, def]);
+    fs.writeFileSync(path.join(repo, file), content);
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', `edit ${file}`]);
+    execFileSync('git', ['-C', repo, 'checkout', '-q', def]);
+  }
+  const stub2 = () => { const events = []; return { events, notifyLotReady: () => {}, notifyWaveClosed: (w) => events.push(['wave', w.count]) }; };
+  const merges = (repo) => execFileSync('git', ['-C', repo, 'log', '--merges', '--oneline'], { encoding: 'utf8' }).trim();
+
+  // ---- GP1. Lot SANS verify : refus AVANT tout merge (FIA-16) ----
+  {
+    const { repo, def } = mkRepo2('repo-nogate');
+    branch2(repo, def, 'lot-1', 'lib/a.js', 'lot1\n');
+    runNode(BKLG, ['add', '--cwd', repo, '--title', 'A', '--model', 'opus', '--perimeter', 'lib/a']); // aucun --verify
+    fleet.upsertLot(repo, { id: 1, session_owner: 's1', perimeter: ['lib/a'], branch: 'lot-1', state: 'ready', title: 'A' });
+
+    const res = reint.runPipeline(repo, { into: def, notify: stub2() });
+    ok(res.ok === false && res.reason === 'no-gate' && res.noGate.length === 1 && res.noGate[0].id === 1,
+      'GP1 : lot sans verify -> refus `no-gate`, coupable identifié');
+    ok(res.merged.length === 0 && merges(repo) === '', 'GP1 : AUCUN merge tenté (refus avant checkout)');
+    ok(fleet.loadFleet(repo).lots.find((l) => l.id === 1).state === 'ready', 'GP1 : fleet inchangé');
+
+    // --gate de repli : le lot est mergé, gaté par la commande fournie.
+    const g = reint.runPipeline(repo, { into: def, notify: stub2(), gate: 'true' });
+    ok(g.ok === true && g.merged[0].status === 'reintegrated' && g.merged[0].gate === 'true',
+      'GP1 : --gate de repli -> mergé et gaté (gate portée dans le résultat)');
+    ok(g.waveClosed === true, 'GP1 : vague close après repli');
+  }
+
+  // ---- GP2. --allow-no-gate : merge assumé, et le changelog ne revendique PAS « gate vert » ----
+  {
+    const { repo, def } = mkRepo2('repo-allownogate');
+    branch2(repo, def, 'lot-1', 'lib/a.js', 'lot1\n');
+    runNode(BKLG, ['add', '--cwd', repo, '--title', 'A', '--model', 'opus', '--perimeter', 'lib/a']);
+    fleet.upsertLot(repo, { id: 1, session_owner: 's1', perimeter: ['lib/a'], branch: 'lot-1', state: 'ready', title: 'A' });
+
+    const res = reint.runPipeline(repo, { into: def, notify: stub2(), allowNoGate: true });
+    ok(res.ok === true && res.merged[0].status === 'reintegrated' && res.merged[0].gate == null, 'GP2 : --allow-no-gate -> mergé sans gate');
+    ok(res.waveClosed === true && res.finalGate && res.finalGate.ran === false && res.finalGate.reason === 'no-gate',
+      'GP2 : aucun verify dans la vague -> close en le DISANT (finalGate.reason = no-gate)');
+    const cl = reint.aggregateChangelog(res.merged, { date: '2026-07-27' });
+    ok(/SANS gate \(--allow-no-gate\)/.test(cl) && !/gate verify vert/.test(cl),
+      'GP2 : changelog agrégé ne revendique pas « gate vert » pour un merge non vérifié');
+  }
+
+  // ---- GP3. Gate FINAL de vague ROUGE : vague NON close, merges conservés, pas de rollback ----
+  {
+    const { repo, def } = mkRepo2('repo-finalgate-red');
+    branch2(repo, def, 'lot-1', 'lib/a.js', 'lot1\n');
+    branch2(repo, def, 'lot-2', 'lib/b.js', 'lot2\n');
+    runNode(BKLG, ['add', '--cwd', repo, '--title', 'A', '--model', 'opus', '--perimeter', 'lib/a', '--verify', 'true']);
+    runNode(BKLG, ['add', '--cwd', repo, '--title', 'B', '--model', 'opus', '--perimeter', 'lib/b', '--verify', 'true']);
+    fleet.upsertLot(repo, { id: 1, session_owner: 's1', perimeter: ['lib/a'], branch: 'lot-1', state: 'ready', title: 'A' });
+    fleet.upsertLot(repo, { id: 2, session_owner: 's2', perimeter: ['lib/b'], branch: 'lot-2', state: 'ready', title: 'B' });
+
+    const n = stub2();
+    const res = reint.runPipeline(repo, { into: def, notify: n, finalGate: 'false' });
+    ok(res.ok === false && res.reason === 'final-gate-failed' && res.waveClosed === false,
+      'GP3 : gate final rouge -> vague NON close (deux lots verts séparément, rouges combinés)');
+    ok(res.merged.every((m) => m.status === 'reintegrated') && merges(repo).split('\n').length === 2,
+      'GP3 : les 2 merges restent faits (aucun rollback automatique — l\'humain arbitre)');
+    const f = fleet.loadFleet(repo);
+    ok(f.lots.every((l) => l.state === 'reintegrated'), 'GP3 : états fleet `reintegrated` non retouchés');
+    ok(!n.events.some((e) => e[0] === 'wave'), 'GP3 : aucune vigie « vague close » émise');
+  }
+
+  // ---- GP4. Déduplication d'exécution + union non limitée au dernier step ----
+  {
+    const { repo, def } = mkRepo2('repo-finalgate-dedup');
+    branch2(repo, def, 'lot-1', 'lib/a.js', 'lot1\n');
+    runNode(BKLG, ['add', '--cwd', repo, '--title', 'A', '--model', 'opus', '--perimeter', 'lib/a', '--verify', 'echo A']);
+    fleet.upsertLot(repo, { id: 1, session_owner: 's1', perimeter: ['lib/a'], branch: 'lot-1', state: 'ready', title: 'A' });
+    const calls = [];
+    const res = reint.runPipeline(repo, { into: def, notify: stub2(), verify: (c) => { calls.push(c); return { code: 0, out: '' }; } });
+    ok(res.waveClosed === true && res.finalGate.ran === false && res.finalGate.reason === 'already-green',
+      'GP4 : gate déjà passé vert sur l\'état final -> pas relancé (already-green)');
+    ok(calls.length === 1 && calls[0] === 'echo A', 'GP4 : la commande n\'a tourné qu\'UNE fois (chaque verify coûte jusqu\'à 600 s)');
+  }
+  {
+    const { repo, def } = mkRepo2('repo-finalgate-union');
+    branch2(repo, def, 'lot-1', 'lib/a.js', 'lot1\n');
+    branch2(repo, def, 'lot-2', 'lib/b.js', 'lot2\n');
+    runNode(BKLG, ['add', '--cwd', repo, '--title', 'A', '--model', 'opus', '--perimeter', 'lib/a', '--verify', 'echo A']);
+    runNode(BKLG, ['add', '--cwd', repo, '--title', 'B', '--model', 'opus', '--perimeter', 'lib/b', '--verify', 'echo B']);
+    fleet.upsertLot(repo, { id: 1, session_owner: 's1', perimeter: ['lib/a'], branch: 'lot-1', state: 'ready', title: 'A' });
+    fleet.upsertLot(repo, { id: 2, session_owner: 's2', perimeter: ['lib/b'], branch: 'lot-2', state: 'ready', title: 'B' });
+    const calls = [];
+    const res = reint.runPipeline(repo, { into: def, notify: stub2(), verify: (c) => { calls.push(c); return { code: 0, out: '' }; } });
+    ok(res.waveClosed === true && res.finalGate.ran === true && res.finalGate.commands.join() === 'echo A',
+      'GP4 : gate final = union de la vague privée de la dernière déjà verte (echo A rejoué sur l\'état final)');
+    ok(calls.join('|') === 'echo A|echo B|echo A', 'GP4 : ordre d\'exécution — steps puis gate final');
+  }
+}
+
+section('backlog — CLI reintegrate : refus sans gate + restitution du gate final (lot #97)');
+{
+  const fleet = require(path.join(PKG, 'lib', 'fleet'));
+  const repo = path.join(SANDBOX, 'repo-reint-cli-gate');
+  fs.mkdirSync(path.join(repo, 'lib'), { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  execFileSync('git', ['-C', repo, 'config', 'user.email', 't@t.t']);
+  execFileSync('git', ['-C', repo, 'config', 'user.name', 'T']);
+  fs.writeFileSync(path.join(repo, '.gitignore'), '.vibe-agent/\n');
+  fs.writeFileSync(path.join(repo, 'lib', 'a.js'), 'base\n');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const def = execFileSync('git', ['-C', repo, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).trim();
+  execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'lot-1', def]);
+  fs.writeFileSync(path.join(repo, 'lib', 'a.js'), 'lot1\n');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'e']);
+  execFileSync('git', ['-C', repo, 'checkout', '-q', def]);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'A', '--model', 'opus', '--perimeter', 'lib/a']); // sans --verify
+  fleet.upsertLot(repo, { id: 1, session_owner: 's1', perimeter: ['lib/a'], branch: 'lot-1', state: 'ready', title: 'A' });
+  fleet.setIntegrationHead(repo, null, def);
+
+  // CG1. Plan : ⚠️ signalé + consigne de trancher.
+  const rp = runNode(BKLG, ['reintegrate', '--cwd', repo]);
+  ok(/gate : ⚠️ \(aucune\)/.test(rp.out) && /1 lot\(s\) sans gate \(#1\)/.test(rp.out), 'CG1 : plan marque ⚠️ les étapes sans gate');
+  ok(/--allow-no-gate/.test(rp.out) && /--gate/.test(rp.out), 'CG1 : plan annonce le refus et les deux issues');
+  ok(/Gate FINAL de vague/.test(rp.out), 'CG1 : plan annonce le gate final de vague');
+  let pj = null; try { pj = JSON.parse(runNode(BKLG, ['reintegrate', '--cwd', repo, '--json']).out); } catch (_) { /* null */ }
+  ok(pj && Array.isArray(pj.no_gate) && pj.no_gate.length === 1 && pj.no_gate[0].id === 1, 'CG1 : --json plan -> no_gate[]');
+
+  // CG2. --execute REFUSE, rien n'est mergé (sortie texte ET --json structurée).
+  const re = runNode(BKLG, ['reintegrate', '--cwd', repo, '--execute']);
+  ok(/Refusé : 1 lot\(s\) sans gate \(#1\)/.test(re.out) && /--allow-no-gate/.test(re.out), 'CG2 : --execute refuse (texte)');
+  ok(execFileSync('git', ['-C', repo, 'log', '--merges', '--oneline'], { encoding: 'utf8' }).trim() === '', 'CG2 : aucun merge');
+  let ej = null; try { ej = JSON.parse(runNode(BKLG, ['reintegrate', '--cwd', repo, '--execute', '--json']).out); } catch (_) { /* null */ }
+  ok(ej && ej.executed === true && ej.reason === 'no-gate' && ej.noGate.length === 1, 'CG2 : --json -> reason:"no-gate" (sortie machine préservée)');
+
+  // CG3. --gate de repli + --final-gate : merge réel, gate final restitué, vague close.
+  const rg = runNode(BKLG, ['reintegrate', '--cwd', repo, '--execute', '--gate', 'true', '--final-gate', 'true']);
+  ok(/✅ #1/.test(rg.out) && /Gate final de vague vert/.test(rg.out), 'CG3 : --gate + --final-gate -> mergé et gate final restitué');
+  ok(/Vague entièrement réintégrée/.test(rg.out), 'CG3 : vague close');
+  ok(fleet.loadFleet(repo).lots.find((l) => l.id === 1).state === 'reintegrated', 'CG3 : fleet -> lot reintegrated');
+}
+
 // Faux binaire `rtk` (node shebang) piloté par RTK_TEST_MODE — partagé par RTK1 (lot #81) et
 // RTK2 (lot #82, statut/doctor). argv rewrite: [node, rtk, 'rewrite', '<cmd>'] ; argv version:
 // [node, rtk, '--version'].

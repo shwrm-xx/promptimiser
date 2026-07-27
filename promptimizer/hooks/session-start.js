@@ -22,7 +22,7 @@ const { loadSessionState, saveSessionState } = require('../lib/state');
 const { suggestedTitle } = require('../lib/lot');
 const { readHandoff, parseSkipPaths, parseSummaryLines, markConsumed } = require('../lib/handoff');
 const { seedAvoidReread, seedSummaries, avoidRereadNotes, topSummaries } = require('../lib/ledger');
-const { loadBacklog, currentLot, nextLot, progress, readTodoSnapshot } = require('../lib/backlog');
+const { loadBacklog, currentLot, nextLot, blockedByOf, progress, readTodoSnapshot } = require('../lib/backlog');
 const { fleetLines } = require('../lib/fleet');
 const occupancy = require('../lib/occupancy');
 const rtkStatus = require('../lib/rtk-status');
@@ -49,7 +49,8 @@ function backlogFallback(root) {
   try {
     const b = loadBacklog(root);
     if (!b.lots.length) return null;
-    return backlogResumeMessage(currentLot(b), nextLot(b), progress(b));
+    const nxt = nextLot(b);
+    return backlogResumeMessage(currentLot(b), nxt, progress(b), blockedByOf(b, nxt));
   } catch (_) {
     return null;
   }

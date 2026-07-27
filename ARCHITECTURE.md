@@ -232,6 +232,21 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   seul (3) `epic` — `null` dès qu'aucune famille n'a de lot clos avec `cost_tokens > 0` (pas de
   chiffre fabriqué à partir de zéro échantillon). Affiché en texte par `scripts/backlog.js`
   à la suite du message `add` (au `/scope`) **et** `start` (au démarrage réel du lot).
+- **`depends_on` en SÉRIE — `nextLot` / `blockedByOf`** (lot #97) : `depends_on` n'était exploité
+  que par le canal **parallèle** (`planWaves`, `planReintegration`) ; le flux série renvoyait le
+  premier `todo` **dans l'ordre du tableau**, donc pouvait proposer un lot avant sa dépendance — et
+  l'auto-clôture propageait cette proposition aveugle. `nextLot(b)` renvoie désormais le premier
+  `todo` **débloqué** ; `blockedByOf(b, lot)` (pur) donne les dépendances encore **ouvertes**.
+  Sémantique alignée sur `planWaves` : une dépendance ne bloque que si elle pointe un lot
+  **présent** au statut `todo`/`in_progress` — `done`, `dropped` ou id inconnu = **satisfaite**
+  (sans cette tolérance, un `depends_on` vers un lot abandonné gèlerait le plan pour toujours).
+  Deux invariants : (1) le marqueur n'est **jamais persisté** (aucune annotation de l'objet lot —
+  un `saveBacklog` l'écrirait dans `backlog.json`), il se calcule à la volée, ce qui le rend sûr
+  pour les consommateurs chauds (`statusline` à chaque refresh) ; (2) **jamais `null` tant qu'il
+  reste des `todo`** — sur cycle, on renvoie quand même le premier avec son marqueur, sinon
+  `lotClosedMessage` annoncerait « Plan de lots terminé » à tort. La **forme de retour reste un lot
+  nu** : les 8 consommateurs de `nextLot` gardent leur contrat et affichent le marqueur là où il y
+  a la place (`stop`, `session-start`, CLI `next`, `about`, `audit-batch`, `⚠` en statusline).
 - **Parallélisation gouvernée — schéma backlog v2** (lot #76, épic « Vagues parallèles », 1ʳᵉ
   brique de la décision [D3](docs/decisions/D3-parallelisation-gouvernee.md)) : chaque lot porte
   trois champs **inertes tant qu'aucune vague n'est active** — `perimeter` (globs de chemins que
@@ -451,6 +466,26 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   d'intégration). Contrairement aux hooks (fail-open muet), c'est une **commande délibérée** : elle
   rapporte conflits et gates rouges. S'appuie sur `lib/fleet.js`, `backlog.planWaves`/`waveBranch`,
   `lib/gitdebt.js` (lecture de tête git).
+- **Deux gates, pas un** (lot #97) : le gate par étape ne prouve pas la vague.
+  1. **Aucun merge sans filet** — `noGateSteps(plan, gate)` liste les steps dont le lot n'a pas de
+     `verify` ; le mode proposition les marque ⚠️ et `--execute` **REFUSE** (`reason: 'no-gate'`,
+     structuré en `--json`, avant tout `checkout` — rien n'est mergé). L'humain tranche :
+     `--gate "<cmd>"` (gate de **repli** exécutée pour ces steps) ou `--allow-no-gate` (merge assumé
+     sans filet, et `aggregateChangelog` **ne revendique alors plus** « gate verify vert »).
+     Sans ça, un merge non vérifié faisait rougir le gate du lot **suivant** — coupable faux, en
+     cascade.
+  2. **Gate FINAL de vague** — deux lots verts *séparément* peuvent être rouges *combinés*
+     (interférence sémantique sans conflit git) : `finalize` n'émet la vigie « vague close » qu'après
+     un gate exécuté sur la branche d'intégration **après le dernier merge** (D3 P3 : typecheck +
+     tests + build). Commandes : `--final-gate "<cmd>"` dédié, sinon `waveGateCommands(fleet,
+     backlog)` = **union dédoublonnée des `verify` de TOUTE la vague** (y compris les lots
+     `reintegrated` aux runs précédents — sinon un pipeline multi-runs perdrait leurs gates), privée
+     de la dernière commande déjà passée verte sur l'état final (**déduplication d'exécution** : un
+     verify coûte jusqu'à 600 s). Rouge → `waveClosed: false` + `reason: 'final-gate-failed'`,
+     **sans rollback** et sans retoucher les états fleet `reintegrated` : les merges restent faits,
+     seul le signal de clôture est retenu (l'humain arbitre, D3 palier 2). Cas dégénéré (aucun
+     `verify` dans la vague) : on **clôt en le disant** (`finalGate.reason = 'no-gate'`) plutôt que
+     de bloquer.
 - **Ledgers projet** (`.vibe-agent/{read,context}-ledger.json`) : auto-créés par
   `ensureLedger` (tout hook qui touche au projet) puis maintenus par `post-tool-use.js`
   (atomique `tmp`+`rename`, cap FIFO). Servent l'advisory `/check-context`. Granularité

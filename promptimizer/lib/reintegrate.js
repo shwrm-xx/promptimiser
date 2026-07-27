@@ -94,6 +94,34 @@ function planReintegration(fleet, b) {
   return { steps, notReady, blocked, complete: notReady.length === 0 && blocked.length === 0 && steps.length > 0 };
 }
 
+// PUR. Union DÉDOUBLONNÉE des commandes `verify` de TOUS les lots de la vague (fleet), résolues
+// depuis le backlog. Base du gate FINAL de vague (lot #97) : on ne se limite PAS aux steps du run
+// courant — planReintegration exclut les lots déjà `reintegrated`, donc en pipeline multi-runs
+// (vague close en plusieurs invocations) l'union du dernier run raterait les verify des lots
+// mergés aux runs précédents. Ordre stable par id (déterministe et testable).
+function waveGateCommands(fleet, b) {
+  const lots = (fleet && Array.isArray(fleet.lots) ? fleet.lots : []).slice().sort((a, c) => a.id - c.id);
+  const byId = new Map(((b && Array.isArray(b.lots)) ? b.lots : []).map((l) => [l.id, l]));
+  const seen = new Set();
+  const cmds = [];
+  for (const l of lots) {
+    const bl = byId.get(l.id);
+    const v = (bl && bl.verify) || null;
+    if (v && !seen.has(v)) { seen.add(v); cmds.push(v); }
+  }
+  return cmds;
+}
+
+// Steps du plan qui seraient mergés SANS aucun gate (lot #97, FIA-16). Un lot sans verify était
+// mergé sans filet : si ce merge cassait le build, c'était le gate du lot SUIVANT qui rougissait
+// et le pipeline nommait le mauvais coupable. `fallbackGate` (flag --gate) couvre ces steps.
+function noGateSteps(plan, fallbackGate) {
+  if (fallbackGate) return [];
+  return (plan && Array.isArray(plan.steps) ? plan.steps : [])
+    .filter((s) => !s.verify)
+    .map((s) => ({ id: s.id, title: s.title || null }));
+}
+
 // PUR. Entrée de changelog AGRÉGÉE de la vague : un seul bloc daté résumant tous les lots
 // réellement réintégrés. opts : { waveId, date (ISO court), integrationBranch }. `date` est
 // injecté (jamais new Date() ici) pour rester pur et testable.
@@ -110,7 +138,10 @@ function aggregateChangelog(merged, opts) {
   for (const m of done) {
     const title = m.title ? ` « ${m.title} »` : '';
     const head = m.head ? ` — ${String(m.head).slice(0, 7)}` : '';
-    lines.push(`- Lot #${m.id}${title} réintégré (gate verify vert)${head}.`);
+    // Ne JAMAIS revendiquer « gate vert » pour un lot mergé sans gate (lot #97) : avec
+    // --allow-no-gate le merge est délibérément non vérifié, le changelog doit le dire.
+    const gate = m.gate ? 'gate verify vert' : 'SANS gate (--allow-no-gate)';
+    lines.push(`- Lot #${m.id}${title} réintégré (${gate})${head}.`);
   }
   return lines.join('\n');
 }
@@ -137,9 +168,15 @@ function currentBranch(root, git) {
 }
 
 // EXÉCUTE le pipeline de merge. opts injectables (tests) : { git, verify, notify, notifyOpts,
-// into (branche d'intégration forcée), fleet, backlog }. Défauts = git/verify réels, notify réel.
-// Retour : { ok, reason?, culprit?, integrationBranch, merged:[{id,status,...}], plan, waveClosed }.
-// status par lot : reintegrated | conflict | gate-failed | skipped.
+// into (branche d'intégration forcée), fleet, backlog, allowNoGate, gate, finalGate }.
+// Défauts = git/verify réels, notify réel.
+//   - allowNoGate : autorise le merge de lots SANS verify (refus explicite sinon, cf. noGateSteps).
+//   - gate        : commande de gate de REPLI, exécutée pour les steps sans verify propre. Fournie
+//                   ⇒ plus aucun step sans gate ⇒ pas de refus. Pas de changement de schéma
+//                   (aucun champ verify dans fleet.json) : un simple flag CLI.
+//   - finalGate   : commande de gate FINAL de vague dédiée ; à défaut, union des verify de la vague.
+// Retour : { ok, reason?, culprit?, integrationBranch, merged:[{id,status,...}], plan, waveClosed,
+//            finalGate? }. status par lot : reintegrated | conflict | gate-failed | skipped.
 function runPipeline(root, opts) {
   const o = opts || {};
   const notify = o.notify || require('./notify');
@@ -155,8 +192,21 @@ function runPipeline(root, opts) {
   if (!integrationBranch) return { ok: false, reason: 'no-integration-branch', plan, merged, integrationBranch: null, waveClosed: false };
   if (!plan.steps.length) return { ok: true, reason: 'nothing-ready', plan, merged, integrationBranch, waveClosed: false };
 
+  // Refus AVANT tout merge (lot #97) : ce n'est pas un hook mais une COMMANDE délibérée, elle PEUT
+  // refuser. Un lot sans gate mergé sans filet fait rougir le gate du lot SUIVANT et nomme le
+  // mauvais coupable — l'humain tranche : --gate <cmd> (repli) ou --allow-no-gate (assumé).
+  const noGate = noGateSteps(plan, o.gate);
+  if (noGate.length && !o.allowNoGate) {
+    return { ok: false, reason: 'no-gate', noGate, plan, merged, integrationBranch, waveClosed: false };
+  }
+
   const co = git(['checkout', integrationBranch]);
   if (co.code !== 0) return { ok: false, reason: 'checkout-failed', out: co.out, plan, merged, integrationBranch, waveClosed: false };
+
+  // Dernière commande de gate passée VERTE sur l'état fusionné final : sert à dédoublonner
+  // l'exécution du gate final (chaque verify coûte jusqu'à 600 s).
+  let lastGreen = null;
+  const ctx = { notify, notifyOpts, verify, fleet: f, backlog: b, finalGate: o.finalGate || null };
 
   for (const step of plan.steps) {
     if (!step.branch) { merged.push({ id: step.id, title: step.title, status: 'skipped', reason: 'branche inconnue' }); continue; }
@@ -168,32 +218,77 @@ function runPipeline(root, opts) {
     if (mg.code !== 0) {
       git(['merge', '--abort']);
       merged.push({ id: step.id, title: step.title, status: 'conflict', out: mg.out });
-      return finalize({ ok: false, reason: 'conflict', culprit: step, plan, merged, integrationBranch }, notify, notifyOpts);
+      return finalize({ ok: false, reason: 'conflict', culprit: step, plan, merged, integrationBranch }, ctx);
     }
-    if (step.verify) {
-      const vf = verify(step.verify);
+    const gateCmd = step.verify || o.gate || null;
+    if (gateCmd) {
+      const vf = verify(gateCmd);
       if (vf.code !== 0) {
         if (before) git(['reset', '--hard', before]); // annule le merge : le coupable est CE lot (P3)
-        merged.push({ id: step.id, title: step.title, status: 'gate-failed', out: vf.out });
-        return finalize({ ok: false, reason: 'gate-failed', culprit: step, plan, merged, integrationBranch }, notify, notifyOpts);
+        merged.push({ id: step.id, title: step.title, status: 'gate-failed', gate: gateCmd, out: vf.out });
+        return finalize({ ok: false, reason: 'gate-failed', culprit: step, plan, merged, integrationBranch }, ctx);
       }
+      lastGreen = gateCmd;
+    } else {
+      lastGreen = null; // merge non vérifié : plus rien n'est prouvé sur l'état final
     }
     const head = headSha(root, git);
     fleetLib.setIntegrationHead(root, head, integrationBranch); // signal de rebase pour les lots en vol
     fleetLib.setLotState(root, step.id, 'reintegrated');
-    merged.push({ id: step.id, title: step.title, status: 'reintegrated', head });
+    merged.push({ id: step.id, title: step.title, status: 'reintegrated', gate: gateCmd, head });
   }
-  return finalize({ ok: true, plan, merged, integrationBranch }, notify, notifyOpts);
+  ctx.lastGreen = lastGreen;
+  return finalize({ ok: true, plan, merged, integrationBranch }, ctx);
+}
+
+// Gate FINAL de vague (lot #97, décision D3 P3 : « la vague n'est close que quand la branche
+// d'intégration passe typecheck + tests + build »). Deux lots verts SÉPARÉMENT peuvent être rouges
+// COMBINÉS (interférence sémantique sans conflit git) : la clôture ne peut pas se déduire des seuls
+// statuts. Commandes : finalGate dédié si fourni (intention explicite, toujours exécuté), sinon
+// union des verify de TOUTE la vague privée de la dernière commande déjà passée verte sur l'état
+// final (déduplication d'exécution). Retour : { ran, ok?, reason?, commands, failed?, out? }.
+function finalGateOf(ctx) {
+  if (ctx.finalGate) return runGateCommands([ctx.finalGate], ctx.verify);
+  const all = waveGateCommands(ctx.fleet, ctx.backlog);
+  const todo = all.filter((c) => c !== ctx.lastGreen);
+  if (!todo.length) {
+    // Cas dégénéré tranché explicitement : on CLÔT plutôt que de bloquer, mais la raison est
+    // visible (« no-gate » = aucun lot de la vague ne porte de verify ; « already-green » = le
+    // gate couvrant vient de tourner vert sur l'état final).
+    return { ran: false, ok: true, reason: all.length ? 'already-green' : 'no-gate', commands: [] };
+  }
+  return runGateCommands(todo, ctx.verify);
+}
+
+function runGateCommands(cmds, verify) {
+  for (const cmd of cmds) {
+    const vf = verify(cmd);
+    if (vf.code !== 0) return { ran: true, ok: false, reason: 'failed', commands: cmds, failed: cmd, out: vf.out };
+  }
+  return { ran: true, ok: true, commands: cmds };
 }
 
 // Vigie « vague close » : uniquement si TOUT est réintégré (aucun lot en vol, aucun bloqué, tous
-// les steps mergés vert). Un pipeline partiel (lots encore en vol) ne clôt pas la vague.
-function finalize(res, notify, notifyOpts) {
+// les steps mergés vert) ET que le gate FINAL passe sur la branche d'intégration. Un pipeline
+// partiel (lots encore en vol) ne clôt pas la vague.
+// Gate final rouge → waveClosed:false + reason 'final-gate-failed', SANS rollback ni retouche des
+// états fleet `reintegrated` déjà posés : les merges restent faits, seul le signal de clôture est
+// retenu — l'humain arbitre (D3, palier 2).
+function finalize(res, ctx) {
   const allMerged = res.merged.length > 0 && res.merged.every((m) => m.status === 'reintegrated');
   const complete = !!res.ok && res.plan.notReady.length === 0 && res.plan.blocked.length === 0 && allMerged;
-  res.waveClosed = complete;
-  if (complete) notify.notifyWaveClosed({ count: res.merged.length, branch: res.integrationBranch }, notifyOpts);
+  if (!complete) { res.waveClosed = false; return res; }
+  const fg = finalGateOf(ctx);
+  res.finalGate = fg;
+  if (!fg.ok) {
+    res.ok = false;
+    res.reason = 'final-gate-failed';
+    res.waveClosed = false;
+    return res;
+  }
+  res.waveClosed = true;
+  ctx.notify.notifyWaveClosed({ count: res.merged.length, branch: res.integrationBranch }, ctx.notifyOpts);
   return res;
 }
 
-module.exports = { planReintegration, aggregateChangelog, runPipeline };
+module.exports = { planReintegration, aggregateChangelog, runPipeline, waveGateCommands, noGateSteps };

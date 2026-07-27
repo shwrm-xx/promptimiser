@@ -18,7 +18,7 @@ const { classify } = require('../lib/bash-guard');
 const project = require('../lib/project');
 const ledger = require('../lib/ledger');
 const {
-  writeTodoSnapshot, loadBacklog, currentLot, nextLot, progress, readTodoSnapshot, doneLot,
+  writeTodoSnapshot, loadBacklog, currentLot, nextLot, blockedByOf, progress, readTodoSnapshot, doneLot,
   addCost, COST_WARN_TOKENS, epicBilan,
 } = require('../lib/backlog');
 const { loadSessionState, saveSessionState } = require('../lib/state');
@@ -341,7 +341,8 @@ async function createHooks(input) {
         parts.push(MSG_HANDOFF + '\n\n' + h.text);
       } else {
         const b = loadBacklog(root);
-        if (b.lots.length) parts.push(backlogResumeMessage(currentLot(b), nextLot(b), progress(b)));
+        const nxt = nextLot(b);
+        if (b.lots.length) parts.push(backlogResumeMessage(currentLot(b), nxt, progress(b), blockedByOf(b, nxt)));
       }
     } catch (_) { /* fail-open : au moins la gouvernance part */ }
     return parts.join('\n\n');

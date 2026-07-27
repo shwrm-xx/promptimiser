@@ -2,6 +2,43 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-27 — lot #97 « Série fiable : depends_on dans nextLot + gates de vague » (epic « Archive à tiroirs »)
+
+Trois trous de fiabilité fermés ensemble : le graphe `depends_on` n'était exploité que par le
+canal **parallèle** (le flux série l'ignorait), et le pipeline de réintégration pouvait merger
+sans filet puis déclarer une vague close sur un état jamais vérifié.
+
+- **`nextLot` respecte `depends_on`** (`lib/backlog.js`) — le premier `todo` **débloqué** est
+  proposé, plus le premier du tableau : une chaîne série pouvait être invitée à démarrer un lot
+  avant sa dépendance, et l'auto-clôture propageait la proposition aveugle. Nouveau
+  `blockedByOf(b, lot)` (pur) = dépendances encore **ouvertes** (`todo`/`in_progress`) ; `done`,
+  `dropped` ou id inconnu = **satisfaite**, sémantique alignée sur `planWaves` (sans quoi un
+  `depends_on` vers un lot abandonné gèlerait le plan). Marqueur **jamais persisté** (calculé à la
+  volée, aucune annotation de l'objet lot) et **jamais `null` tant qu'il reste des `todo`** (sur
+  cycle : premier `todo` + marqueur, sinon « Plan de lots terminé » serait annoncé à tort).
+  Forme de retour inchangée → les 8 consommateurs gardent leur contrat ; le blocage est affiché
+  par `stop`, `session-start` (qui remplace « Démarre-le » par l'avertissement), CLI `next`
+  (`blockedBy` en `--json`), `/pmz:about`, `audit-batch`, et un `⚠` en statusline.
+- **Aucun merge sans filet** (`lib/reintegrate.js`, `scripts/backlog.js reintegrate`) — un lot
+  sans `verify` était mergé sans aucun contrôle ; si ce merge cassait le build, c'était le gate du
+  lot **suivant** qui rougissait et le pipeline nommait le **mauvais coupable**. Le plan marque
+  désormais ⚠️ ces étapes (`no_gate` en `--json`) et `--execute` **REFUSE** avant tout `checkout`
+  (`reason: 'no-gate'`). L'humain tranche : `--gate "<cmd>"` (gate de repli) ou
+  `--allow-no-gate` — et dans ce cas le changelog agrégé ne revendique plus « gate verify vert ».
+- **Gate FINAL de vague** (D3 P3) — deux lots verts *séparément* peuvent être rouges *combinés* :
+  « vague close » n'est plus déduit des seuls statuts. Après le dernier merge, un gate tourne sur
+  la branche d'intégration : `--final-gate "<cmd>"` dédié, sinon `waveGateCommands` = union
+  dédoublonnée des `verify` de **toute** la vague (dont les lots déjà `reintegrated` aux runs
+  précédents), privée de la dernière commande déjà passée verte sur l'état final (déduplication :
+  un verify coûte jusqu'à 600 s). Rouge → `waveClosed: false`, `reason: 'final-gate-failed'`,
+  **sans rollback** ni retouche des états fleet (l'humain arbitre). Aucun `verify` dans la vague →
+  close **en le disant** (`finalGate.reason = 'no-gate'`) plutôt que bloquer.
+- Tests : 55 nouvelles assertions — sémantique des dépendances (done/dropped/inconnu/in_progress),
+  ordre inversé, cycle, non-persistance du marqueur (grep sur `backlog.json`), les 3 surfaces
+  d'annonce, CLI `next`/`about`, refus `no-gate` (texte + `--json`, zéro merge tenté), `--gate` de
+  repli, gate final rouge (merges conservés, fleet intact, aucune vigie), déduplication
+  d'exécution et union non limitée au dernier step. `node test/run-tests.js` : 1508 OK.
+
 ## 2026-07-27 — lot #96 « Clôture traçable : closed_verify + session/occupancy auto »
 
 Deux déperditions de la clôture, fermées ensemble : le verdict de la preuve de clôture ne

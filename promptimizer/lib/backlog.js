@@ -97,10 +97,11 @@ const CLOSED_VERIFY_VALUES = ['ok', 'failed', 'timeout', 'none'];
 // On les repère ici pour permettre au CLI de REJETER explicitement plutôt que tronquer.
 // Flags qui consomment une valeur (mono ou liste répétable — cf. flag()/flagList()) :
 const VALUE_FLAGS = ['cwd', 'id', 'epic', 'set', 'model', 'effort', 'title', 'scope',
-  'verify', 'owner', 'commit', 'note', 'into', 'format', 'depends', 'perimeter', 'session', 'occupancy'];
+  'verify', 'owner', 'commit', 'note', 'into', 'format', 'depends', 'perimeter', 'session', 'occupancy',
+  'gate', 'final-gate'];
 // Flags booléens (ne consomment aucune valeur) — listés pour documentation ;
 // tout flag hors VALUE_FLAGS est traité comme booléen (ne consomme rien).
-const BOOL_FLAGS = ['json', 'suggest', 'execute', 'allow-trunc', 'no-session', 'no-occupancy'];
+const BOOL_FLAGS = ['json', 'suggest', 'execute', 'allow-trunc', 'no-session', 'no-occupancy', 'allow-no-gate'];
 
 // Garde anti-troncature de champ (lot #90), 2e vecteur après les orphelins argv (#88) :
 // une valeur QUOTÉE mais au-delà de son plafond MAX_* serait stockée coupée par trunc()
@@ -538,9 +539,36 @@ function currentLot(b) {
   return b.lots.find((l) => l.status === 'in_progress') || null;
 }
 
-// Premier « à faire » dans l'ordre du tableau (l'ordre est indicatif, pas contractuel).
+// PUR. Dépendances d'un lot qui BLOQUENT encore son démarrage : ids de lots PRÉSENTS au statut
+// todo/in_progress. Sémantique alignée sur planWaves : `done`, `dropped` ou id inconnu = dépendance
+// SATISFAITE (tolérance hors-plan) — sinon un depends_on pointant un lot abandonné gèlerait le plan
+// pour toujours (normalizeDepends dédoublonne mais n'empêche ni les cycles ni les refs vers un
+// lot droppé). [] = rien ne bloque.
+//
+// Le marqueur de blocage n'est JAMAIS persisté : on ne l'écrit pas sur l'objet lot (le premier
+// saveBacklog le pousserait dans backlog.json, où normalizeLots le dropperait de toute façon) —
+// il se calcule à la volée, ici, à partir du backlog déjà chargé. Pur et sans coût d'E/S : les
+// consommateurs chauds (statusline à chaque refresh) peuvent l'appeler sans risque.
+function blockedByOf(b, lot) {
+  if (!lot || !Array.isArray(lot.depends_on) || !lot.depends_on.length) return [];
+  const lots = (b && Array.isArray(b.lots)) ? b.lots : [];
+  const open = new Set(lots.filter((l) => l.status === 'todo' || l.status === 'in_progress').map((l) => l.id));
+  return lot.depends_on.filter((d) => open.has(d));
+}
+
+// Premier « à faire » DÉBLOQUÉ (l'ordre du tableau reste indicatif, pas contractuel).
+// Lot #97 : hors vague, depends_on n'était exploité nulle part — nextLot renvoyait le premier todo
+// du tableau même si sa dépendance était encore ouverte, et l'auto-clôture propageait cette
+// proposition aveugle (« Suivant : … » sur un lot qui ne peut pas encore démarrer) : exactement le
+// rouge en cascade que le graphe devait prévenir. On saute donc les todos bloqués.
+// Repli anti-régression : si TOUS les todos sont bloqués (cycle), on renvoie quand même le premier
+// — jamais null tant qu'il reste des todos, sinon lotClosedMessage annoncerait « Plan de lots
+// terminé » à tort. Le marqueur de blocage s'obtient par blockedByOf(b, lot) ; la forme de retour
+// reste un lot nu (aucun des 8 consommateurs de nextLot n'a à changer de contrat).
 function nextLot(b) {
-  return b.lots.find((l) => l.status === 'todo') || null;
+  const todo = ((b && Array.isArray(b.lots)) ? b.lots : []).filter((l) => l.status === 'todo');
+  if (!todo.length) return null;
+  return todo.find((l) => blockedByOf(b, l).length === 0) || todo[0];
 }
 
 // Dernier lot clos = plus grand **id** (repli quand aucune attribution par session n'est
@@ -812,7 +840,7 @@ function exportMarkdown(b) {
 
 module.exports = {
   backlogFile, loadBacklog, saveBacklog, addLot, setVerify, setClosedVerify, setPerimeter, setDepends, startLot, doneLot, dropLot, noteLot,
-  touchLot, addCost, currentLot, nextLot, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
+  touchLot, addCost, currentLot, nextLot, blockedByOf, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
   epicBilan, estimateCost, canCoexist, pairwiseCoexist, planWaves, waveBranch,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot, modelEffortTag,
   exportCsv, exportMarkdown, orphanArgs, overflowFields, isTruncated, VALUE_FLAGS, BOOL_FLAGS,

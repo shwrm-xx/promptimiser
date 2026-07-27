@@ -4,7 +4,7 @@
 const {
   gitRoot, gitStatusMeaningful, changelogTouched, hasAnyCommit, lastCommitEpoch,
 } = require('../lib/project');
-const { loadBacklog, currentLot, nextLot, progress } = require('../lib/backlog');
+const { loadBacklog, currentLot, nextLot, blockedByOf, progress } = require('../lib/backlog');
 const { parseCwd } = require('../lib/cli');
 
 // Résumé null-safe du plan de lots pour la checklist de clôture. null si pas de plan.
@@ -28,6 +28,9 @@ function backlogSummary(root) {
       next: nxt ? {
         id: nxt.id, title: nxt.title,
         model_hint: nxt.model_hint || null, effort_hint: nxt.effort_hint || null,
+        // Dépendances encore ouvertes du prochain lot (lot #97) : calculé à la volée, jamais
+        // persisté — la checklist de clôture doit dire « ne démarre pas celui-là » le cas échéant.
+        blocked_by: blockedByOf(b, nxt),
       } : null,
     };
   } catch (_) {
