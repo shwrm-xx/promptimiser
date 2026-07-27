@@ -1872,6 +1872,47 @@ section('backlog — verify + closed_occupancy (lot #29)');
   const closedNoOcc = backlogLib.doneLot(repo, lotNoOcc.id);
   ok(closedNoOcc.closed_occupancy === null, 'doneLot sans occupancy : closed_occupancy = null');
 
+  // V10bis. setClosedVerify (lot #96) : setter dédié, jamais via doneLot.
+  const lotCv = backlogLib.addLot(repo, 'Lot closed_verify', null, 'sonnet');
+  backlogLib.startLot(repo, lotCv.id);
+  ok(backlogLib.setClosedVerify(repo, lotCv.id, 'ok') === null,
+    'setClosedVerify : refusé sur un lot pas encore done');
+  backlogLib.doneLot(repo, lotCv.id);
+  ok(backlogLib.setClosedVerify(repo, lotCv.id, 'bogus') === null,
+    'setClosedVerify : refusé si verdict hors énum');
+  const cv1 = backlogLib.setClosedVerify(repo, lotCv.id, 'failed');
+  ok(cv1 && cv1.closed_verify === 'failed', 'setClosedVerify : verdict posé sur un lot done');
+  ok(backlogLib.setClosedVerify(repo, lotCv.id, 'ok') === null,
+    'setClosedVerify : idempotent, refuse d\'écraser un verdict déjà posé');
+  ok(backlogLib.loadBacklog(repo).lots.find((x) => x.id === lotCv.id).closed_verify === 'failed',
+    'setClosedVerify : le verdict initial (failed) survit à la tentative d\'écrasement');
+
+  // V10ter. CLI `done` (lot #96, DEP-6) : session/occupancy auto-remplis depuis l'état déjà
+  // posé PAR LA SESSION COURANTE (session-state.json / ledger), sans que l'assistant les tape.
+  const lotAuto = backlogLib.addLot(repo, 'Lot done auto', null, 'sonnet');
+  backlogLib.startLot(repo, lotAuto.id);
+  const stateLib96 = require(path.join(PKG, 'lib', 'state'));
+  stateLib96.saveSessionState(repo, Object.assign({}, stateLib96.DEFAULT_STATE, { session_id: 'sess-done-auto' }));
+  ledgerLib.recordOccupancy(repo, { occ: 42, sessionId: 'sess-done-auto' });
+  runNode(BKLG, ['done', '--cwd', repo, '--id', String(lotAuto.id)]);
+  const doneAuto = backlogLib.loadBacklog(repo).lots.find((x) => x.id === lotAuto.id);
+  ok(doneAuto.closed_session_id === 'sess-done-auto', 'CLI done : closed_session_id auto-rempli (lot #96)');
+  ok(doneAuto.closed_occupancy === 42, 'CLI done : closed_occupancy auto-rempli (lot #96)');
+
+  const lotAutoOff = backlogLib.addLot(repo, 'Lot done sans auto', null, 'sonnet');
+  backlogLib.startLot(repo, lotAutoOff.id);
+  runNode(BKLG, ['done', '--cwd', repo, '--id', String(lotAutoOff.id), '--no-session', '--no-occupancy']);
+  const doneAutoOff = backlogLib.loadBacklog(repo).lots.find((x) => x.id === lotAutoOff.id);
+  ok(doneAutoOff.closed_session_id === null, 'CLI done --no-session : closed_session_id reste null');
+  ok(doneAutoOff.closed_occupancy === null, 'CLI done --no-occupancy : closed_occupancy reste null');
+
+  const lotAutoExplicit = backlogLib.addLot(repo, 'Lot done session explicite', null, 'sonnet');
+  backlogLib.startLot(repo, lotAutoExplicit.id);
+  runNode(BKLG, ['done', '--cwd', repo, '--id', String(lotAutoExplicit.id), '--session', 'sess-manuel', '--occupancy', '77']);
+  const doneAutoExplicit = backlogLib.loadBacklog(repo).lots.find((x) => x.id === lotAutoExplicit.id);
+  ok(doneAutoExplicit.closed_session_id === 'sess-manuel', 'CLI done --session : valeur explicite prioritaire');
+  ok(doneAutoExplicit.closed_occupancy === 77, 'CLI done --occupancy : valeur explicite coercée en Number');
+
   // V11. lot legacy sans verify/closed_occupancy : chargé sans crash
   fs.writeFileSync(path.join(repo, '.vibe-agent', 'backlog.json'), JSON.stringify({
     version: 1, next_id: 2, lots: [{ id: 1, title: 'Legacy', status: 'done', closed_commit: 'abc' }],
@@ -1896,7 +1937,7 @@ section('backlog — verify + closed_occupancy (lot #29)');
 
   // V14. backlog.js export --format csv|md : en-tête + lignes, refus doux hors énum
   const rExportCsv = runNode(BKLG, ['export', '--cwd', repo, '--format', 'csv']);
-  ok(/^id,title,status,epic,model_hint,effort_hint,verify,cost_tokens,closed_commit,closed_at/.test(rExportCsv.out),
+  ok(/^id,title,status,epic,model_hint,effort_hint,verify,closed_verify,cost_tokens,closed_commit,closed_at,closed_session_id,closed_occupancy/.test(rExportCsv.out),
     'export --format csv : en-tête de colonnes');
   ok(rExportCsv.out.split('\n').length >= backlogLib.loadBacklog(repo).lots.length + 1,
     'export --format csv : une ligne par lot (+ en-tête)');
@@ -4102,6 +4143,7 @@ section('Clôture prouvée : verify à l\'auto-clôture + garde-fou CHANGELOG (l
     ok(/Lot « Lot prouvé » clos/.test(m), 'e2e : message de clôture présent');
     ok(/Verify du lot \(`node -e "process\.exit\(0\)"`\) : OK\./.test(m), 'e2e : verify exécutée à l\'auto-clôture, résultat OK visible');
     ok(/Rappel doux.*CHANGELOG\.md/s.test(m), 'e2e : commit de clôture sans CHANGELOG -> rappel doux');
+    ok(backlogLib.loadBacklog(repo).lots[0].closed_verify === 'ok', 'e2e : closed_verify persisté = ok (lot #96)');
   }
 
   // T4. e2e : commit de clôture QUI touche CHANGELOG.md -> pas de rappel doux ; verify en ÉCHEC visible.
@@ -4120,6 +4162,7 @@ section('Clôture prouvée : verify à l\'auto-clôture + garde-fou CHANGELOG (l
     ok(!/Rappel doux/.test(m), 'e2e : commit de clôture touchant CHANGELOG -> aucun rappel doux');
     ok(/Verify du lot.*ÉCHEC/s.test(m), 'e2e : verify en échec -> visible (clôture non bloquée)');
     ok(backlogLib.loadBacklog(repo).lots[0].status === 'done', 'e2e : verify en échec ne bloque pas la clôture');
+    ok(backlogLib.loadBacklog(repo).lots[0].closed_verify === 'failed', 'e2e : closed_verify persisté = failed (lot #96)');
   }
 
   // T5. fail-open : lot SANS verify + commande impossible n'importe où -> exit 0, lot clôturé.
@@ -4138,6 +4181,26 @@ section('Clôture prouvée : verify à l\'auto-clôture + garde-fou CHANGELOG (l
     ok(!/Verify du lot/.test(sysMsg(r)), 'e2e : lot sans verify -> aucune ligne verify');
     ok(/Clos sans preuve/.test(sysMsg(r)), 'e2e : lot sans verify -> « clos sans preuve » à la clôture (lot #55)');
     ok(backlogLib.loadBacklog(repo).lots[0].status === 'done', 'e2e : lot sans verify auto-clôturé');
+    ok(backlogLib.loadBacklog(repo).lots[0].closed_verify === 'none', 'e2e : lot sans verify -> closed_verify = none (lot #96)');
+  }
+
+  // T6. e2e : verify qui expire (timeout) -> closed_verify = 'timeout', pas 'failed'.
+  {
+    const repo = bootRepo('repo-proof-timeout');
+    const slow = process.platform === 'win32'
+      ? 'node -e "setTimeout(()=>{},5000)"'
+      : 'sleep 5';
+    const l = backlogLib.addLot(repo, 'Lot timeout', 'fait quand : vert', 'opus', null, slow);
+    backlogLib.startLot(repo, l.id);
+    const sid = 'sess-proof-to';
+    fs.writeFileSync(path.join(repo, 'CHANGELOG.md'), '# Changelog\n');
+    fs.writeFileSync(path.join(repo, 'w.txt'), 'w');
+    runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empT });
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'lot fini (timeout)']);
+    const r = runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empT });
+    ok(/non terminée dans le délai court/.test(sysMsg(r)), 'e2e : verify non terminée dans le délai court -> visible');
+    ok(backlogLib.loadBacklog(repo).lots[0].closed_verify === 'timeout', 'e2e : closed_verify persisté = timeout, pas failed (lot #96)');
   }
 }
 

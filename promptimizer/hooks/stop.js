@@ -19,7 +19,7 @@ const { writeAutoHandoff } = require('../lib/handoff');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { loadContextLedger, loadReadLedger, recordOccupancy, evaluateWaste } = require('../lib/ledger');
 const { incrementLot } = require('../lib/lot');
-const { loadBacklog, doneLot, nextLot, progress, currentLot, addCost, COST_WARN_TOKENS, epicBilan } = require('../lib/backlog');
+const { loadBacklog, doneLot, setClosedVerify, nextLot, progress, currentLot, addCost, COST_WARN_TOKENS, epicBilan } = require('../lib/backlog');
 const occupancy = require('../lib/occupancy');
 const { readLastModel } = require('../lib/modelwatch');
 const turnstats = require('../lib/turnstats');
@@ -205,6 +205,13 @@ function main() {
             const verify = done.verify
               ? Object.assign({ cmd: done.verify }, runVerify(root, done.verify, VERIFY_AUTOCLOSE_MS))
               : null;
+            // Verdict persisté (lot #96) : distinct de l'affichage éphémère ci-dessous, qui peut
+            // être évincé par le plafond de nudges de l'arbitre — sans cette écriture, un lot clos
+            // sur verify ROUGE serait indiscernable a posteriori d'un lot prouvé. setClosedVerify
+            // est idempotent (n'écrase jamais un verdict déjà posé) : fail-open local, la clôture
+            // déjà persistée par doneLot n'est jamais remise en cause par un souci d'écriture ici.
+            const verdict = !done.verify ? 'none' : (verify.ok ? 'ok' : (verify.timedOut ? 'timeout' : 'failed'));
+            setClosedVerify(root, done.id, verdict);
             // tree propre ici -> changelogTouched se réduit au dernier commit (celui de clôture).
             const changelogMissing = !changelogTouched(root);
             const proof = closureProofMessage(verify, changelogMissing, !done.verify);

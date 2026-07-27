@@ -2,6 +2,29 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-27 — lot #96 « Clôture traçable : closed_verify + session/occupancy auto »
+
+Deux déperditions de la clôture, fermées ensemble : le verdict de la preuve de clôture ne
+survivait qu'un tour (systemMessage éphémère, évinçable par l'arbitre) ; et le chemin CLI
+`done` — celui que `/close-batch` prescrit — laissait `closed_session_id`/`closed_occupancy` à
+`null` faute de flags jamais tapés (mesuré : 1/90 lots avec session, 0/90 avec occupancy).
+
+- **`closed_verify`** (`lib/backlog.js: setClosedVerify`) — `'ok'|'failed'|'timeout'|'none'`,
+  posé par `stop.js` juste après `runVerify` (lot #44), via un setter **dédié** : `doneLot` est
+  idempotent et court-circuite tout lot déjà `done`, il ne peut pas servir ici puisque le verify
+  tourne APRÈS lui. Idempotent lui-même (n'écrase jamais un verdict déjà posé). `'none'` = lot
+  sans `verify` ; champ absent = non mesuré (clôture manuelle sans passer par ce chemin, ou
+  watchdog tué pendant le verify) — jamais confondu avec `'ok'`. Affiché par `show`, exposé en
+  colonne d'export CSV/MD.
+- **Session/occupancy auto-remplis à la clôture CLI** (`scripts/backlog.js done`) — l'assistant
+  ne tape plus `--session`/`--occupancy` (un id halluciné aurait faussé `suggestedTitle`) : le CLI
+  lit `previousSessionId` (`.vibe-agent/session-state.json`, id de la session courante) et le
+  dernier `occ` mirorré au ledger (`recordOccupancy`). `--no-session`/`--no-occupancy` pour
+  l'opt-out, `--session`/`--occupancy` pour une valeur explicite.
+- Tests : 3 nouveaux verdicts e2e (ok/failed/timeout) sur `stop.js`, unitaires `setClosedVerify`
+  (refus lot pas-done, refus verdict hors énum, idempotence) et CLI `done` (auto-fill, opt-out,
+  override explicite). En-tête CSV mis à jour.
+
 ## 2026-07-27 — lot #95 « Archive tier 1/2 : fiches, commande /pmz:archive, test pare-feu » (epic « Archive à tiroirs ») — PMZ 1.7.0
 
 Les deux tiroirs profonds de l'archive, et le **verrou** qui garantit qu'ils ne s'inviteront jamais

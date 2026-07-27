@@ -347,8 +347,11 @@ function readRaw(root, id) {
   try { return fs.readFileSync(rawFile(root, id), 'utf8'); } catch (_) { return null; }
 }
 
-// Entrée machine dérivée d'un lot du backlog. `verify:inconnu` est la vérité : le
-// résultat de la vérification n'est persisté nulle part aujourd'hui (lot #96).
+// Entrée machine dérivée d'un lot du backlog. `verify:inconnu` est la vérité au moment de
+// l'appel : appendIndexLine (via doneLot) tourne AVANT que le verdict verify ne soit connu
+// (runVerify + setClosedVerify n'arrivent qu'après, cf. stop.js) — closed_verify existe
+// désormais sur le lot (lot #96) mais rien ne resynchronise cette ligne d'index a posteriori,
+// hors périmètre minimal de ce lot.
 function entryFromLot(lot) {
   const l = lot || {};
   return {

@@ -88,16 +88,19 @@ function now() {
   return new Date().toISOString();
 }
 
+// Verdicts possibles de closed_verify (lot #96) — cf. setClosedVerify plus bas.
+const CLOSED_VERIFY_VALUES = ['ok', 'failed', 'timeout', 'none'];
+
 // Détection de troncature silencieuse (lot #88). En argv NON quoté, un flag
 // mono-valeur ne capte que le 1er token (« --title fait quand : X » → title=fait) ;
 // les tokens nus suivants (« quand », « : », « X ») sont jetés en silence par flag().
 // On les repère ici pour permettre au CLI de REJETER explicitement plutôt que tronquer.
 // Flags qui consomment une valeur (mono ou liste répétable — cf. flag()/flagList()) :
 const VALUE_FLAGS = ['cwd', 'id', 'epic', 'set', 'model', 'effort', 'title', 'scope',
-  'verify', 'owner', 'commit', 'note', 'into', 'format', 'depends', 'perimeter'];
+  'verify', 'owner', 'commit', 'note', 'into', 'format', 'depends', 'perimeter', 'session', 'occupancy'];
 // Flags booléens (ne consomment aucune valeur) — listés pour documentation ;
 // tout flag hors VALUE_FLAGS est traité comme booléen (ne consomme rien).
-const BOOL_FLAGS = ['json', 'suggest', 'execute', 'allow-trunc'];
+const BOOL_FLAGS = ['json', 'suggest', 'execute', 'allow-trunc', 'no-session', 'no-occupancy'];
 
 // Garde anti-troncature de champ (lot #90), 2e vecteur après les orphelins argv (#88) :
 // une valeur QUOTÉE mais au-delà de son plafond MAX_* serait stockée coupée par trunc()
@@ -181,6 +184,11 @@ function loadBacklog(root) {
       closed_at: l.closed_at || null,
       closed_session_id: l.closed_session_id || null,
       closed_occupancy: Number.isFinite(l.closed_occupancy) ? l.closed_occupancy : null,
+      // Verdict de la commande verify EXÉCUTÉE à la clôture (lot #96) — 'ok'|'failed'|'timeout'|
+      // 'none' (lot sans verify), ou absent/null si non mesuré (clôture manuelle, watchdog tué
+      // pendant le verify…). Distinct de closed_commit/closed_at : posé après coup par
+      // setClosedVerify, jamais par doneLot (cf. commentaire de ce setter).
+      closed_verify: CLOSED_VERIFY_VALUES.includes(l.closed_verify) ? l.closed_verify : null,
       // Coût réel cumulé du lot = tokens de sortie sommés sur tous les tours où il était
       // en cours (cf. addCost, appelé par stop.js). Agrégé trans-session (porté par le lot,
       // pas par l'état de session), figé de fait à la clôture. Négatif/NaN -> 0.
@@ -269,6 +277,7 @@ function addLot(root, title, scope, modelHint, epic, verify, effortHint, perimet
     closed_at: null,
     closed_session_id: null,
     closed_occupancy: null,
+    closed_verify: null,
     cost_tokens: 0,
     started_at: null,
     lot_number: null,
@@ -312,6 +321,23 @@ function setVerify(root, id, verify) {
   const lot = findLot(b, id);
   if (!lot) return null;
   lot.verify = v;
+  return saveBacklog(root, b) ? lot : null;
+}
+
+// Persiste le VERDICT de la commande verify exécutée à la clôture (lot #96), distinct de
+// `verify` (la commande) et de closed_commit/closed_at (posés par doneLot). Un setter DÉDIÉ
+// est nécessaire — pas question de repasser par doneLot : il est idempotent et court-circuite
+// tout lot déjà 'done' sans réécrire (cf. son commentaire), or le verify tourne APRÈS doneLot
+// (stop.js, watchdog séparé). Reload frais + saveBacklog, même modèle que addCost.
+// N'agit que sur un lot déjà 'done' ET n'écrase JAMAIS un verdict déjà posé (idempotence : un
+// rejeu anormal du bloc post-verify ne doit pas remplacer un verdict par un autre). Retourne
+// le lot, ou null si lot introuvable / pas done / verdict déjà posé / valeur hors énum.
+function setClosedVerify(root, id, verdict) {
+  if (!CLOSED_VERIFY_VALUES.includes(verdict)) return null;
+  const b = loadBacklog(root);
+  const lot = findLot(b, id);
+  if (!lot || lot.status !== 'done' || lot.closed_verify) return null;
+  lot.closed_verify = verdict;
   return saveBacklog(root, b) ? lot : null;
 }
 
@@ -393,10 +419,13 @@ function addCost(root, id, tokens) {
 // qui se répète session après session au lieu d'avancer.
 // sessionId (optionnel) : id de la session qui clôt le lot — permet à suggestedTitle de
 // vérifier que le lot décrit bien LA session précédente et pas une clôture plus ancienne
-// (cf. lib/state.js: previousSessionId). Absent pour une clôture manuelle via le CLI.
+// (cf. lib/state.js: previousSessionId). Posée par stop.js à l'auto-clôture (sid du transcript) ;
+// depuis le lot #96, la clôture CLI (`backlog.js done`) l'auto-remplit aussi (previousSessionId,
+// sauf --no-session), donc null seulement si opt-out explicite ou lot legacy pré-#96.
 // occupancy (optionnel) : occupation contexte du tour de clôture (turnstats.computeTurn().occ),
 // figée dans closed_occupancy — métrologie de coût par lot. Posée par stop.js à l'auto-clôture ;
-// absente sur une clôture manuelle via le CLI (pas de transcript à ce niveau).
+// depuis le lot #96, la clôture CLI l'auto-remplit aussi depuis le dernier occ mirorré au
+// ledger (lib/ledger.js:recordOccupancy), sauf --no-occupancy ou aucune mesure disponible.
 function doneLot(root, id, commitSha, lotNumber, sessionId, occupancy) {
   const b = loadBacklog(root);
   const lot = findLot(b, id);
@@ -744,7 +773,8 @@ function reconcile(root) {
 
 // Colonnes d'export. Les 4 dernières (lot #83) dérivent de integrations.command_optimizer :
 // vides pour un lot sans métrologie RTK (legacy ou sans activité) — jamais de valeur inventée.
-const EXPORT_COLUMNS = ['id', 'title', 'status', 'epic', 'model_hint', 'effort_hint', 'verify', 'cost_tokens', 'closed_commit', 'closed_at',
+const EXPORT_COLUMNS = ['id', 'title', 'status', 'epic', 'model_hint', 'effort_hint', 'verify', 'closed_verify', 'cost_tokens', 'closed_commit', 'closed_at',
+  'closed_session_id', 'closed_occupancy',
   'command_optimizer_provider', 'command_tokens_saved', 'command_saving_ratio', 'command_evidence'];
 
 // Valeur d'une colonne d'export pour un lot : colonnes dérivées RTK d'abord, sinon champ brut.
@@ -781,11 +811,11 @@ function exportMarkdown(b) {
 }
 
 module.exports = {
-  backlogFile, loadBacklog, saveBacklog, addLot, setVerify, setPerimeter, setDepends, startLot, doneLot, dropLot, noteLot,
+  backlogFile, loadBacklog, saveBacklog, addLot, setVerify, setClosedVerify, setPerimeter, setDepends, startLot, doneLot, dropLot, noteLot,
   touchLot, addCost, currentLot, nextLot, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
   epicBilan, estimateCost, canCoexist, pairwiseCoexist, planWaves, waveBranch,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot, modelEffortTag,
   exportCsv, exportMarkdown, orphanArgs, overflowFields, isTruncated, VALUE_FLAGS, BOOL_FLAGS,
   MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_OWNER, MAX_DEPENDS, MAX_NOTE, MAX_TODOS, EFFORT_LEVELS,
-  COST_BUDGET_TOKENS, COST_WARN_TOKENS,
+  COST_BUDGET_TOKENS, COST_WARN_TOKENS, CLOSED_VERIFY_VALUES,
 };

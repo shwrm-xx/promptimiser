@@ -11,6 +11,8 @@ const reint = require('../lib/reintegrate');
 const lot = require('../lib/lot');
 const trigram = require('../lib/trigram');
 const { fmtK } = require('../lib/messages');
+const { previousSessionId } = require('../lib/state');
+const { loadContextLedger } = require('../lib/ledger');
 
 const LABELS = { todo: 'à faire', in_progress: 'en cours', done: 'fait', dropped: 'abandonné' };
 
@@ -82,6 +84,7 @@ function show(root, json, epicFilter) {
     if (l.depends_on && l.depends_on.length) line += ` [dépend de : ${l.depends_on.map((d) => '#' + d).join(', ')}]`;
     if (l.status === 'done' && l.closed_commit) line += ` — commit ${l.closed_commit}`;
     else if (l.scope) line += ` — ${l.scope}`;
+    if (l.status === 'done' && l.closed_verify) line += ` [verify à la clôture : ${l.closed_verify}]`;
     if (l.status === 'done' && Number.isFinite(l.closed_occupancy)) line += ` (occupation à la clôture : ${l.closed_occupancy})`;
     if (Number.isFinite(l.cost_tokens) && l.cost_tokens > 0) line += ` (coût ~${fmtK(l.cost_tokens)} tokens de sortie)`;
     if (l.note) line += ` (note : ${l.note})`;
@@ -324,7 +327,25 @@ function main() {
   }
 
   if (cmd === 'done') {
-    const lot = backlog.doneLot(root, id, flag('commit'));
+    // Auto-remplissage session/occupancy (lot #96, DEP-6) : la clôture CLI est le chemin
+    // RECOMMANDÉ (/close-batch) mais laissait ces deux champs à null faute de --session/
+    // --occupancy jamais tapés. On lit l'état déjà posé PAR LA SESSION COURANTE plutôt que de
+    // faire saisir une valeur à l'assistant (halluciner un id fausserait suggestedTitle,
+    // lib/backlog.js). --no-session/--no-occupancy pour l'opt-out ; --session/--occupancy
+    // pour une valeur explicite (occupancy coercée en Number, un argv est toujours une string).
+    const sessionId = process.argv.includes('--no-session')
+      ? null
+      : (flag('session') || previousSessionId(root));
+    let occupancy = null;
+    if (!process.argv.includes('--no-occupancy')) {
+      const occFlag = flag('occupancy');
+      if (occFlag != null) occupancy = Number(occFlag);
+      else {
+        const cl = loadContextLedger(root);
+        occupancy = cl.occupancy && Number.isFinite(cl.occupancy.last) ? cl.occupancy.last : null;
+      }
+    }
+    const lot = backlog.doneLot(root, id, flag('commit'), null, sessionId, occupancy);
     return out(lot ? `Lot #${lot.id} « ${lot.title} » clos${lot.closed_commit ? ` (commit ${lot.closed_commit})` : ''}.`
       : `Lot #${id} introuvable.`);
   }

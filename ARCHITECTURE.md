@@ -568,8 +568,10 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   le lot comme **objet persistant trans-session** — id, titre, « fait quand », statut
   (`todo|in_progress|done|dropped`), **préconisation de modèle** (`model_hint`, ex. `sonnet`/
   `opus`) et **effort de raisonnement** (`effort_hint`, énum `low|medium|high|xhigh`, lot #41),
-  commit de clôture, et `closed_session_id` (session qui a clos le lot — `null` si
-  clôture manuelle via le CLI sans id, jamais deviné). Au plus un `in_progress` ; cap 20 lots
+  commit de clôture, et `closed_session_id` (session qui a clos le lot — auto-rempli depuis
+  `.vibe-agent/session-state.json` (`lib/state.js: previousSessionId`) que le lot soit clos par
+  le hook Stop ou par le CLI `done` (lot #96) ; `null` seulement sur opt-out explicite
+  (`--no-session`) ou lot legacy pré-#96 — jamais un id tapé/deviné à la main). Au plus un `in_progress` ; cap 20 lots
   ouverts ; `doneLot` idempotent. `model_hint` est **obligatoire à l'`add` CLI** (refus doux sans `--model`) ;
   `effort_hint` est optionnel mais refusé (doux) si `--effort` est fourni hors énum. Les deux sont
   **réaffichés** partout où un lot est rendu (`show`/`start`/`next`, `summaryLines` → handoff auto,
@@ -604,10 +606,18 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   `changelogTouched` se réduit au dernier commit) ne touche pas `CHANGELOG.md`. Un lot **sans
   aucune `verify`** est clos avec une ligne doux « **clos sans preuve** » (paramètre `noVerify`
   de `closureProofMessage`, lot #55) invitant à poser `--verify` au prochain `/scope`. try/catch
-  dédié → fail-open : la clôture reste acquise même si la preuve échoue. Champ `closed_occupancy` (lot #29) :
-  occupation contexte du tour figée par `stop.js` à l'auto-clôture (`turnstats.computeTurn().occ`,
-  métrologie de coût par lot) — `null` sur une clôture manuelle via le CLI (pas de transcript à ce
-  niveau). Champ `cost_tokens` (lot #43) : coût réel cumulé du lot = tokens de sortie sommés par
+  dédié → fail-open : la clôture reste acquise même si la preuve échoue. Le VERDICT de cette
+  preuve est désormais **persisté** (`closed_verify` — `'ok'|'failed'|'timeout'|'none'`, lot #96) :
+  posé par `stop.js` juste après `runVerify`, via un setter DÉDIÉ (`backlog.js: setClosedVerify` —
+  jamais via `doneLot`, idempotent et court-circuitant tout lot déjà `done`), donc jamais écrasé
+  une fois posé. `'none'` = lot sans `verify` ; champ absent/`null` = non mesuré (clôture manuelle
+  CLI sans écriture dédiée, ou watchdog tué pendant le verify). Affiché par `show` et exposé en
+  colonne d'export (`EXPORT_COLUMNS`) — distingue enfin un lot **prouvé** d'un lot clos sur échec,
+  jusque-là stockés `done` à l'identique. Champ `closed_occupancy` (lot #29) :
+  occupation contexte du tour figée à l'auto-clôture (`turnstats.computeTurn().occ`,
+  métrologie de coût par lot) ; depuis le lot #96 le CLI `done` l'auto-remplit aussi (dernier `occ`
+  mirorré au ledger, `lib/ledger.js: recordOccupancy`) — `null` seulement sur `--no-occupancy` ou
+  aucune mesure disponible. Champ `cost_tokens` (lot #43) : coût réel cumulé du lot = tokens de sortie sommés par
   `stop.js` sur tous les tours où il était `in_progress` (`addCost`) — agrégat trans-session porté
   par le lot, figé de fait à la clôture, affiché par `show` ; cf. puce « Coût réel par lot » plus
   haut. **Durabilité par défaut** (le backlog ne doit JAMAIS être perdu) : le
@@ -649,7 +659,8 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   seul le chemin manuel avait le trou).
 - **Export du plan de lots** (`backlog.js export --format csv|md`, `lib/backlog.js: exportCsv`/
   `exportMarkdown`, lot #60) : sortie brute de tous les lots (colonnes fixes : id, title,
-  status, epic, model_hint, effort_hint, verify, cost_tokens, closed_commit, closed_at),
+  status, epic, model_hint, effort_hint, verify, closed_verify (lot #96), cost_tokens,
+  closed_commit, closed_at, closed_session_id, closed_occupancy),
   CSV échappé (guillemets doublés) ou table Markdown — pour reporting externe (tableur,
   compte-rendu) sans reparser `backlog.json` à la main. `--format` par défaut `md` ; refus
   doux hors énum `csv|md`.
