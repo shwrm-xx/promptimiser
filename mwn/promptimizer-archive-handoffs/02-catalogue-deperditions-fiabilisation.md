@@ -36,6 +36,8 @@ Contexte et principes de conception : [01-note-orientation-archive-tiroirs.md](0
 - **FIA-21** [M] Écriture outillée du fleet (inscription / passage ready)
 - **FIA-22** [S] Persister le rapport de /reintegrate --execute
 - **FIA-23** [M] Tests : atomicité, corruption, concurrence — trous confirmés
+- **FIA-24** [S] `setDepends` sans sous-commande CLI : depends_on non corrigeable après création
+- **FIA-25** [M] Aucune commande `reopen` : un lot `done` figé même s'il faut le rouvrir
 - **AM-1** [S] Snapshot de télémétrie par lot figé à la clôture (donnée tier-1 de l'archive)
 - **AM-2** [S] Purge par ancienneté des fichiers d'état par session (STATE_DIR non borné)
 - **AM-3** [M] Lier l'état de tour au transcript, pas au seul session_id
@@ -346,6 +348,53 @@ Contexte et principes de conception : [01-note-orientation-archive-tiroirs.md](0
 
 **Vérification (existence du problème)** — Cœur de la thèse vérifié et non réfuté : (1) `grep writeAtomic test/run-tests.js` → 0 hit — aucun test direct de l'écriture atomique (rename effectif, pas de `*.tmp` résiduel), alors que writeAtomic (promptimizer/lib/fsjson.js:7-16) est le socle de lot.js, backlog.js, fleet.js, ledger.js, advisory.js, rtk-status.js ; (2) `grep -i concurren test/run-tests.js` → 0 hit — la course RMW « assumée » de fleet (promptimizer/lib/fleet.js:14-18 : « La perte-de-mise-à-jour résiduelle … est assumée au palier 2 ») n'est caractérisée par aucun test d'écritures entrelacées ; (3) l'invariant « jamais de ledger tronqué » n'existe qu'en commentaire (promptimizer/lib/ledger.js:186) et le nom tmp unique anti-écrasement concurrent qu'en commentaire aussi (promptimizer/lib/fsjson.js:5-6), sans preuve testée. Ces trous existent réellement dans le code actuel.
 
+
+### FIA-24 [effort S] `setDepends` sans sous-commande CLI : depends_on non corrigeable après création
+
+**Problème** — `setDepends(root, id, deps)` (promptimizer/lib/backlog.js:308) existe et est déjà
+exporté, mais aucune sous-commande de `scripts/backlog.js` ne l'appelle (seul `add --depends`
+pose `depends_on` À LA CRÉATION). Une fois un lot créé, corriger sa dépendance (ajout, retrait,
+faute de frappe d'id) n'a aucun chemin outillé : il faudrait éditer `.vibe-agent/backlog.json` à
+la main, hors de toute garde (anti-troncature, normalizeDepends, orphanArgs) que le reste du CLI
+applique systématiquement à `add`.
+
+**Évidence** — `promptimizer/lib/backlog.js:308 (setDepends exporté, ligne 842) ; promptimizer/scripts/backlog.js:255-373 (dispatch : aucune entrée 'depends')`
+
+**Proposition** — Sous-commande `backlog.js depends --id N --depends "2,3"` (même contrat que
+`verify --set` : `flagList('depends')`, `normalizeDepends` déjà pur et testé, refus explicite si
+`--id` inconnu ou `--depends` absent). Vider la liste : `--depends ""` (cohérent avec `flagList`
+qui filtre déjà les vides).
+
+**Vérification (existence du problème)** — Confirmé : `git grep "cmd === 'depends'"` dans
+`scripts/backlog.js` ne renvoie rien ; le lot #97 a dû poser une dépendance de test via un appel
+direct à `backlogLib.setDepends` (test/run-tests.js), faute de commande CLI à invoquer.
+
+### FIA-25 [effort M] Aucune commande `reopen` : un lot `done` figé même s'il faut le rouvrir
+
+**Problème** — Chaque setter du backlog (`setVerify`, `setPerimeter`, `setDepends`, `noteLot`,
+`dropLot`) refuse explicitement dès que `lot.status === 'done'` (promptimizer/lib/backlog.js:301,
+311, 362, 524) — garde volontaire (« clos = clos, fait foi »)  mais sans soupape : un lot fait
+que l'utilisateur doit finalement reprendre (scope insuffisant découvert après coup, régression
+détectée, epic à modifier) reste figé. Aucune commande ne permet de le repasser `todo`/`in_progress`
+sans réécrire `backlog.json` à la main — hors garde, hors trace (`closed_commit`/`closed_verify`
+resteraient ceux de l'ancienne clôture, mensongers si le lot est repris puis re-clos).
+
+**Évidence** — `git grep "status === 'done'" promptimizer/lib/backlog.js` (4 refus, aucune
+exception « reopen ») ; `git grep -i "reopen\|réouvr"` dans `promptimizer/` : aucune occurrence.
+
+**Proposition** — `backlog.js reopen --id N [--note "raison"]` : repasse le lot en `todo` (jamais
+`in_progress` directement — `start` reste le seul chemin qui inscrit `session_owner`/vague),
+**efface** `closed_commit`/`closed_verify`/`closed_session_id`/`closed_occupancy`/`closed_at`
+(sinon la prochaine clôture affiche des valeurs de l'ancien cycle avant que `done`/CLI ne les
+réécrivent — vérifier l'ordre d'écriture) et **journalise** la réouverture (note obligatoire ou
+horodatage dans un futur historique de statut — cf. archive tier 1/2, la fiche existante du lot
+ne doit pas être écrasée mais complétée : « rouvert le AAAA-MM-JJ, raison »). Refus explicite si
+le lot est `dropped` (statut différent, pas dans le périmètre de ce lot) ou déjà `todo`/`in_progress`.
+
+**Vérification (existence du problème)** — Confirmé par retour utilisateur direct (un autre
+projet a affiché « pas de commande reopen » face à un epic clos à tort). Recoupé dans ce dépôt :
+aucun des 4 refus `status === 'done'` cités n'a d'exception, et le catalogue existant n'a jamais
+traité ce cas (absent de FIA-1 à FIA-23).
 
 ### AM-1 [effort S] Snapshot de télémétrie par lot figé à la clôture (donnée tier-1 de l'archive)
 
