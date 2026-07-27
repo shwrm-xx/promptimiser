@@ -103,3 +103,4 @@
 #0098 | 2026-07-27 | 77c0395 | epic:Archive à tiroirs | verify:inconnu | fiche:oui | CLI backlog : depends corrigeable + reopen d'un lot clos
 #0099 | 2026-07-27 | 1e0433e | epic:Archive à tiroirs | verify:inconnu | fiche:oui | Fiabilité vague : handoff par lot, purge fleet, écriture outillée
 #0100 | 2026-07-27 | ffe257e | epic:Archive à tiroirs | verify:inconnu | fiche:non | Dette #98/#99 : export reopened, reset au reopen, --depends strict, fleet leave
+#0101 | 2026-07-27 | bfbaf9c | epic:US & Jira | verify:inconnu | fiche:oui | Pointeur US vérifié (champ us + gabarit + garde scope)
