@@ -62,6 +62,22 @@ function truncGuard(fields) {
   return false;
 }
 
+// Garde de `--depends` PARTAGÉE par `add` et `depends` (dette #98 soldée au lot #100) : `add`
+// faisait `.map(Number).filter(Number.isFinite)`, donc `--depends "2,abc"` créait le lot avec
+// [2] et jetait « abc » sans un mot — exactement le filtrage silencieux que la commande
+// `depends` refuse depuis FIA-24. Une seule garde, un seul message, aucune dérive possible.
+// Renvoie { ok:false } après avoir émis le refus, ou { ok:true, ids }.
+function parseDepends() {
+  const raw = flagList('depends');
+  const bad = raw.filter((s) => !Number.isFinite(Number(s)));
+  if (bad.length) {
+    out(`Refusé : --depends attend des ids de lots — ${bad.map((s) => `« ${s} »`).join(', ')} n'en sont pas. `
+      + 'Ex. --depends "2,3" ; pour vider : --depends "".');
+    return { ok: false, ids: [] };
+  }
+  return { ok: true, ids: raw.map(Number) };
+}
+
 function show(root, json, epicFilter) {
   const b = backlog.loadBacklog(root);
   const lots = epicFilter ? b.lots.filter((l) => l.epic === epicFilter) : b.lots;
@@ -366,10 +382,28 @@ function fleetCmd(root, sub, json) {
     // Une entrée sans session_owner est rejetée par normalizeLot : le refus doit être explicite
     // ici, pas un no-op silencieux. Repli sur l'id de session persisté (session-state.json),
     // que l'assistant n'a aucun moyen de connaître autrement.
-    const session = flag('session') || previousSessionId(root);
+    //
+    // Dette #99 soldée (lot #100) : ce repli n'est fiable QU'APRÈS le premier SessionStart de la
+    // session courante — avant, session-state.json porte encore l'id de la session PRÉCÉDENTE
+    // (c'est même sa raison d'être, cf. lib/state.js:previousSessionId). Inscrire un lot au nom
+    // d'une session morte est silencieusement catastrophique : la garde de périmètre ne bride
+    // personne et l'injection de vague n'arrive jamais. Deux parades, sans jamais bloquer le cas
+    // nominal : (1) si l'id déduit tient DÉJÀ un autre lot en vol, c'est le symptôme direct du
+    // mauvais propriétaire — on refuse et on exige --session ; (2) sinon on annonce la déduction
+    // au lieu de la taire, pour qu'une attribution fausse soit rattrapable.
+    const explicitSession = flag('session');
+    const session = explicitSession || previousSessionId(root);
     if (!session) {
       return out('Refusé : --session manquante et aucun id de session persisté dans .vibe-agent/session-state.json. '
         + 'Sans propriétaire, le lot ne peut être attribué à personne (ni garde de périmètre, ni injection).');
+    }
+    if (!explicitSession) {
+      const held = fleetLib.lotForSession(root, session);
+      if (held && held.id !== idn) {
+        return out(`Refusé : --session absente, et l'id déduit de .vibe-agent/session-state.json (${session}) tient déjà le lot #${held.id}. `
+          + 'Une session ne tient qu\'un lot par vague : soit ce fichier porte encore l\'id de la session précédente '
+          + `(il n'est à jour qu'après le 1er SessionStart), soit l'inscription est en double. Relance avec \`--session <id réel>\`.`);
+      }
     }
     const state = flag('state') || 'in_flight';
     if (!fleetLib.STATES.includes(state)) {
@@ -396,7 +430,9 @@ function fleetCmd(root, sub, json) {
     if (!okw) return out(`Refusé : inscription du lot #${idn} impossible (écriture de ${rel} en échec).`);
     const warn = known ? '' : ` ⚠️ Aucun lot #${idn} au plan (backlog.json) — vérifie l'id.`;
     const noPer = perimeter.length ? '' : ' ⚠️ Sans --perimeter, la garde d\'écriture ne bride RIEN pour cette session.';
-    out(`Lot #${idn} inscrit dans la vague (session ${session}, état ${state}).${warn}${noPer}`);
+    const deduced = explicitSession ? '' : ' ⚠️ Session DÉDUITE de .vibe-agent/session-state.json (à jour seulement après le 1er SessionStart)'
+      + ' — si ce n\'est pas la tienne, refais l\'inscription avec `--session <id réel>`.';
+    out(`Lot #${idn} inscrit dans la vague (session ${session}, état ${state}).${warn}${noPer}${deduced}`);
     return;
   }
 
@@ -407,7 +443,30 @@ function fleetCmd(root, sub, json) {
     return out(`Lot #${idn} passé « prêt à merger ». L'orchestrateur peut le réintégrer (\`reintegrate --execute\`).`);
   }
 
-  return out(`Sous-commande fleet inconnue : ${sub}. Sous-commandes : join | ready | show.`);
+  // Dette #99 soldée (lot #100) : `join` n'avait pas de réciproque. Une fille inscrite à tort
+  // (mauvais id, mauvaise session, vague abandonnée) ne pouvait se désinscrire qu'en éditant
+  // fleet.json à la main — hors gardes — ou en subissant une réintégration qu'elle ne voulait
+  // pas. `leave` retire l'entrée ET son handoff de lot (sinon il traîne en orphelin jusqu'à la
+  // clôture d'une vague, cf. purgeLotHandoffs). Ne touche PAS au backlog : quitter la vague
+  // n'abandonne pas le lot, il redevient simplement un lot de session autonome.
+  if (sub === 'leave') {
+    if (d.state === 'absent') return out('Refusé : aucune vague active (pas de fleet.json) — rien à quitter.');
+    const before = fleetLib.loadFleet(root).lots.find((l) => l.id === idn);
+    if (!fleetLib.removeLot(root, idn)) {
+      return out(`Refusé : lot #${idn} absent du registre de vague (rien à désinscrire).`);
+    }
+    let purged = 0;
+    try { purged = require('../lib/handoff').purgeLotHandoffs(root, [idn]); } catch (_) { /* best-effort */ }
+    const wasReady = before && before.state === 'ready';
+    const rest = fleetLib.loadFleet(root);
+    out(`Lot #${idn} retiré de la vague${purged ? ` (handoff de lot purgé)` : ''}. `
+      + 'La session redevient autonome : plus de garde de périmètre, plus d\'injection de vague.');
+    if (wasReady) out('⚠️ Ce lot était « prêt à merger » : il sort du plan de réintégration — sa branche ne sera plus mergée automatiquement.');
+    if (!rest.active) out(`Plus aucun lot en vol : la vague est inerte (${rel} vidé de ses lots).`);
+    return;
+  }
+
+  return out(`Sous-commande fleet inconnue : ${sub}. Sous-commandes : join | ready | leave | show.`);
 }
 
 function main() {
@@ -467,8 +526,9 @@ function main() {
       { name: '--epic', value: flag('epic'), max: backlog.MAX_EPIC },
       { name: '--verify', value: flag('verify'), max: backlog.MAX_VERIFY },
     ])) return;
-    const depends = flagList('depends').map(Number).filter(Number.isFinite);
-    const newLot = backlog.addLot(root, flag('title'), flag('scope'), model, flag('epic'), flag('verify'), effort, flagList('perimeter'), depends);
+    const dep = parseDepends();
+    if (!dep.ok) return;
+    const newLot = backlog.addLot(root, flag('title'), flag('scope'), model, flag('epic'), flag('verify'), effort, flagList('perimeter'), dep.ids);
     if (!newLot) {
       const b = backlog.loadBacklog(root);
       if (b.lots.filter((l) => l.status === 'todo' || l.status === 'in_progress').length >= backlog.MAX_LOTS_OPEN) {
@@ -506,13 +566,9 @@ function main() {
     if (!process.argv.includes('--depends')) {
       return out(`Dépendances du lot #${cur.id} : ${fmt(cur.depends_on)}`);
     }
-    const raw = flagList('depends');
-    const bad = raw.filter((s) => !Number.isFinite(Number(s)));
-    if (bad.length) {
-      return out(`Refusé : --depends attend des ids de lots — ${bad.map((s) => `« ${s} »`).join(', ')} n'en sont pas. `
-        + 'Ex. --depends "2,3" ; pour vider : --depends "".');
-    }
-    const lot = backlog.setDepends(root, id, raw.map(Number));
+    const dep = parseDepends();
+    if (!dep.ok) return;
+    const lot = backlog.setDepends(root, id, dep.ids);
     if (!lot) return out(`Refusé : le lot #${cur.id} est ${LABELS[cur.status]} — ses dépendances ne sont plus modifiables.`);
     // Ids ne correspondant à aucun lot : AVERTIS, pas refusés — `blockedByOf`/`planWaves` les
     // traitent comme satisfaits (tolérance hors-plan volontaire), mais c'est le symptôme n°1
@@ -629,7 +685,7 @@ function main() {
     return;
   }
 
-  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | reopen | depends | next | parallelize | fleet <join|ready|show> | reintegrate | reconcile | epic | verify | trigram | export.`);
+  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | reopen | depends | next | parallelize | fleet <join|ready|leave|show> | reintegrate | reconcile | epic | verify | trigram | export.`);
 }
 
 if (require.main === module) {

@@ -172,14 +172,18 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   il ne se perd plus entre deux sessions. Un plan reste **corrigeable** : `backlog.js depends --id N
   --depends "2,3"` réécrit les dépendances d'un lot après coup, et `backlog.js reopen --id N --note
   "raison"` rouvre un lot clos à tort (repassé « à faire », trace de clôture effacée et raison
-  archivée) — plus besoin d'éditer le JSON à la main, hors de toute garde.
+  archivée) — plus besoin d'éditer le JSON à la main, hors de toute garde. Le nombre de
+  réouvertures est exporté (colonne `reopened` du CSV/Markdown) : un lot repris deux fois cesse de
+  se lire comme un lot passé du premier coup.
 - **Après un `/clear` ou une compaction** : le handoff (ou le lot en cours) est réinjecté —
   le plan ne se perd pas.
 - **Vagues parallèles fiables** : quand plusieurs sessions travaillent le même dépôt, chacune a son
   propre handoff (`handoff-lot-<id>.md`) — plus de dernier-écrivain-gagne qui remplaçait l'état
   d'un lot par celui d'un autre. Le registre de vague s'écrit **par commande**
-  (`backlog.js fleet join | ready | show`) et non à la main : un `fleet.json` cassé désactivait
-  toute la vague en silence, `fleet show` le dit maintenant. Une fois la vague réintégrée, tout est
+  (`backlog.js fleet join | ready | leave | show`) et non à la main : un `fleet.json` cassé désactivait
+  toute la vague en silence, `fleet show` le dit maintenant, et `fleet leave --id N` permet à une
+  session de se désinscrire (le lot reste au plan) sans attendre une réintégration qu'elle ne veut
+  pas. Une fois la vague réintégrée, tout est
   **rangé** (registre vidé, handoffs de lot purgés) et chaque `reintegrate --execute` laisse un
   **rapport** dans `.vibe-agent/logs/` — plan, gates rouges, changelog agrégé — que le crash d'une
   session ne peut plus emporter.

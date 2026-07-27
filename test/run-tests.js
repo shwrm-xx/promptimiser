@@ -6270,6 +6270,110 @@ section('fleet/handoff — handoff par lot, purge de vague, CLI fleet, rapport d
     'R99-d : refus « rien à réintégrer » -> aucun rapport (pas de bruit)');
 }
 
+// ============ R100. DETTE #98/#99 SOLDÉE : export reopened, reset au reopen, --depends strict,
+// repli --session fiabilisé, fleet leave (lot #100) ============
+section('backlog/fleet — dette #98/#99 : export reopened, reset au reopen, --depends strict, fleet leave (lot #100)');
+{
+  const fleet = require(path.join(PKG, 'lib', 'fleet'));
+  const handoff = require(path.join(PKG, 'lib', 'handoff'));
+  const mkrepo = (name) => {
+    const r = path.join(SANDBOX, name);
+    fs.mkdirSync(r, { recursive: true });
+    execFileSync('git', ['init', '-q', r]);
+    fs.writeFileSync(path.join(r, 'a.txt'), '1');
+    execFileSync('git', ['-C', r, 'add', '.']);
+    execFileSync('git', ['-C', r, 'commit', '-q', '-m', 'init']);
+    return r;
+  };
+
+  // ---- E1/E2. reopen : reliquats du cycle clos effacés, trace conservée ----
+  const repo = mkrepo('repo-r100-reopen');
+  const lotOf = (id) => backlogLib.loadBacklog(repo).lots.find((l) => l.id === id);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot A100', '--model', 'sonnet']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot B100', '--model', 'sonnet']);
+  runNode(BKLG, ['start', '--cwd', repo, '--id', '1', '--owner', 's-owner']);
+  runNode(BKLG, ['done', '--cwd', repo, '--id', '1', '--commit', 'aaa1111']);
+  const closed = lotOf(1);
+  ok(closed.session_owner === 's-owner' && Number.isFinite(closed.lot_number),
+    'R100-a : prérequis — un lot clos porte bien session_owner et lot_number');
+  const numBefore = closed.lot_number;
+  runNode(BKLG, ['reopen', '--cwd', repo, '--id', '1', '--note', 'scope insuffisant']);
+  const reop = lotOf(1);
+  ok(reop.session_owner === null && reop.lot_number === null,
+    'R100-a : reopen efface session_owner et lot_number (plus de « Lot N » fantôme sur un lot à faire)');
+  ok(reop.reopened[0].from_lot_number === numBefore,
+    'R100-a : le numéro effacé survit dans l\'entrée d\'historique (from_lot_number)');
+  // startLot reste le seul chemin qui réinscrit un propriétaire.
+  runNode(BKLG, ['start', '--cwd', repo, '--id', '1', '--owner', 's-neuve']);
+  ok(lotOf(1).session_owner === 's-neuve', 'R100-a : le cycle suivant réinscrit un propriétaire NEUF via startLot');
+  runNode(BKLG, ['done', '--cwd', repo, '--id', '1', '--commit', 'bbb2222']);
+  ok(lotOf(1).lot_number !== numBefore && Number.isFinite(lotOf(1).lot_number),
+    'R100-a : la re-clôture attribue un numéro neuf (le compteur global ne recule pas)');
+
+  // ---- E3. colonne `reopened` à l'export (CSV + Markdown) ----
+  const bExp = backlogLib.loadBacklog(repo);
+  const csv = backlogLib.exportCsv(bExp).split('\n');
+  const cols = csv[0].split(',');
+  const iRe = cols.indexOf('reopened');
+  ok(iRe !== -1, 'R100-b : `reopened` est une colonne d\'export (CSV)');
+  ok(csv[1].split(',')[iRe] === '1', 'R100-b : lot rouvert 1 fois -> cardinal exporté');
+  ok(csv[2].split(',')[iRe] === '', 'R100-b : lot jamais rouvert -> colonne VIDE (jamais un 0 inventé)');
+  ok(/\| reopened \|/.test(backlogLib.exportMarkdown(bExp)), 'R100-b : colonne présente aussi à l\'export Markdown');
+
+  // ---- E4. `add --depends` : même garde stricte que `depends` (plus de filtrage silencieux) ----
+  const rBad = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot C100', '--model', 'sonnet', '--depends', '2,abc']);
+  ok(/Refusé/.test(rBad.out) && /« abc »/.test(rBad.out), 'R100-c : add --depends non numérique -> refus explicite');
+  ok(!backlogLib.loadBacklog(repo).lots.some((l) => l.title === 'Lot C100'),
+    'R100-c : le lot n\'est PAS créé amputé de ses dépendances (rien de silencieux)');
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot C100', '--model', 'sonnet', '--depends', '2,1']);
+  ok(JSON.stringify(lotOf(3).depends_on) === JSON.stringify([2, 1]), 'R100-c : le cas nominal reste inchangé');
+
+  // ---- E5. fleet join : repli --session annoncé, et refusé s'il désigne un propriétaire occupé ----
+  const wrepo = mkrepo('repo-r100-fleet');
+  const vd = path.join(wrepo, '.vibe-agent');
+  runNode(BKLG, ['add', '--cwd', wrepo, '--title', 'Lot un', '--model', 'opus']);
+  runNode(BKLG, ['add', '--cwd', wrepo, '--title', 'Lot deux', '--model', 'opus']);
+  fs.mkdirSync(vd, { recursive: true });
+  fs.writeFileSync(path.join(vd, 'session-state.json'), JSON.stringify({ session_id: 's-persistee' }));
+  const jd = runNode(BKLG, ['fleet', 'join', '--cwd', wrepo, '--id', '1', '--perimeter', 'lib/a/**']);
+  ok(/session s-persistee/.test(jd.out) && /Session DÉDUITE/.test(jd.out),
+    'R100-d : repli sur session-state.json ANNONCÉ (attribution fausse rattrapable)');
+  ok(!/Session DÉDUITE/.test(runNode(BKLG, ['fleet', 'join', '--cwd', wrepo, '--id', '1', '--session', 's-persistee']).out),
+    'R100-d : --session explicite -> pas d\'avertissement de déduction');
+  const jc = runNode(BKLG, ['fleet', 'join', '--cwd', wrepo, '--id', '2']);
+  ok(/Refusé/.test(jc.out) && /tient déjà le lot #1/.test(jc.out) && fleet.loadFleet(wrepo).lots.length === 1,
+    'R100-d : repli désignant une session déjà propriétaire -> refus (symptôme de l\'id périmé)');
+  ok(/Lot #2 inscrit/.test(runNode(BKLG, ['fleet', 'join', '--cwd', wrepo, '--id', '2', '--session', 's-autre']).out),
+    'R100-d : la garde ne vise QUE le repli — --session explicite passe');
+
+  // ---- E6. fleet leave : désinscription outillée + purge du handoff de lot ----
+  const h1 = handoff.lotHandoffFile(wrepo, 1);
+  fs.writeFileSync(h1, '<!-- pmz:handoff:auto -->\nétat fille\n');
+  fs.writeFileSync(path.join(vd, 'handoff.md'), '<!-- pmz:handoff:auto -->\nbase\n');
+  ok(/Refusé : lot #404 absent du registre/.test(runNode(BKLG, ['fleet', 'leave', '--cwd', wrepo, '--id', '404']).out),
+    'R100-e : leave sur un lot non inscrit -> refus explicite');
+  fleet.setLotState(wrepo, 1, 'ready');
+  const lv = runNode(BKLG, ['fleet', 'leave', '--cwd', wrepo, '--id', '1']);
+  ok(/Lot #1 retiré de la vague/.test(lv.out) && /redevient autonome/.test(lv.out), 'R100-e : leave désinscrit le lot');
+  ok(/⚠️ Ce lot était « prêt à merger »/.test(lv.out),
+    'R100-e : quitter en état `ready` -> averti (le lot sort du plan de réintégration)');
+  ok(!fs.existsSync(h1) && /handoff de lot purgé/.test(lv.out),
+    'R100-e : le handoff de lot part avec l\'inscription (plus d\'orphelin jusqu\'à la clôture de vague)');
+  ok(fs.existsSync(path.join(vd, 'handoff.md')), 'R100-e : handoff.md épargné');
+  ok(!fleet.loadFleet(wrepo).lots.some((l) => l.id === 1), 'R100-e : l\'entrée a bien disparu de fleet.json');
+  ok(backlogLib.loadBacklog(wrepo).lots.some((l) => l.id === 1),
+    'R100-e : leave ne touche PAS au backlog (quitter la vague n\'abandonne pas le lot)');
+  const lv2 = runNode(BKLG, ['fleet', 'leave', '--cwd', wrepo, '--id', '2']);
+  ok(/vague est inerte/.test(lv2.out) && fleet.loadFleet(wrepo).active === false,
+    'R100-e : dernier lot parti -> vague inerte, annoncé');
+  const nofleet = mkrepo('repo-r100-nofleet');
+  ok(/Refusé : aucune vague active/.test(runNode(BKLG, ['fleet', 'leave', '--cwd', nofleet, '--id', '1']).out),
+    'R100-e : leave sans fleet.json -> refus clair (pas de fichier créé)');
+  ok(!fs.existsSync(path.join(nofleet, '.vibe-agent', 'fleet.json')), 'R100-e : leave ne CRÉE jamais un fleet.json');
+  ok(/Sous-commandes : join \| ready \| leave \| show/.test(runNode(BKLG, ['fleet', 'wat', '--cwd', wrepo, '--id', '1']).out),
+    'R100-e : `leave` est annoncée dans l\'aide des sous-commandes');
+}
+
 // Faux binaire `rtk` (node shebang) piloté par RTK_TEST_MODE — partagé par RTK1 (lot #81) et
 // RTK2 (lot #82, statut/doctor). argv rewrite: [node, rtk, 'rewrite', '<cmd>'] ; argv version:
 // [node, rtk, '--version'].

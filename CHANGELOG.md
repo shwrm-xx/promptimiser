@@ -2,6 +2,43 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-27 — lot #100 « Dette #98/#99 : export reopened, reset au reopen, --depends strict, fleet leave » (epic « Archive à tiroirs »)
+
+Solde les cinq dettes laissées par les lots #98 et #99. Toutes étaient des **silences** : une
+information vraie mais invisible, ou une entrée jetée sans un mot.
+
+- **Colonne `reopened` à l'export** (`lib/backlog.js`) — l'historique de réouverture existait
+  depuis FIA-25 mais ne sortait ni au CSV ni au Markdown : un lot repris deux fois se lisait comme
+  un lot passé du premier coup. Colonne **dérivée** (le cardinal, pas le tableau brut, qui noierait
+  la ligne), **vide** et non `0` quand le lot n'a jamais été rouvert — même contrat que les
+  colonnes RTK, aucune valeur inventée.
+- **`reopen` efface `session_owner` et `lot_number`** (`lib/backlog.js: reopenLot`) — les deux
+  derniers reliquats du cycle clos. Laissés en place, ils mentaient jusqu'au prochain
+  `startLot`/`doneLot` : « Lot N » affiché sur un lot redevenu **à faire**, et une session
+  étrangère encore inscrite propriétaire. Le numéro effacé survit dans l'entrée d'historique
+  (`from_lot_number`, ajouté aussi à `normalizeReopened`) ; le prochain `doneLot` en attribue un
+  neuf, le compteur global ne reculant jamais.
+- **`add --depends` aussi strict que `depends`** (`scripts/backlog.js`) — `add` faisait
+  `.map(Number).filter(Number.isFinite)`, donc `--depends "2,abc"` créait le lot avec `[2]` et
+  jetait « abc » en silence, exactement le filtrage que FIA-24 avait supprimé côté `depends`. Garde
+  unique et partagée (`parseDepends`), un seul message, aucune dérive possible entre les deux
+  verbes.
+- **Repli `--session` de `fleet join` rendu visible et gardé** (`scripts/backlog.js`) — le repli sur
+  `session-state.json` n'est fiable qu'après le **1er SessionStart** ; avant, le fichier porte
+  encore l'id de la session *précédente*, et inscrire un lot au nom d'une session morte est
+  silencieusement catastrophique (garde de périmètre qui ne bride personne, injection qui n'arrive
+  jamais). Deux parades sans jamais bloquer le cas nominal : refus quand l'id déduit tient **déjà**
+  un autre lot en vol (symptôme direct de l'id périmé), et mention « session DÉDUITE » sinon. Avec
+  `--session` explicite, aucune des deux ne s'applique.
+- **`backlog.js fleet leave --id N`** (`scripts/backlog.js`) — `join` n'avait pas de réciproque :
+  une fille inscrite à tort ne pouvait se désinscrire qu'en éditant `fleet.json` à la main, hors
+  gardes, ou en subissant une réintégration non voulue. `leave` retire l'entrée **et** son
+  `handoff-lot-<id>.md` (sinon orphelin jusqu'à la clôture d'une vague), avertit si le lot était
+  « prêt à merger », annonce la vague devenue inerte, et ne **touche pas** au backlog : quitter la
+  vague rend la session autonome, ça n'abandonne pas le lot.
+
+Tests : 1603 OK / 0 échec (section R100, 27 assertions neuves).
+
 ## 2026-07-27 — lot #99 « Fiabilité vague : handoff par lot, purge fleet, écriture outillée » (epic « Archive à tiroirs »)
 
 Quatre pertes d'état propres aux **vagues parallèles**, toutes silencieuses. Hors vague, rien ne

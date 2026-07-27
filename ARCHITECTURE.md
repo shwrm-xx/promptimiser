@@ -284,14 +284,21 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   c'est là que la garantie de périmètre compte le plus, le contexte compacté ayant perdu la
   contrainte « ne modifie que X »). Le hook installé v1.3.0 **ignore** ces champs : sans impact tant qu'aucune vague n'est
   posée, mais la 1ʳᵉ vague réelle exigera un redéploiement du plugin.
-  **Écriture outillée du registre** (lot #99, FIA-21) : `backlog.js fleet join|ready|show`
+  **Écriture outillée du registre** (lot #99, FIA-21 ; `leave` au lot #100) : `backlog.js fleet join|ready|leave|show`
   enveloppe `upsertLot`/`setLotState`/`loadFleet`. Avant, s'inscrire dans la vague ou passer un
   lot « prêt » se faisait **à la main dans le JSON** : une faute de frappe et `loadFleet`
   (fail-open, contrat hooks) désactivait TOUTE la vague **en silence** — garde de périmètre et
   injection éteintes sans un mot. Comme c'est une **commande** et non un hook, les refus sont
   explicites (`--id` absent, `--state` hors `STATES`, propriétaire introuvable, fleet illisible)
   tout en gardant la convention `exit 0`. `--session` retombe sur l'id persisté dans
-  `session-state.json` (l'assistant n'a aucun autre moyen de connaître le sien). `fleet show`
+  `session-state.json` (l'assistant n'a aucun autre moyen de connaître le sien) — repli **fiable
+  seulement après le 1er SessionStart**, avant quoi le fichier porte encore l'id de la session
+  *précédente* : le lot #100 rend donc ce repli **visible** (mention « session DÉDUITE » dans la
+  sortie) et le **refuse** quand l'id déduit tient déjà un autre lot en vol, symptôme direct de
+  l'id périmé (avec `--session` explicite, aucune de ces deux gardes ne s'applique). `fleet leave
+  --id` (lot #100) est la réciproque de `join` : retire l'entrée du registre **et** son
+  `handoff-lot-<id>.md`, sans toucher au backlog — quitter la vague ne fait que rendre la session
+  autonome (plus de garde de périmètre, plus d'injection), le lot reste au plan. `fleet show`
   **distingue** « absent » de « JSON corrompu » — que `loadFleet` confond — en lisant le fichier
   **avant** tout `loadFleet` (`readJson` met un JSON invalide en quarantaine dès la 1ʳᵉ lecture) :
   le fail-open des hooks reste muet, le diagnostic passe par la commande.
@@ -694,13 +701,17 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   "raison"`, `lib/backlog.js: reopenLot`, FIA-25, lot #98) : la soupape aux quatre refus
   `status === 'done'` des setters. Repasse le lot en `todo` — **jamais** `in_progress`, `startLot`
   reste le seul chemin qui inscrit `session_owner`/vague — et **efface** `closed_commit`,
-  `closed_at`, `closed_session_id`, `closed_occupancy`, `closed_verify`. Cet effacement n'est pas
-  cosmétique : `doneLot` réécrit bien les quatre premiers au cycle suivant, mais **pas**
-  `closed_verify` (posé par `setClosedVerify`, qui refuse d'écraser un verdict déjà là) — sans lui,
-  un lot re-clos hériterait du verdict de l'ancien cycle. `--note` **obligatoire** (une réouverture
+  `closed_at`, `closed_session_id`, `closed_occupancy`, `closed_verify`, plus (lot #100)
+  `session_owner` et `lot_number`. Cet effacement n'est pas cosmétique : `doneLot` réécrit bien les
+  quatre premiers au cycle suivant, mais **pas** `closed_verify` (posé par `setClosedVerify`, qui
+  refuse d'écraser un verdict déjà là) — sans lui, un lot re-clos hériterait du verdict de l'ancien
+  cycle ; et un `lot_number`/`session_owner` survivant faisait afficher « Lot N » et un
+  propriétaire fantôme sur un lot redevenu **à faire**. `--note` **obligatoire** (une réouverture
   détruit de la trace, elle doit dire pourquoi) ; l'historique `reopened` (`{at, note, from_commit,
-  from_verify}`, capé `MAX_REOPEN` = 5, clé **droppée** si vide comme `integrations`) conserve le
-  commit et le verdict effacés. Refus explicite si le lot est déjà ouvert, ou `dropped` (statut
+  from_verify, from_lot_number}`, capé `MAX_REOPEN` = 5, clé **droppée** si vide comme
+  `integrations`) conserve le commit, le verdict et le numéro effacés, et son **cardinal** est
+  exposé en colonne d'export `reopened` (vide si jamais rouvert : un lot repris deux fois n'a pas
+  coûté le prix d'un lot passé du premier coup, et c'était invisible au reporting). Refus explicite si le lot est déjà ouvert, ou `dropped` (statut
   distinct : un lot abandonné se re-crée, il ne se rouvre pas). Côté archive, la fiche tier 1 est
   **complétée** en pied, jamais écrasée (`archive.appendFicheLine`), et la ligne d'index tier 0 est
   laissée telle quelle — la clôture a bien eu lieu, et la re-clôture la remet à jour (`mergeEntry`).

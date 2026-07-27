@@ -167,9 +167,9 @@ function normalizeDepends(deps, selfId) {
 
 // Historique de RÉOUVERTURE d'un lot (FIA-25, lot #98) : une entrée par `reopen`, la plus
 // récente en dernier, capée à MAX_REOPEN. Chaque entrée fige ce que la réouverture EFFACE du
-// cycle précédent (commit de clôture, verdict verify) — sans quoi cette trace disparaîtrait
-// avec les champs closed_*. Clé DROPPÉE (undefined) si vide, comme `integrations` : un lot
-// jamais rouvert — l'immense majorité — ne porte pas le champ.
+// cycle précédent (commit de clôture, verdict verify, numéro de lot depuis le lot #100) — sans
+// quoi cette trace disparaîtrait avec les champs closed_*. Clé DROPPÉE (undefined) si vide, comme
+// `integrations` : un lot jamais rouvert — l'immense majorité — ne porte pas le champ.
 function normalizeReopened(x) {
   if (!Array.isArray(x)) return undefined;
   const out = [];
@@ -182,6 +182,7 @@ function normalizeReopened(x) {
       note,
       from_commit: e.from_commit || null,
       from_verify: CLOSED_VERIFY_VALUES.includes(e.from_verify) ? e.from_verify : null,
+      from_lot_number: Number.isFinite(e.from_lot_number) ? e.from_lot_number : null,
     });
   }
   return out.length ? out.slice(-MAX_REOPEN) : undefined;
@@ -578,7 +579,11 @@ function reopenLot(root, id, note) {
   const lot = findLot(b, id);
   if (!lot || lot.status !== 'done') return null;
   const entry = {
-    at: now(), note: n, from_commit: lot.closed_commit || null, from_verify: lot.closed_verify || null,
+    at: now(),
+    note: n,
+    from_commit: lot.closed_commit || null,
+    from_verify: lot.closed_verify || null,
+    from_lot_number: Number.isFinite(lot.lot_number) ? lot.lot_number : null,
   };
   lot.reopened = (Array.isArray(lot.reopened) ? lot.reopened : []).concat([entry]).slice(-MAX_REOPEN);
   lot.status = 'todo';
@@ -587,6 +592,14 @@ function reopenLot(root, id, note) {
   lot.closed_session_id = null;
   lot.closed_occupancy = null;
   lot.closed_verify = null;
+  // Dette #98 soldée (lot #100) : `session_owner` et `lot_number` sont eux aussi des reliquats du
+  // cycle clos. Laissés en place, ils mentaient jusqu'au prochain `startLot`/`doneLot` : la
+  // statusline et `show` affichaient « Lot 7 » pour un lot redevenu à faire, et une session
+  // étrangère restait inscrite propriétaire d'un lot que personne ne tient. Le numéro effacé
+  // survit dans l'entrée d'historique (`from_lot_number`) ; le prochain `doneLot` en attribuera
+  // un neuf (le compteur global ne recule jamais — deux cycles = deux numéros, c'est voulu).
+  lot.session_owner = null;
+  lot.lot_number = null;
   if (!saveBacklog(root, b)) return null;
   // Trace tier 1 : la fiche du cycle clos n'est jamais démentie ni écrasée, on lui AJOUTE la
   // ligne de réouverture. Fail-open strict (même contrat qu'à la clôture) : pas de fiche, ou
@@ -868,14 +881,19 @@ function reconcile(root) {
 
 // Colonnes d'export. Les 4 dernières (lot #83) dérivent de integrations.command_optimizer :
 // vides pour un lot sans métrologie RTK (legacy ou sans activité) — jamais de valeur inventée.
+// `reopened` (dette #98 soldée au lot #100) est DÉRIVÉE : le tableau d'historique brut noierait
+// une ligne CSV. On exporte son cardinal — un lot rouvert 2 fois n'a pas coûté le même prix
+// qu'un lot passé du premier coup, et c'était invisible à l'export. Vide (pas `0`) quand le lot
+// n'a jamais été rouvert : même contrat que les colonnes RTK, aucune valeur inventée.
 const EXPORT_COLUMNS = ['id', 'title', 'status', 'epic', 'model_hint', 'effort_hint', 'verify', 'closed_verify', 'cost_tokens', 'closed_commit', 'closed_at',
-  'closed_session_id', 'closed_occupancy',
+  'closed_session_id', 'closed_occupancy', 'reopened',
   'command_optimizer_provider', 'command_tokens_saved', 'command_saving_ratio', 'command_evidence'];
 
 // Valeur d'une colonne d'export pour un lot : colonnes dérivées RTK d'abord, sinon champ brut.
 function exportCell(l, col) {
   const co = l.integrations && l.integrations.command_optimizer;
   switch (col) {
+    case 'reopened': return Array.isArray(l.reopened) && l.reopened.length ? l.reopened.length : '';
     case 'command_optimizer_provider': return co && co.evidence ? (co.provider || '') : '';
     case 'command_tokens_saved': return co && co.evidence === 'measured' ? co.tokens_saved_estimated : '';
     case 'command_saving_ratio': return co && co.evidence === 'measured' ? co.saving_ratio : '';
