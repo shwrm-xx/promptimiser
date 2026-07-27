@@ -99,3 +99,4 @@
 #0094 | 2026-07-27 | 116deb8 | epic:Archive à tiroirs | verify:inconnu | fiche:non | Archive tier 0 : index, filet doneLot, backfill des lots clos
 #0095 | 2026-07-27 | c08fc51 | epic:Archive à tiroirs | verify:inconnu | fiche:oui | Archive tier 1/2 : fiches, commande /pmz:archive, test pare-feu
 #0096 | 2026-07-27 | 245c8e1 | epic:Archive à tiroirs | verify:inconnu | fiche:oui | Clôture traçable : closed_verify + session/occupancy auto
+#0097 | 2026-07-27 | 3cf81f0 | epic:Archive à tiroirs | verify:inconnu | fiche:non | Série fiable : depends_on dans nextLot + gates de vague
