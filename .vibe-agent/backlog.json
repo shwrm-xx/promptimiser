@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 101,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-27T12:57:55.538Z",
+  "updated_at": "2026-07-27T13:13:11.437Z",
   "lots": [
     {
       "id": 1,
@@ -2327,32 +2327,24 @@
       "id": 100,
       "title": "Dette #98/#99 : export reopened, reset au reopen, --depends strict, fleet leave",
       "scope": "Solder la dette laissée par les lots #98 et #99 : colonne reopened à l'export, effacement session_owner/lot_number au reopen, validation stricte de add --depends, fiabilisation du repli --session de fleet join, sous-commande fleet leave.",
-      "status": "in_progress",
+      "status": "done",
       "model_hint": "sonnet",
       "effort_hint": "medium",
       "epic": "Archive à tiroirs",
       "verify": "node test/run-tests.js",
-      "closed_commit": null,
-      "closed_at": null,
-      "closed_session_id": null,
-      "closed_occupancy": null,
+      "closed_commit": "ffe257e",
+      "closed_at": "2026-07-27T13:13:11.435Z",
+      "closed_session_id": "ef5eb774-6a51-43b1-9c80-940a44743c99",
+      "closed_occupancy": 222482,
       "closed_verify": null,
       "cost_tokens": 0,
       "started_at": "2026-07-27T12:57:55.537Z",
-      "lot_number": null,
+      "lot_number": 59,
       "note": null,
       "session_touches": 0,
       "perimeter": [],
       "depends_on": [],
-      "session_owner": null,
-      "integrations": {
-        "command_optimizer": {
-          "snapshot_start": {
-            "commands": 1,
-            "delivered_tokens": 4
-          }
-        }
-      }
+      "session_owner": null
     }
   ]
 }

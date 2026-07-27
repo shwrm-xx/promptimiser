@@ -102,3 +102,4 @@
 #0097 | 2026-07-27 | 3cf81f0 | epic:Archive à tiroirs | verify:inconnu | fiche:oui | Série fiable : depends_on dans nextLot + gates de vague
 #0098 | 2026-07-27 | 77c0395 | epic:Archive à tiroirs | verify:inconnu | fiche:oui | CLI backlog : depends corrigeable + reopen d'un lot clos
 #0099 | 2026-07-27 | 1e0433e | epic:Archive à tiroirs | verify:inconnu | fiche:oui | Fiabilité vague : handoff par lot, purge fleet, écriture outillée
+#0100 | 2026-07-27 | ffe257e | epic:Archive à tiroirs | verify:inconnu | fiche:non | Dette #98/#99 : export reopened, reset au reopen, --depends strict, fleet leave
