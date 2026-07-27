@@ -1046,6 +1046,20 @@ manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string r
   assemblé restent inchangés — seule la déclaration `name` et les commandes d'install/diagnostic
   qui la référencent (`marketplace.json`, `build-plugin.js`, `migrate-to-plugin.js`, doc) sont
   mis à jour.
+- **Métadonnées marketplace complétées + première publication conforme** (lot F1, 2026-07-27) :
+  `promptimizer/.claude-plugin/plugin.json` portait `name`/`version`/`description`/`author`/
+  `keywords` mais aucun `license`/`homepage`/`repository` — champs optionnels du schéma manifeste
+  officiel (`docs/en/plugins-reference`) mais attendus pour une diffusion publique sérieuse. Ajout
+  de `license: "MIT"` (`LICENSE` créé à la racine du dépôt, absent jusqu'ici) et
+  `homepage`/`repository` pointant sur `github.com/shwrm-xx/promptimiser` (dérivés du remote
+  `origin`, pas inventés). `marketplace.json` (généré par `build-plugin.js`) était déjà conforme
+  au schéma requis (`name`, `owner.name`, `plugins[].name`+`source`) — vérifié contre la doc
+  officielle, aucun changement nécessaire côté marketplace elle-même. `VERSION` bumpée
+  1.7.0 → 2.0.1 (décision utilisateur explicite, marque la première publication publique
+  conforme, pas une rupture de compatibilité technique). Validé avant publication :
+  `claude plugin validate <dossier> --strict` (0 avertissement) + installation réelle en
+  `CLAUDE_CONFIG_DIR` bac à sable (`marketplace add` + `plugin install`) avant tout
+  `publish-plugin.js --push`.
 
 ### Migration manuel → plugin + versioning semver (lot D3)
 

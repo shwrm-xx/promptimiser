@@ -2,6 +2,29 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-27 — lot #102 « Publication du plugin + conformité marketplace » (epic « Diffusion »)
+
+Première publication publique conforme du canal plugin (jusqu'ici seulement outillé, jamais
+republié depuis les lots #98–#101).
+
+- **Métadonnées manifeste complétées** (`promptimizer/.claude-plugin/plugin.json`) — ajout de
+  `license: "MIT"`, `homepage` et `repository` (pointant sur `github.com/shwrm-xx/promptimiser`),
+  absents jusqu'ici. Vérifié contre le schéma manifeste officiel Anthropic
+  (`docs/en/plugins-reference`) : ces trois champs sont optionnels mais attendus pour une
+  diffusion publique sérieuse.
+- **`LICENSE` (MIT)** créé à la racine du dépôt — absent jusqu'à ce lot.
+- **`marketplace.json` vérifié conforme** au schéma officiel (`name`, `owner.name`,
+  `plugins[].name`+`source`) — aucun changement nécessaire, `build-plugin.js` le générait déjà
+  correctement.
+- **`VERSION` 1.7.0 → 2.0.1** (décision utilisateur) — marque cette première publication
+  conforme, sans rupture de compatibilité technique.
+- **`dist/marketplace/` reconstruit à neuf** (`node install/build-plugin.js`, ancien reliquat
+  purgé) puis validé : `claude plugin validate --strict` (0 avertissement) et installation réelle
+  en `CLAUDE_CONFIG_DIR` bac à sable (`marketplace add` + `plugin install`), avant republication
+  sur la branche publique `plugin-release` (`node install/publish-plugin.js --push`).
+
+Tests : `node test/run-tests.js` → 1631 OK / 0 échec (aucun test nouveau, lot documentaire/build).
+
 ## 2026-07-27 — lot #101 « Purge logs/handoffs orphelins + FIA-23 » (epic « Archive à tiroirs »)
 
 Solde la dette laissée par le lot #100 (croissance non bornée de `.vibe-agent/logs/`, handoffs de
