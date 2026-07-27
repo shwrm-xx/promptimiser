@@ -98,4 +98,4 @@
 #0093 | 2026-07-27 | eec69ea | epic:Archive à tiroirs | verify:inconnu | fiche:non | Socle d'écriture sûre : writeAtomicText + quarantaine JSON
 #0094 | 2026-07-27 | 116deb8 | epic:Archive à tiroirs | verify:inconnu | fiche:non | Archive tier 0 : index, filet doneLot, backfill des lots clos
 #0095 | 2026-07-27 | c08fc51 | epic:Archive à tiroirs | verify:inconnu | fiche:oui | Archive tier 1/2 : fiches, commande /pmz:archive, test pare-feu
-#0096 | 2026-07-27 | 245c8e1 | epic:Archive à tiroirs | verify:inconnu | fiche:non | Clôture traçable : closed_verify + session/occupancy auto
+#0096 | 2026-07-27 | 245c8e1 | epic:Archive à tiroirs | verify:inconnu | fiche:oui | Clôture traçable : closed_verify + session/occupancy auto
