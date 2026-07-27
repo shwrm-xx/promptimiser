@@ -28,14 +28,20 @@ quand : … » vérifiable** — au-delà, redécouper plutôt que grossir un lo
    doute, « série » assumé et annoncé (le lot reste périmètre-vide, séquentiel classique).
    Si un ordre s'impose entre lots, poser un `depends_on` (id des lots qui doivent être
    clos avant).
-2. Faire valider le découpage, les modèles préconisés, l'epic éventuel **et le périmètre/les
-   dépendances proposés** par l'utilisateur en **UNE** question (pas dix).
+   **Statuer aussi sur l'US** pour **chaque** lot : soit un chemin de fichier US existant
+   (gabarit `templates/us-template.md` — persona/besoin/bénéfice, critères d'acceptation
+   numérotés, hors-périmètre), soit « pas d'US » assumé — jamais de silence sur ce point,
+   même règle que le périmètre. Ne **jamais** deviner ou halluciner un chemin : si l'US n'est
+   pas encore rédigée, l'écrire d'abord (dans le dépôt, à un chemin réel), sinon omettre `--us`.
+2. Faire valider le découpage, les modèles préconisés, l'epic éventuel, le périmètre/les
+   dépendances proposés **et le statut US de chaque lot** par l'utilisateur en **UNE**
+   question (pas dix).
 3. Si un epic a été validé, l'enregistrer une fois pour la session/le titre :
    `node ~/.claude/promptimizer/scripts/backlog.js epic --set "Nom de l'epic"`
    (écrit `.vibe-agent/epic`, cap 60 caractères).
 4. Persister chaque lot validé (un appel par lot), avec sa préconisation de modèle, son
    effort, si présent l'epic, et si validé son périmètre/ses dépendances :
-   `node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "fait quand : …" --model sonnet --effort medium --verify "npm test" --epic "Nom de l'epic" --perimeter "src/a/**" --depends 12`
+   `node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "fait quand : …" --model sonnet --effort medium --verify "npm test" --epic "Nom de l'epic" --perimeter "src/a/**" --depends 12 --us "docs/us/US-42.md"`
    (`--model` est **obligatoire** — l'ajout est refusé sans lui ; `--effort` doit valoir
    `low`/`medium`/`high`/`xhigh` sinon l'ajout est refusé ; `--epic` reste optionnel ;
    `--perimeter`/`--depends` répétables, optionnels, omis si aucun périmètre net).
@@ -43,6 +49,9 @@ quand : … » vérifiable** — au-delà, redécouper plutôt que grossir un lo
    lint…) : c'est la preuve rejouée à l'auto-clôture. Un lot posé sans elle sera « clos sans
    preuve » — à réserver aux lots réellement non vérifiables par commande (doc, choix visuel).
    Elle est éditable après coup : `backlog.js verify --set "…" --id <id>`.
+   **`--us` uniquement si le fichier existe déjà** : l'ajout est **refusé** si le chemin est
+   introuvable (garde d'existence, aucun pointeur mort accepté) ; omis si l'US n'a pas été
+   statuée à l'étape 1.
 4bis. **Si ≥ 2 lots viennent d'être persistés**, calculer le plan de vagues :
    `node ~/.claude/promptimizer/scripts/backlog.js parallelize --json` (ajouter `--epic "…"` si
    posé). Une **opportunité réelle** = au moins une vague contenant **≥ 2 lots** (une vague à 1

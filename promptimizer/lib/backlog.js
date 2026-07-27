@@ -4,6 +4,7 @@
 // les todos de Claude Code (étapes d'exécution volatiles, capturées à part).
 // Le fichier doit rester lisible d'un coup d'œil : caps stricts, pas de champs Jira.
 // Fail-silent partout (même philosophie que lot.js) : au pire, backlog vide valide.
+const fs = require('fs');
 const path = require('path');
 const { vibeDir, ensureLedger, git } = require('./project');
 const { writeAtomic, readJson } = require('./fsjson');
@@ -56,6 +57,11 @@ const MAX_MODEL_HINT = 40; // préconisation de modèle par lot (ex. « sonnet �
 const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh']; // effort de raisonnement par lot, cf. --effort
 const MAX_EPIC = 60; // label d'epic optionnel du lot, cf. .vibe-agent/epic (lib/lot.js)
 const MAX_VERIFY = 150; // commande shell de preuve de clôture, exécutée par /close-batch avant done
+// Chemin (relatif au dépôt) vers une US détaillée du lot (persona/besoin/bénéfice, critères
+// d'acceptation numérotés — cf. templates/us-template.md). Le backlog ne porte qu'un POINTEUR
+// vérifié à l'écriture (addLot refuse un chemin inexistant), jamais le contenu : même pattern
+// que le résumé court + fichier référencé imposé par truncGuard pour scope/note qui débordent.
+const MAX_US = 200;
 const MAX_OWNER = 80; // id de session propriétaire d'un lot en cours (mode fleet, cf. D3)
 const MAX_DEPENDS = 20; // ids de lots dont ce lot dépend (ordre de réintégration, cf. D3)
 const MAX_NOTE = 200;
@@ -98,7 +104,7 @@ const CLOSED_VERIFY_VALUES = ['ok', 'failed', 'timeout', 'none'];
 // On les repère ici pour permettre au CLI de REJETER explicitement plutôt que tronquer.
 // Flags qui consomment une valeur (mono ou liste répétable — cf. flag()/flagList()) :
 const VALUE_FLAGS = ['cwd', 'id', 'epic', 'set', 'model', 'effort', 'title', 'scope',
-  'verify', 'owner', 'commit', 'note', 'into', 'format', 'depends', 'perimeter', 'session', 'occupancy',
+  'verify', 'us', 'owner', 'commit', 'note', 'into', 'format', 'depends', 'perimeter', 'session', 'occupancy',
   'gate', 'final-gate', 'branch', 'state'];
 // Flags booléens (ne consomment aucune valeur) — listés pour documentation ;
 // tout flag hors VALUE_FLAGS est traité comme booléen (ne consomme rien).
@@ -205,6 +211,7 @@ function loadBacklog(root) {
       effort_hint: EFFORT_LEVELS.includes(l.effort_hint) ? l.effort_hint : null,
       epic: l.epic ? trunc(l.epic, MAX_EPIC) : null,
       verify: l.verify ? trunc(l.verify, MAX_VERIFY) : null,
+      us: l.us ? trunc(l.us, MAX_US) : null,
       closed_commit: l.closed_commit || null,
       closed_at: l.closed_at || null,
       closed_session_id: l.closed_session_id || null,
@@ -282,13 +289,17 @@ function openCount(b) {
   return b.lots.filter((l) => l.status === 'todo' || l.status === 'in_progress').length;
 }
 
-// null si titre vide, plan déjà au cap, ou effort fourni mais hors énum (refus doux,
-// c'est au CLI de l'expliquer). perimeter/dependsOn (optionnels, trailing) : parallélisation
-// gouvernée (D3) — vides par défaut, donc lot séquentiel classique.
-function addLot(root, title, scope, modelHint, epic, verify, effortHint, perimeter, dependsOn) {
+// null si titre vide, plan déjà au cap, effort fourni mais hors énum, ou US fournie mais
+// introuvable sous la racine (refus doux, c'est au CLI de l'expliquer). perimeter/dependsOn
+// (optionnels, trailing) : parallélisation gouvernée (D3) — vides par défaut, donc lot
+// séquentiel classique. us (optionnel, trailing) : chemin relatif au dépôt vers une US
+// détaillée — VÉRIFIÉ ici (garde défensive, doublée du refus explicite côté CLI) : un
+// pointeur mort serait pire qu'aucune US, jamais accepté en silence.
+function addLot(root, title, scope, modelHint, epic, verify, effortHint, perimeter, dependsOn, us) {
   const t = trunc(title, MAX_TITLE);
   if (!t) return null;
   if (effortHint && !EFFORT_LEVELS.includes(effortHint)) return null;
+  if (us && !fs.existsSync(path.join(root, us))) return null;
   const b = loadBacklog(root);
   if (openCount(b) >= MAX_LOTS_OPEN) return null;
   const lot = {
@@ -300,6 +311,7 @@ function addLot(root, title, scope, modelHint, epic, verify, effortHint, perimet
     effort_hint: effortHint && EFFORT_LEVELS.includes(effortHint) ? effortHint : null,
     epic: epic ? trunc(epic, MAX_EPIC) : null,
     verify: verify ? trunc(verify, MAX_VERIFY) : null,
+    us: us ? trunc(us, MAX_US) : null,
     closed_commit: null,
     closed_at: null,
     closed_session_id: null,
@@ -885,7 +897,7 @@ function reconcile(root) {
 // une ligne CSV. On exporte son cardinal — un lot rouvert 2 fois n'a pas coûté le même prix
 // qu'un lot passé du premier coup, et c'était invisible à l'export. Vide (pas `0`) quand le lot
 // n'a jamais été rouvert : même contrat que les colonnes RTK, aucune valeur inventée.
-const EXPORT_COLUMNS = ['id', 'title', 'status', 'epic', 'model_hint', 'effort_hint', 'verify', 'closed_verify', 'cost_tokens', 'closed_commit', 'closed_at',
+const EXPORT_COLUMNS = ['id', 'title', 'status', 'epic', 'us', 'model_hint', 'effort_hint', 'verify', 'closed_verify', 'cost_tokens', 'closed_commit', 'closed_at',
   'closed_session_id', 'closed_occupancy', 'reopened',
   'command_optimizer_provider', 'command_tokens_saved', 'command_saving_ratio', 'command_evidence'];
 
@@ -929,6 +941,6 @@ module.exports = {
   epicBilan, estimateCost, canCoexist, pairwiseCoexist, planWaves, waveBranch,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot, modelEffortTag,
   exportCsv, exportMarkdown, orphanArgs, overflowFields, isTruncated, VALUE_FLAGS, BOOL_FLAGS,
-  MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_OWNER, MAX_DEPENDS, MAX_NOTE, MAX_REOPEN, MAX_TODOS, EFFORT_LEVELS,
+  MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_US, MAX_OWNER, MAX_DEPENDS, MAX_NOTE, MAX_REOPEN, MAX_TODOS, EFFORT_LEVELS,
   COST_BUDGET_TOKENS, COST_WARN_TOKENS, CLOSED_VERIFY_VALUES,
 };

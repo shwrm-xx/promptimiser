@@ -4,6 +4,8 @@
 // /scope, /close-batch ou la consigne MSG_LARGE. Arguments par argv (citables,
 // auditables par PreToolUse), sortie lisible par défaut, --json pour la machine.
 // Toujours exit 0 (fail-open) : une erreur de plan ne doit jamais casser un flux.
+const fs = require('fs');
+const path = require('path');
 const { gitRoot } = require('../lib/project');
 const { parseCwd } = require('../lib/cli');
 const backlog = require('../lib/backlog');
@@ -96,6 +98,7 @@ function show(root, json, epicFilter) {
     if (l.epic) line += ` [epic : ${l.epic}]`;
     line += backlog.modelEffortTag(l);
     if (l.verify) line += ` [verify : ${l.verify}]`;
+    if (l.us) line += ` [US : ${l.us}]`;
     if (l.perimeter && l.perimeter.length) line += ` [périmètre : ${l.perimeter.join(', ')}]`;
     if (l.depends_on && l.depends_on.length) line += ` [dépend de : ${l.depends_on.map((d) => '#' + d).join(', ')}]`;
     if (l.status === 'done' && l.closed_commit) line += ` — commit ${l.closed_commit}`;
@@ -109,7 +112,7 @@ function show(root, json, epicFilter) {
     const cut = [
       ['title', l.title, backlog.MAX_TITLE], ['scope', l.scope, backlog.MAX_SCOPE],
       ['epic', l.epic, backlog.MAX_EPIC], ['verify', l.verify, backlog.MAX_VERIFY],
-      ['note', l.note, backlog.MAX_NOTE],
+      ['us', l.us, backlog.MAX_US], ['note', l.note, backlog.MAX_NOTE],
     ].filter(([, v, max]) => v && backlog.isTruncated(v, max)).map(([name]) => name);
     if (cut.length) line += ` [⚠️ tronqué en donnée : ${cut.join(', ')}]`;
     out(line);
@@ -525,10 +528,20 @@ function main() {
       { name: '--model', value: model, max: backlog.MAX_MODEL_HINT },
       { name: '--epic', value: flag('epic'), max: backlog.MAX_EPIC },
       { name: '--verify', value: flag('verify'), max: backlog.MAX_VERIFY },
+      { name: '--us', value: flag('us'), max: backlog.MAX_US },
     ])) return;
     const dep = parseDepends();
     if (!dep.ok) return;
-    const newLot = backlog.addLot(root, flag('title'), flag('scope'), model, flag('epic'), flag('verify'), effort, flagList('perimeter'), dep.ids);
+    // Garde d'existence (fait quand du lot « Pointeur US vérifié ») : un chemin --us qui ne
+    // pointe vers rien est REFUSÉ, jamais avalé — un pointeur mort serait pire qu'aucune US.
+    // addLot revalide en interne (défense en profondeur) ; on refuse ici en premier pour un
+    // message explicite, distinct du refus générique --title/plafond ci-dessous.
+    const usPath = flag('us');
+    if (usPath && !fs.existsSync(path.join(root, usPath))) {
+      return out(`Refusé : --us pointe vers un chemin inexistant (« ${usPath} », relatif à la racine du dépôt « ${root} »). `
+        + 'Crée le fichier d\'abord (cf. templates/us-template.md), ou omets --us si l\'US n\'est pas encore rédigée.');
+    }
+    const newLot = backlog.addLot(root, flag('title'), flag('scope'), model, flag('epic'), flag('verify'), effort, flagList('perimeter'), dep.ids, usPath);
     if (!newLot) {
       const b = backlog.loadBacklog(root);
       if (b.lots.filter((l) => l.status === 'todo' || l.status === 'in_progress').length >= backlog.MAX_LOTS_OPEN) {
@@ -536,7 +549,7 @@ function main() {
       }
       return out('Refusé : --title manquant ou vide.');
     }
-    let addMsg = `Lot #${newLot.id} « ${newLot.title} » ajouté (à faire)${backlog.modelEffortTag(newLot)}${newLot.epic ? ` [epic : ${newLot.epic}]` : ''}${newLot.verify ? ` [verify : ${newLot.verify}]` : ''}${newLot.perimeter.length ? ` [périmètre : ${newLot.perimeter.join(', ')}]` : ''}${newLot.depends_on.length ? ` [dépend de : ${newLot.depends_on.map((d) => '#' + d).join(', ')}]` : ''}.`;
+    let addMsg = `Lot #${newLot.id} « ${newLot.title} » ajouté (à faire)${backlog.modelEffortTag(newLot)}${newLot.epic ? ` [epic : ${newLot.epic}]` : ''}${newLot.verify ? ` [verify : ${newLot.verify}]` : ''}${newLot.us ? ` [US : ${newLot.us}]` : ''}${newLot.perimeter.length ? ` [périmètre : ${newLot.perimeter.join(', ')}]` : ''}${newLot.depends_on.length ? ` [dépend de : ${newLot.depends_on.map((d) => '#' + d).join(', ')}]` : ''}.`;
     addMsg += estimateSuffix(backlog.loadBacklog(root), newLot);
     return out(addMsg);
   }

@@ -1,0 +1,16 @@
+# US — <titre court>
+
+En tant que <persona>,
+je veux <besoin>,
+afin de <bénéfice>.
+
+## Critères d'acceptation
+1. ...
+2. ...
+3. ...
+
+## Hors périmètre
+- ...
+
+## Notes
+- ...

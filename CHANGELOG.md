@@ -2,6 +2,39 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-27 — « Pointeur US vérifié » (epic « US & Jira », backlog #101)
+
+Premier lot de l'epic « US & Jira » (option A du lien Jira scopée par `/pmz:scope` — pointeur
+seul, zéro réseau, zéro secret ; suite : #102 champ `integrations.jira`, #103 trailer + fiche,
+#104 doc). Comble un trou identifié pendant le scope : rien n'assurait qu'une US détaillée
+existe réellement avant qu'un lot ne s'en réclame.
+
+- **Champ `us` sur le lot** (`lib/backlog.js`) — chemin relatif au dépôt vers une US détaillée
+  (persona/besoin/bénéfice, critères d'acceptation numérotés). Le backlog ne porte qu'un
+  **pointeur vérifié à l'écriture**, jamais le contenu — même philosophie que le pattern déjà
+  imposé par `truncGuard` pour un `scope`/une `note` qui déborde (résumé court + fichier
+  référencé). Plafond `MAX_US = 200`.
+- **Garde d'existence, doublée** — `add --us <chemin>` **refuse explicitement** un chemin
+  introuvable, côté CLI (message nommant le chemin et la racine) **et** côté lib (`addLot`
+  revalide en interne : un appelant qui contournerait le CLI ne peut pas non plus stocker un
+  pointeur mort). Un pointeur mort serait pire qu'aucune US.
+- **`show`/`export` réaffichent le chemin** (`[US : …]`, colonne `us` en CSV/Markdown) — vide,
+  jamais inventé, pour un lot sans US.
+- **`templates/us-template.md`** — gabarit du format propre (persona/besoin/bénéfice, critères
+  d'acceptation numérotés, hors-périmètre explicite). Part tel quel dans le canal plugin
+  (`fs.cpSync` récursif de `build-plugin.js`, aucun câblage nécessaire).
+- **`/pmz:scope` statue sur l'US de chaque lot** — même patron que le périmètre : soit un
+  chemin d'US déjà rédigée, soit « pas d'US » assumé, jamais de silence. Interdiction explicite
+  de deviner/halluciner un chemin.
+- **Fiche d'archive orpheline réparée** — `.vibe-agent/archive/lots/lot-0101.md` (la fiche du
+  lot « Purge logs/handoffs + FIA-23 », numéroté hors backlog dans la continuité du
+  CHANGELOG) collisionnait avec le nouvel id backlog #101. Déplacée vers
+  `legacy-purge-logs-fia23.md` (contenu conservé, git-suivi) — l'espace d'id #101 est désormais
+  libre pour ce lot.
+
+Tests : `node test/run-tests.js` → 1643 OK / 0 échec (section « backlog — champ us », 12
+assertions neuves ; 1 test existant mis à jour — en-tête d'export CSV figée).
+
 ## 2026-07-27 — lot #102 « Publication du plugin + conformité marketplace » (epic « Diffusion »)
 
 Première publication publique conforme du canal plugin (jusqu'ici seulement outillé, jamais

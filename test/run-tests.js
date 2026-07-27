@@ -1944,7 +1944,7 @@ section('backlog — verify + closed_occupancy (lot #29)');
 
   // V14. backlog.js export --format csv|md : en-tête + lignes, refus doux hors énum
   const rExportCsv = runNode(BKLG, ['export', '--cwd', repo, '--format', 'csv']);
-  ok(/^id,title,status,epic,model_hint,effort_hint,verify,closed_verify,cost_tokens,closed_commit,closed_at,closed_session_id,closed_occupancy/.test(rExportCsv.out),
+  ok(/^id,title,status,epic,us,model_hint,effort_hint,verify,closed_verify,cost_tokens,closed_commit,closed_at,closed_session_id,closed_occupancy/.test(rExportCsv.out),
     'export --format csv : en-tête de colonnes');
   ok(rExportCsv.out.split('\n').length >= backlogLib.loadBacklog(repo).lots.length + 1,
     'export --format csv : une ligne par lot (+ en-tête)');
@@ -6985,6 +6985,57 @@ section('FIA-23 — atomicité, corruption, concurrence : trous de couverture co
   } else {
     console.log('  (FIA-23 concurrence : /bin/sh indisponible, sous-test sauté — pas un échec)');
   }
+}
+
+section('backlog — champ us : garde d\'existence, show, export (epic « US & Jira », backlog #101)');
+{
+  const repo = path.join(SANDBOX, 'repo-us');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const lotOf = (id) => backlogLib.loadBacklog(repo).lots.find((l) => l.id === id);
+
+  // U1. --us pointant vers un chemin inexistant -> refus explicite, rien de persisté.
+  const rMissing = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot US A', '--model', 'sonnet', '--us', 'docs/us/US-42.md']);
+  ok(/Refusé/.test(rMissing.out) && /chemin inexistant/.test(rMissing.out) && /docs\/us\/US-42\.md/.test(rMissing.out),
+    'U1 : add --us <chemin inexistant> -> refus explicite (message nomme le chemin)');
+  ok(!backlogLib.loadBacklog(repo).lots.length, 'U1 : aucun lot persisté (refus AVANT toute écriture)');
+
+  // U2. --us pointant vers un fichier réel -> persisté, réaffiché par show et add.
+  fs.mkdirSync(path.join(repo, 'docs', 'us'), { recursive: true });
+  fs.writeFileSync(path.join(repo, 'docs', 'us', 'US-42.md'), '# US — test\n');
+  const rOk = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot US A', '--model', 'sonnet', '--us', 'docs/us/US-42.md']);
+  ok(/\[US : docs\/us\/US-42\.md\]/.test(rOk.out), 'U2 : add --us <chemin existant> -> accepté, tag [US : …] dans la sortie');
+  ok(lotOf(1).us === 'docs/us/US-42.md', 'U2 : champ us persisté sur le lot');
+  const rShow = runNode(BKLG, ['show', '--cwd', repo]);
+  ok(/\[US : docs\/us\/US-42\.md\]/.test(rShow.out), 'U2 : show réaffiche le pointeur US');
+
+  // U3. lot posé SANS --us : champ absent, aucune ligne [US : …] (pas de valeur inventée).
+  const rNoUs = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot US B', '--model', 'sonnet']);
+  ok(!/\[US :/.test(rNoUs.out), 'U3 : add sans --us -> aucun tag [US : …]');
+  ok(lotOf(2).us === null, 'U3 : champ us absent (null) sur un lot sans US');
+
+  // U4. export CSV/Markdown expose la colonne us — vide pour le lot sans US.
+  const csv = backlogLib.exportCsv(backlogLib.loadBacklog(repo));
+  const header = csv.split('\n')[0].split(',');
+  ok(header.includes('us'), 'U4 : colonne us présente dans l\'export CSV');
+  const rows = csv.split('\n').slice(1);
+  const usCol = header.indexOf('us');
+  ok(rows[0].split(',')[usCol] === 'docs/us/US-42.md', 'U4 : export CSV — lot #1 porte son chemin US');
+  ok(rows[1].split(',')[usCol] === '', 'U4 : export CSV — lot #2 (sans US) -> cellule vide, rien d\'inventé');
+
+  // U5. garde anti-troncature (#90) partagée : --us au-delà de MAX_US -> refus, jamais tronqué.
+  const tooLong = 'docs/' + 'x'.repeat(backlogLib.MAX_US) + '.md';
+  const rLong = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot US C', '--model', 'sonnet', '--us', tooLong]);
+  ok(/Refusé/.test(rLong.out) && /--us/.test(rLong.out), 'U5 : --us au-delà du plafond MAX_US -> refus explicite (truncGuard)');
+
+  // U6. défense en profondeur côté lib : addLot() direct refuse aussi un chemin inexistant
+  // (pas seulement le CLI) — un appelant qui contournerait le CLI ne doit pas pouvoir stocker
+  // un pointeur mort.
+  const direct = backlogLib.addLot(repo, 'Lot direct', null, 'sonnet', null, null, null, [], [], 'chemin/mort.md');
+  ok(direct === null, 'U6 : lib.addLot() refuse aussi directement un chemin --us inexistant (garde doublée)');
 }
 
 // ============================ RÉSUMÉ ============================
