@@ -17,10 +17,14 @@
 // rapporter une erreur (conflit, gate rouge). Mais elle reste prudente : par défaut le CLI ne fait
 // que PROPOSER le plan (comme pmz:parallelize) ; l'exécution réelle exige `--execute` — la fusion
 // est une frontière de vague que l'humain valide (D3, palier 2).
+const fs = require('fs');
+const path = require('path');
 const { spawnSync } = require('child_process');
 const { resolveTool } = require('./env');
+const { writeAtomicText } = require('./fsjson');
 const fleetLib = require('./fleet');
 const backlogLib = require('./backlog');
+const handoffLib = require('./handoff');
 
 const GIT = resolveTool('git');
 
@@ -238,7 +242,24 @@ function runPipeline(root, opts) {
     merged.push({ id: step.id, title: step.title, status: 'reintegrated', gate: gateCmd, head });
   }
   ctx.lastGreen = lastGreen;
-  return finalize({ ok: true, plan, merged, integrationBranch }, ctx);
+  const res = finalize({ ok: true, plan, merged, integrationBranch }, ctx);
+  if (res.waveClosed) closeWave(root, res);
+  return res;
+}
+
+// Vague close : on RANGE derrière soi (lot #99, FIA-20/FIA-19). Sans cette purge, fleet.json
+// gardait ses lots `reintegrated` — vague « active » indéfiniment — et les handoff-lot-*.md des
+// filles restaient sur disque en péremption. Snapshot AVANT vidage : la trace de la vague
+// (lots, ext_requests, wave_id) part dans le rapport persisté, elle n'est pas perdue.
+// Best-effort intégral : un échec de rangement ne remet JAMAIS en cause la clôture.
+function closeWave(root, res) {
+  try {
+    res.waveSnapshot = fleetLib.loadFleet(root);
+    res.wavePurged = fleetLib.clearWave(root);
+    res.handoffsPurged = handoffLib.purgeLotHandoffs(root);
+  } catch (_) {
+    /* fail-open */
+  }
 }
 
 // Gate FINAL de vague (lot #97, décision D3 P3 : « la vague n'est close que quand la branche
@@ -291,4 +312,116 @@ function finalize(res, ctx) {
   return res;
 }
 
-module.exports = { planReintegration, aggregateChangelog, runPipeline, waveGateCommands, noGateSteps };
+// PUR. Rapport COMPLET d'un run de `--execute` (lot #99, FIA-22). Le bloc changelog agrégé et
+// surtout la SORTIE des gates rouges n'existaient que sur stdout : une session qui crashe ou
+// qui omet le collage les perdait sans recours — une ré-exécution renvoie 'nothing-ready' (les
+// lots sont déjà `reintegrated`) et rien ne sait régénérer le bloc. Ici, tout est sur disque.
+// opts : { waveId, date (ISO court), stamp (horodatage lisible) }.
+function reintegrateReport(res, opts) {
+  const o = opts || {};
+  const r = res || {};
+  const merged = Array.isArray(r.merged) ? r.merged : [];
+  const plan = r.plan || { steps: [], notReady: [], blocked: [] };
+  const L = [];
+  L.push(`# Réintégration de vague${o.waveId ? ` « ${o.waveId} »` : ''} — ${o.stamp || o.date || ''}`);
+  L.push('');
+  L.push(`- Branche d'intégration : \`${r.integrationBranch || '?'}\``);
+  L.push(`- Résultat : ${r.ok ? 'OK' : 'ÉCHEC'}${r.reason ? ` (${r.reason})` : ''}`);
+  L.push(`- Vague close : ${r.waveClosed ? 'oui' : 'non'}`);
+  if (r.culprit) L.push(`- Coupable nommé : lot #${r.culprit.id}${r.culprit.title ? ` « ${r.culprit.title} »` : ''}`);
+  L.push('');
+
+  L.push('## Plan exécuté');
+  if (plan.steps.length) {
+    for (const s of plan.steps) {
+      const dep = s.depends_on && s.depends_on.length ? ` (dépend de ${s.depends_on.map((d) => '#' + d).join(', ')})` : '';
+      L.push(`- #${s.id} « ${s.title || '?'} »${dep} — branche \`${s.branch || '?'}\` — gate : ${s.verify || '(aucune)'}`);
+    }
+  } else {
+    L.push('- (aucun lot mergeable)');
+  }
+  if (plan.notReady && plan.notReady.length) L.push(`- Encore en vol : ${plan.notReady.map((x) => '#' + x.id).join(', ')}`);
+  if (plan.blocked && plan.blocked.length) for (const x of plan.blocked) L.push(`- Bloqué : #${x.id} — ${x.reason}`);
+  L.push('');
+
+  L.push('## Statut par lot');
+  for (const m of merged) {
+    L.push(`- #${m.id}${m.title ? ` « ${m.title} »` : ''} — **${m.status}**${m.head ? ` (${String(m.head).slice(0, 7)})` : ''}${m.gate ? ` — gate : \`${m.gate}\`` : ''}${m.reason ? ` — ${m.reason}` : ''}`);
+  }
+  if (!merged.length) L.push('- (aucun merge tenté)');
+  // Sortie INTÉGRALE des échecs : c'est le diagnostic qui disparaissait avec le terminal (et
+  // que le mode humain du CLI n'affichait même pas — seul --json le portait).
+  for (const m of merged) {
+    if (!m.out) continue;
+    L.push('');
+    L.push(`### Sortie — #${m.id} (${m.status})`);
+    L.push('```');
+    L.push(String(m.out).trim());
+    L.push('```');
+  }
+  L.push('');
+
+  const fg = r.finalGate;
+  if (fg) {
+    L.push('## Gate final de vague');
+    if (fg.ran && fg.ok) L.push(`✅ vert : ${(fg.commands || []).join(' && ')}`);
+    else if (fg.ran) {
+      L.push(`❌ ROUGE : \`${fg.failed}\``);
+      L.push('```');
+      L.push(String(fg.out || '').trim());
+      L.push('```');
+    } else L.push(`non exécuté (${fg.reason || '?'})`);
+    L.push('');
+  }
+
+  L.push('## Bloc changelog agrégé (à coller dans CHANGELOG.md)');
+  L.push('');
+  L.push(aggregateChangelog(merged, { waveId: o.waveId, date: o.date, integrationBranch: r.integrationBranch }));
+  L.push('');
+
+  // Snapshot pris AVANT le vidage du fleet : seule trace restante de la composition de la
+  // vague (qui tenait quoi, quelles demandes d'élargissement) une fois fleet.json purgé.
+  const snap = r.waveSnapshot;
+  if (snap && Array.isArray(snap.lots) && snap.lots.length) {
+    L.push('## Composition de la vague (snapshot avant purge de fleet.json)');
+    for (const l of snap.lots) {
+      const ext = l.ext_requests && l.ext_requests.length ? ` — demandes hors périmètre : ${l.ext_requests.join(', ')}` : '';
+      L.push(`- #${l.id}${l.title ? ` « ${l.title} »` : ''} — session ${l.session_owner} — branche \`${l.branch || '?'}\` — état ${l.state}${ext}`);
+    }
+    L.push('');
+  }
+  return L.join('\n');
+}
+
+// Persiste le rapport sous `.vibe-agent/logs/reintegrate-<stamp>.md`. Même motif de « tiroir
+// brut » que lib/output-fallback : jamais injecté au SessionStart (aucun code SessionStart ne
+// lit .vibe-agent/logs), référencé par CHEMIN dans la sortie du CLI. Horodatage à la seconde +
+// suffixe unique : un rerun le même jour (cas nominal après correction d'un gate rouge) ne doit
+// pas écraser le rapport du run précédent. Renvoie le chemin relatif au repo, ou null.
+function writeReintegrateReport(root, res, opts) {
+  try {
+    if (!root || !res) return null;
+    const now = new Date();
+    const stamp = now.toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    const dir = path.join(root, '.vibe-agent', 'logs');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `reintegrate-${stamp}-${process.pid.toString(36)}.md`);
+    const body = reintegrateReport(res, Object.assign({
+      date: now.toISOString().slice(0, 10),
+      stamp: `${now.toISOString().slice(0, 16).replace('T', ' ')} UTC`,
+    }, opts || {}));
+    return writeAtomicText(file, body + '\n') ? path.relative(root, file) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+module.exports = {
+  planReintegration,
+  aggregateChangelog,
+  runPipeline,
+  waveGateCommands,
+  noGateSteps,
+  reintegrateReport,
+  writeReintegrateReport,
+};

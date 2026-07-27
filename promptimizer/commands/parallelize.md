@@ -27,7 +27,13 @@ jamais aboutir (cycle, dépend d'un non parallélisable) est « bloqué ».
    d'une vague est valide tant que les périmètres retenus restent disjoints et les `depends_on`
    satisfaits — les lots écartés repassent simplement en série. Après validation humaine, chaque
    lot retenu se démarre à la main :
-   `node ~/.claude/promptimizer/scripts/backlog.js start --id <id> --owner <session>`.
+   `node ~/.claude/promptimizer/scripts/backlog.js start --id <id> --owner <session>`,
+   puis la session fille **s'inscrit dans la vague** (garde de périmètre + injection) :
+   `node ~/.claude/promptimizer/scripts/backlog.js fleet join --id <id> --perimeter "<globs>"`
+   (`--session <id>` si l'id de session persisté n'est pas le bon ; `fleet show` pour l'état de la
+   vague, `fleet ready --id <id>` quand le lot est prêt à merger).
+   **N'édite jamais `fleet.json` à la main** : un JSON invalide désactive TOUTE la vague en
+   silence (fail-open des hooks) — `fleet show` est le seul canal qui te le dira.
 4. En briefant chaque **session fille**, rappelle-lui que le périmètre exclusif vaut AUSSI pour
    ses **sous-agents** (Task/Agent) : le garde-fou d'écriture ne protège que la session
    propriétaire, pas les sous-agents qu'elle délègue — elle doit leur transmettre le périmètre.

@@ -2,6 +2,65 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-27 — lot #99 « Fiabilité vague : handoff par lot, purge fleet, écriture outillée » (epic « Archive à tiroirs »)
+
+Quatre pertes d'état propres aux **vagues parallèles**, toutes silencieuses. Hors vague, rien ne
+change : l'invariant mono-session est préservé partout.
+
+- **Un handoff PAR LOT** (FIA-19, `lib/handoff.js`, `hooks/stop.js`, `hooks/pre-compact.js`,
+  `hooks/session-start.js`) — `handoff.md` était clé sur le seul `root` : N sessions filles
+  partageant le même checkout s'écrasaient mutuellement à chaque Stop, et l'état du lot A était
+  remplacé par celui du lot B juste avant la reprise de A. Une session **inscrite au fleet** écrit
+  désormais `handoff-lot-<id>.md` ; `handoff.md` reste celui de l'orchestrateur. En **lecture**,
+  repli sur `handoff.md` (une fille démarre donc sur le handoff de l'orchestrateur tant qu'elle n'a
+  pas écrit le sien) ; en **écriture**, jamais de repli — ce serait le last-writer-wins qu'on
+  supprime. Activé **uniquement** quand la fille partage le root : en mode worktree elle a déjà son
+  `.vibe-agent` isolé, un fichier par lot y serait mort-né. Le chemin **manuel** suit :
+  `/close-batch` annonce en tête le fichier à écrire (« Handoff à écrire dans : … »), sinon la fille
+  aurait écrit un manuel dans `handoff.md` que son propre auto masquait aussitôt. Le cas
+  mono-session « deux `/close-batch` successifs s'écrasent » n'est **pas** corrigé : l'écrasement
+  dernier-état est le design assumé.
+- **Fin de la péremption du fleet** (FIA-20, `lib/fleet.js`, `lib/reintegrate.js`) —
+  `lotForSession` ignore désormais les lots `reintegrated` : sans ce filtre, l'ex-fille restait
+  **bridée** par la garde de périmètre (toute écriture hors zone refusée) et recevait au
+  SessionStart une injection périmée « tu tiens le lot #X (état : reintegrated) ». Et rien ne
+  purgeait jamais le registre — `removeLot` n'avait aucun appelant de production et la vague restait
+  « active » indéfiniment : à la clôture, `runPipeline` **range** (`clearWave`, vidage en UNE
+  écriture plutôt qu'une boucle à N fenêtres de course, + purge des `handoff-lot-*.md`). Le
+  rangement est **annoncé** dans la sortie, jamais silencieux, et la composition de la vague part
+  dans le rapport ci-dessous (snapshot pris avant le vidage). `clearWave` ne crée jamais un
+  `fleet.json` absent.
+- **Écriture outillée du registre** (FIA-21, `scripts/backlog.js fleet join|ready|show`) — aucun
+  canal n'inscrivait un lot dans `fleet.json` ni ne le passait `ready` : `upsertLot` n'avait aucun
+  appelant de production et il fallait éditer le JSON à la main. Une faute de frappe, et `loadFleet`
+  (fail-open, contrat hooks) désactivait **toute la vague en silence** — garde de périmètre et
+  injection éteintes sans un mot. C'est une **commande**, donc les refus sont explicites (`--id`
+  absent ou non numérique, `--state` hors `STATES`, propriétaire introuvable, fleet illisible) tout
+  en gardant `exit 0`. `--session` retombe sur l'id persisté dans `session-state.json` (l'assistant
+  n'a aucun autre moyen de connaître le sien) ; un id hors plan et une inscription **sans
+  périmètre** sont avertis, pas refusés. `fleet show` **distingue** « absent » de « JSON corrompu »
+  — que `loadFleet` confond — en lisant le fichier **avant** tout `loadFleet` (`readJson` met un
+  JSON invalide en quarantaine dès la première lecture) : le fail-open reste muet, le diagnostic
+  passe par la commande.
+- **Rapport de réintégration persisté** (FIA-22, `lib/reintegrate.js`, `scripts/backlog.js`) — le
+  bloc changelog agrégé et la **sortie des gates rouges** n'existaient que sur stdout ; une session
+  qui crashe ou omet le collage les perdait **sans recours** (une ré-exécution renvoie
+  `nothing-ready`, les lots étant déjà `reintegrated`). Pire, le diagnostic d'un conflit/gate rouge
+  n'était même pas affiché en mode humain — seulement en `--json`. Chaque `--execute` écrit
+  maintenant `.vibe-agent/logs/reintegrate-<horodatage>-<pid>.md` **avant toute sortie**, donc sur
+  **tous** les chemins de retour : plan exécuté, statut par lot, sortie **intégrale** des échecs,
+  gate final, changelog agrégé, snapshot de la vague. Horodaté à la seconde (un rerun le même jour
+  n'écrase rien), **jamais injecté** au SessionStart, référencé par chemin. Un simple refus
+  (`nothing-ready`, `no-gate`) n'écrit rien.
+- **Tests** — 37 assertions (section R99) : isolation réelle de deux filles sur le même checkout,
+  repli hors vague, mode worktree, libération de la garde PreToolUse après réintégration (la sœur
+  encore en vol restant bridée), `clearWave` idempotent et non créateur, refus du CLI `fleet`,
+  diagnostic de `fleet.json` corrompu sans quarantaine, rapport écrit **même en échec** avec la
+  sortie du gate rouge. Suite complète verte : **1576 OK / 0 échec**.
+- **Doc** — ARCHITECTURE (handoff par lot et son articulation avec `fleet.json`, purge de fin de
+  vague, écriture outillée, rapport persisté), README, `/parallelize`, `/reintegrate`,
+  `/close-batch`, `/fresh-session`, `.gitignore`.
+
 ## 2026-07-27 — lot #98 « CLI backlog : depends corrigeable + reopen d'un lot clos » (epic « Archive à tiroirs »)
 
 Deux corrections du plan de lots qui n'avaient aucun chemin outillé et imposaient d'éditer

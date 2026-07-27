@@ -1307,10 +1307,17 @@ const handoff = require(path.join(PKG, 'lib', 'handoff'));
   const fleetLib = require(path.join(PKG, 'lib', 'fleet'));
   fleetLib.upsertLot(repo, { id: 7, session_owner: 'sess-h1', perimeter: ['lib/x'], branch: 'lot-7' });
   fleetLib.saveFleet(repo, { ...fleetLib.loadFleet(repo), wave_id: 'vague-2' });
+  const hfLot7 = path.join(repo, '.vibe-agent', 'handoff-lot-7.md');
+  const beforeWave = fs.readFileSync(hf, 'utf8');
   runHook('stop.js', { session_id: 'sess-h1', cwd: repo, transcript_path: empty });
-  const cWave = fs.readFileSync(hf, 'utf8');
+  // FIA-19 (lot #99) : la session TIENT le lot #7 dans la vague → elle écrit son propre
+  // handoff-lot-7.md et ne touche PAS handoff.md (celui de l'orchestrateur / des sœurs).
+  ok(fs.existsSync(hfLot7), 'FIA-19 : fille en vague -> handoff-lot-7.md écrit');
+  ok(fs.readFileSync(hf, 'utf8') === beforeWave, 'FIA-19 : handoff.md NON écrasé par la fille');
+  const cWave = fs.readFileSync(hfLot7, 'utf8');
   ok(/vague-2/.test(cWave) && /pmz:parallelize/.test(cWave), 'handoff auto : pointeur de vague active présent (pas le plan)');
   fleetLib.removeLot(repo, 7); // redevient inerte pour la suite des tests K
+  fs.unlinkSync(hfLot7);
 
   // K3b. vague inactive -> aucune mention (silence par défaut, cas ultra-majoritaire)
   runHook('stop.js', { session_id: 'sess-h1', cwd: repo, transcript_path: empty });
@@ -5594,9 +5601,14 @@ section('reintegrate — pipeline de merge git réel + vigies (lib/reintegrate.j
     ok(res.ok === true && res.merged.length === 2 && res.merged.every((m) => m.status === 'reintegrated'),
       'RP1 : les 2 lots mergés + gate vert');
     ok(res.waveClosed === true, 'RP1 : vague close (tout réintégré)');
+    // FIA-20 (lot #99) : vague close -> fleet PURGÉ (redevient inerte). Le snapshot pris avant
+    // le vidage porte la trace des états `reintegrated`.
     const f = fleet.loadFleet(repo);
-    ok(f.lots.find((l) => l.id === 1).state === 'reintegrated' && f.lots.find((l) => l.id === 2).state === 'reintegrated',
-      'RP1 : fleet -> les 2 lots reintegrated');
+    ok(f.lots.length === 0 && f.active === false, 'RP1 : fleet purgé à la clôture de vague (inerte)');
+    ok(res.wavePurged === true, 'RP1 : purge signalée dans le résultat');
+    ok(res.waveSnapshot && res.waveSnapshot.lots.length === 2
+      && res.waveSnapshot.lots.every((l) => l.state === 'reintegrated'),
+      'RP1 : snapshot pré-purge -> les 2 lots reintegrated');
     ok(f.integration_head && f.integration_branch === def, 'RP1 : tête d\'intégration avancée + branche posée');
     const merges = execFileSync('git', ['-C', repo, 'log', '--merges', '--oneline'], { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
     ok(merges.length === 2, 'RP1 : 2 commits de merge réels sur la branche d\'intégration');
@@ -5693,7 +5705,21 @@ section('backlog — CLI reintegrate : plan proposé (défaut) + exécution (--e
   ok(/Réintégration de vague «|## 20\d\d-\d\d-\d\d — Réintégration/.test(re.out) && /Vague entièrement réintégrée/.test(re.out),
     'CR3 : changelog agrégé + vague close');
   ok(execFileSync('git', ['-C', repo, 'log', '--merges', '--oneline'], { encoding: 'utf8' }).trim() !== '', 'CR3 : merge réel présent');
-  ok(fleet.loadFleet(repo).lots.find((l) => l.id === 1).state === 'reintegrated', 'CR3 : fleet -> lot reintegrated');
+  // FIA-20 (lot #99) : la vague close purge fleet.json — plus de lot fantôme `reintegrated`
+  // qui briderait l'ex-fille (garde de périmètre) et lui injecterait un état périmé.
+  ok(fleet.loadFleet(repo).lots.length === 0, 'CR3 : fleet purgé après clôture de vague');
+  ok(/Rangement : fleet\.json vidé/.test(re.out), 'CR3 : purge ANNONCÉE dans la sortie (jamais silencieuse)');
+  // FIA-22 : rapport persisté + référencé par chemin.
+  const rpt = /Rapport complet[^:]*: (\S+)/.exec(re.out);
+  ok(!!rpt, 'CR3 : chemin du rapport de réintégration référencé dans la sortie');
+  if (rpt) {
+    const body = fs.readFileSync(path.join(repo, rpt[1]), 'utf8');
+    ok(/# Réintégration de vague/.test(body) && /## Statut par lot/.test(body)
+      && /## Bloc changelog agrégé/.test(body) && /#1[^\n]*reintegrated/.test(body),
+      'CR3 : rapport persisté -> plan, statut par lot, bloc changelog');
+    ok(/## Composition de la vague \(snapshot avant purge/.test(body) && /session s1/.test(body),
+      'CR3 : rapport porte le snapshot de la vague pris avant la purge');
+  }
 }
 
 // ============ FIA-16/17/18. SÉRIE FIABLE : depends_on hors vague + gates de vague (lot #97) ============
@@ -5970,7 +5996,7 @@ section('backlog — CLI reintegrate : refus sans gate + restitution du gate fin
   const rg = runNode(BKLG, ['reintegrate', '--cwd', repo, '--execute', '--gate', 'true', '--final-gate', 'true']);
   ok(/✅ #1/.test(rg.out) && /Gate final de vague vert/.test(rg.out), 'CG3 : --gate + --final-gate -> mergé et gate final restitué');
   ok(/Vague entièrement réintégrée/.test(rg.out), 'CG3 : vague close');
-  ok(fleet.loadFleet(repo).lots.find((l) => l.id === 1).state === 'reintegrated', 'CG3 : fleet -> lot reintegrated');
+  ok(fleet.loadFleet(repo).lots.length === 0, 'CG3 : fleet purgé après clôture de vague (FIA-20)');
 }
 
 // ============ R98. CLI depends (FIA-24) + reopen (FIA-25) (lot #98) ============
@@ -6072,6 +6098,176 @@ section('backlog — CLI depends corrigeable + reopen d\'un lot clos (lot #98)')
   // R8. appendFicheLine : no-op explicite quand aucune fiche n'existe
   ok(archive.appendFicheLine(repo, 2, 'ligne').action === 'missing', 'R8 : appendFicheLine sans fiche -> missing');
   ok(archive.appendFicheLine(repo, 1, '').action === 'error', 'R8 : appendFicheLine ligne vide -> error (aucune écriture)');
+}
+
+// ============ R99. FIABILITÉ VAGUE : handoff par lot, purge fleet, CLI fleet, rapport (lot #99) ============
+section('fleet/handoff — handoff par lot, purge de vague, CLI fleet, rapport de réintégration (lot #99)');
+{
+  const fleet = require(path.join(PKG, 'lib', 'fleet'));
+  const repo = path.join(SANDBOX, 'repo-r99');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'CLAUDE.md'), 'règles');
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const empty = path.join(SANDBOX, 'empty.jsonl');
+  const vd = path.join(repo, '.vibe-agent');
+  const hMain = path.join(vd, 'handoff.md');
+
+  // ---- FIA-19. Deux filles sur le MÊME checkout n'écrasent plus le handoff l'une de l'autre ----
+  fleet.upsertLot(repo, { id: 11, session_owner: 's-a', perimeter: ['lib/a'], branch: 'lot-11', title: 'Lot A' });
+  fleet.upsertLot(repo, { id: 12, session_owner: 's-b', perimeter: ['lib/b'], branch: 'lot-12', title: 'Lot B' });
+  fs.writeFileSync(path.join(repo, 'marqueur-a.txt'), 'a');
+  runHook('stop.js', { session_id: 's-a', cwd: repo, transcript_path: empty });
+  fs.writeFileSync(path.join(repo, 'marqueur-b.txt'), 'b');
+  runHook('stop.js', { session_id: 's-b', cwd: repo, transcript_path: empty });
+  const h11 = path.join(vd, 'handoff-lot-11.md');
+  const h12 = path.join(vd, 'handoff-lot-12.md');
+  ok(fs.existsSync(h11) && fs.existsSync(h12), 'R99-a : un handoff PAR LOT (handoff-lot-11/12.md)');
+  ok(fs.readFileSync(h11, 'utf8').includes('marqueur-a.txt')
+    && !fs.readFileSync(h11, 'utf8').includes('marqueur-b.txt'),
+    'R99-a : le handoff du lot #11 porte SON état, pas celui écrit après par la sœur');
+  ok(!fs.existsSync(hMain), 'R99-a : aucune fille n\'écrit handoff.md (réservé à l\'orchestrateur)');
+
+  // Injection : chaque fille relit SON handoff, pas celui de la sœur.
+  function ctxOf(sid) {
+    const r = runHook('session-start.js', { source: 'startup', cwd: repo, session_id: sid });
+    try { return JSON.parse(r.out).hookSpecificOutput.additionalContext || ''; } catch (_) { return ''; }
+  }
+  const ctxA = ctxOf('s-a');
+  ok(/marqueur-a\.txt/.test(ctxA) && !/marqueur-b\.txt/.test(ctxA),
+    'R99-a : la fille #11 relit SON état, jamais celui de la sœur #12');
+
+  // Repli : une session HORS vague (non inscrite) lit toujours handoff.md — invariant mono-session.
+  fs.writeFileSync(hMain, handoff.MANUAL_MARKER + '\n## Handoff orchestrateur\nCONTENU-ORCH\n');
+  ok(/CONTENU-ORCH/.test(ctxOf('s-orch')), 'R99-a : session hors vague -> handoff.md (comportement inchangé)');
+
+  // Mode worktree : la fille a son propre checkout, un fichier par lot y serait mort-né.
+  fleet.upsertLot(repo, { id: 13, session_owner: 's-w', perimeter: ['lib/c'], branch: 'lot-13', worktree: '/tmp/wt-13' });
+  ok(handoff.handoffFile(repo, 's-w') === hMain, 'R99-a : worktree -> handoff.md (pas de fichier mort-né)');
+  ok(handoff.handoffFile(repo, 's-a') === h11, 'R99-a : même checkout -> handoff-lot-<id>.md');
+
+  // Chemin MANUEL (/close-batch, /fresh-session) : la checklist annonce le BON fichier — sinon
+  // la fille écrirait un manuel dans handoff.md que son propre handoff auto masquerait.
+  const st = require(path.join(PKG, 'lib', 'state'));
+  st.saveSessionState(repo, { session_id: 's-a' });
+  const cb = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', repo]);
+  ok(/Handoff à écrire dans : `\.vibe-agent\/handoff-lot-11\.md`/.test(cb.out),
+    'R99-a : /close-batch annonce le handoff DE LA FILLE (pas handoff.md)');
+
+  // ---- FIA-20. Un lot réintégré ne « tient » plus la session (garde + injection libérées) ----
+  fleet.setLotState(repo, 11, 'reintegrated');
+  ok(fleet.lotForSession(repo, 's-a') === null, 'R99-b : lotForSession ignore un lot reintegrated');
+  ok(fleet.fleetLines(repo, 's-a').length === 0, 'R99-b : plus d\'injection périmée pour l\'ex-fille');
+  // La garde d'écriture PreToolUse ne bride plus l'ex-fille hors de son ancien périmètre.
+  const denied = runHook('pre-tool-use.js', {
+    session_id: 's-a', cwd: repo, tool_name: 'Write', tool_input: { file_path: path.join(repo, 'lib', 'zzz.js') },
+  });
+  ok(!/deny/.test(denied.out || ''), 'R99-b : ex-fille réintégrée -> écriture hors ancien périmètre NON refusée');
+  // Une sœur encore en vol reste bridée : le filtre ne désarme pas la vague.
+  const deniedB = runHook('pre-tool-use.js', {
+    session_id: 's-b', cwd: repo, tool_name: 'Write', tool_input: { file_path: path.join(repo, 'lib', 'zzz.js') },
+  });
+  ok(/deny/.test(deniedB.out || ''), 'R99-b : la sœur encore en vol reste bridée (vague intacte)');
+
+  // clearWave : vidage en une écriture, et jamais de création ex nihilo.
+  ok(fleet.clearWave(repo) === true && fleet.loadFleet(repo).active === false, 'R99-b : clearWave vide la vague (inerte)');
+  ok(fleet.clearWave(repo) === false, 'R99-b : clearWave idempotent (vague déjà vide -> false)');
+  const virgin = path.join(SANDBOX, 'repo-r99-virgin');
+  fs.mkdirSync(virgin, { recursive: true });
+  ok(fleet.clearWave(virgin) === false && !fs.existsSync(path.join(virgin, '.vibe-agent', 'fleet.json')),
+    'R99-b : clearWave ne CRÉE jamais un fleet.json absent');
+  // purgeLotHandoffs : les handoffs de lot orphelins disparaissent, handoff.md est épargné.
+  ok(handoff.purgeLotHandoffs(repo) === 2 && !fs.existsSync(h11) && !fs.existsSync(h12) && fs.existsSync(hMain),
+    'R99-b : purgeLotHandoffs retire les handoff-lot-*.md, jamais handoff.md');
+
+  // ---- FIA-21. CLI fleet join / ready / show ----
+  const wrepo = path.join(SANDBOX, 'repo-r99-cli');
+  fs.mkdirSync(wrepo, { recursive: true });
+  execFileSync('git', ['init', '-q', wrepo]);
+  fs.writeFileSync(path.join(wrepo, 'a.txt'), '1');
+  execFileSync('git', ['-C', wrepo, 'add', '.']);
+  execFileSync('git', ['-C', wrepo, 'commit', '-q', '-m', 'init']);
+  ok(/Aucune vague active/.test(runNode(BKLG, ['fleet', 'show', '--cwd', wrepo]).out),
+    'R99-c : fleet show sans fleet.json -> aucune vague (pas d\'erreur)');
+  ok(/Refusé : --session manquante/.test(runNode(BKLG, ['fleet', 'join', '--cwd', wrepo, '--id', '1']).out),
+    'R99-c : fleet join sans propriétaire -> refus EXPLICITE (normalizeLot le rejetterait en silence)');
+  runNode(BKLG, ['add', '--cwd', wrepo, '--title', 'Lot un', '--model', 'opus']);
+  const j1 = runNode(BKLG, ['fleet', 'join', '--cwd', wrepo, '--id', '1', '--session', 'sx', '--perimeter', 'lib/a/**']);
+  ok(/Lot #1 inscrit dans la vague/.test(j1.out) && !/⚠️ Aucun lot #1/.test(j1.out), 'R99-c : fleet join inscrit le lot');
+  const fj = fleet.loadFleet(wrepo);
+  ok(fj.active && fj.lots.length === 1 && fj.lots[0].session_owner === 'sx'
+    && fj.lots[0].perimeter.length === 1 && fj.lots[0].title === 'Lot un' && fj.lots[0].state === 'in_flight',
+    'R99-c : entrée normalisée (session, périmètre, titre repris du plan, état par défaut)');
+  ok(/⚠️ Aucun lot #77 au plan/.test(runNode(BKLG, ['fleet', 'join', '--cwd', wrepo, '--id', '77', '--session', 'sy']).out),
+    'R99-c : id hors plan -> AVERTI (pas refusé)');
+  ok(/ne bride RIEN pour cette session/.test(runNode(BKLG, ['fleet', 'join', '--cwd', wrepo, '--id', '77', '--session', 'sy']).out),
+    'R99-c : inscription sans périmètre -> avertissement (la garde ne bride rien)');
+  ok(/Refusé : --state invalide/.test(runNode(BKLG, ['fleet', 'join', '--cwd', wrepo, '--id', '1', '--session', 'sx', '--state', 'wat']).out),
+    'R99-c : --state hors STATES -> refus explicite');
+  ok(/Refusé : --id manquant/.test(runNode(BKLG, ['fleet', 'ready', '--cwd', wrepo]).out), 'R99-c : fleet ready sans --id -> refus');
+  ok(/Refusé : lot #404 absent du registre/.test(runNode(BKLG, ['fleet', 'ready', '--cwd', wrepo, '--id', '404']).out),
+    'R99-c : fleet ready sur un lot non inscrit -> refus explicite');
+  ok(/passé « prêt à merger »/.test(runNode(BKLG, ['fleet', 'ready', '--cwd', wrepo, '--id', '1']).out)
+    && fleet.loadFleet(wrepo).lots.find((l) => l.id === 1).state === 'ready',
+    'R99-c : fleet ready -> transition in_flight -> ready outillée');
+  const sh = runNode(BKLG, ['fleet', 'show', '--cwd', wrepo]);
+  ok(/#1 « Lot un » \[ready\]/.test(sh.out) && /session sx/.test(sh.out), 'R99-c : fleet show liste les lots et leur état');
+  // Le sous-verbe n'est PAS pris pour un argument orphelin (dispatch à deux tokens).
+  ok(!/argument\(s\) orphelin/.test(sh.out), 'R99-c : `fleet show` ne déclenche pas la garde des orphelins');
+  // Diagnostic du fleet corrompu : le fail-open des hooks est muet, la COMMANDE parle.
+  fs.writeFileSync(path.join(wrepo, '.vibe-agent', 'fleet.json'), '{ceci nest pas du json');
+  const bad = runNode(BKLG, ['fleet', 'show', '--cwd', wrepo]);
+  ok(/Vague DÉSACTIVÉE/.test(bad.out) && /illisible/.test(bad.out) && /fail-open/.test(bad.out),
+    'R99-c : fleet.json corrompu -> diagnostic EXPLICITE (vague éteinte en silence sinon)');
+  ok(fs.readFileSync(path.join(wrepo, '.vibe-agent', 'fleet.json'), 'utf8') === '{ceci nest pas du json',
+    'R99-c : le diagnostic ne quarantine pas le fichier (readJust avant loadFleet)');
+  ok(/Refusé : .*illisible/.test(runNode(BKLG, ['fleet', 'join', '--cwd', wrepo, '--id', '2', '--session', 'sz']).out),
+    'R99-c : join sur un fleet illisible -> refus (écrire par-dessus perdrait les autres lots)');
+
+  // ---- FIA-22. Rapport persisté même quand le pipeline ÉCHOUE (gate rouge) ----
+  const grepo = path.join(SANDBOX, 'repo-r99-report');
+  fs.mkdirSync(path.join(grepo, 'lib'), { recursive: true });
+  execFileSync('git', ['init', '-q', grepo]);
+  // .vibe-agent ignoré : sinon le `git add` automatique du backlog met backlog.json à l'index
+  // et git refuse le merge (« local changes would be overwritten ») — bruit de bac à sable.
+  fs.writeFileSync(path.join(grepo, '.gitignore'), '.vibe-agent/\n');
+  fs.writeFileSync(path.join(grepo, 'lib', 'a.js'), 'base\n');
+  execFileSync('git', ['-C', grepo, 'add', '.']);
+  execFileSync('git', ['-C', grepo, 'commit', '-q', '-m', 'init']);
+  const gdef = execFileSync('git', ['-C', grepo, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).trim();
+  execFileSync('git', ['-C', grepo, 'checkout', '-q', '-b', 'lot-1', gdef]);
+  fs.writeFileSync(path.join(grepo, 'lib', 'a.js'), 'lot1\n');
+  execFileSync('git', ['-C', grepo, 'add', '.']);
+  execFileSync('git', ['-C', grepo, 'commit', '-q', '-m', 'edit']);
+  execFileSync('git', ['-C', grepo, 'checkout', '-q', gdef]);
+  runNode(BKLG, ['add', '--cwd', grepo, '--title', 'A', '--model', 'opus', '--verify', 'echo BOOM-DIAGNOSTIC && false']);
+  fleet.upsertLot(grepo, { id: 1, session_owner: 's1', perimeter: ['lib/a'], branch: 'lot-1', state: 'ready', title: 'A' });
+  const gr = runNode(BKLG, ['reintegrate', '--cwd', grepo, '--execute']);
+  ok(/GATE ROUGE/.test(gr.out) && /Vague NON close/.test(gr.out), 'R99-d : gate rouge -> pipeline stoppé');
+  const m = /Rapport complet[^:]*: (\S+)/.exec(gr.out);
+  ok(!!m, 'R99-d : un rapport est persisté MÊME en échec (le diagnostic ne meurt plus avec le terminal)');
+  if (m) {
+    const body = fs.readFileSync(path.join(grepo, m[1]), 'utf8');
+    ok(/BOOM-DIAGNOSTIC/.test(body), 'R99-d : le rapport porte la SORTIE INTÉGRALE du gate rouge');
+    ok(/Résultat : ÉCHEC \(gate-failed\)/.test(body) && /Coupable nommé : lot #1/.test(body),
+      'R99-d : le rapport nomme le coupable et la raison');
+  }
+  // Deux runs successifs -> deux rapports distincts (pas d'écrasement le même jour).
+  runNode(BKLG, ['reintegrate', '--cwd', grepo, '--execute']);
+  const reports = fs.readdirSync(path.join(grepo, '.vibe-agent', 'logs')).filter((f) => /^reintegrate-/.test(f));
+  ok(reports.length >= 2, 'R99-d : un rerun n\'écrase pas le rapport précédent');
+  // Un REFUS (rien de tenté) n'écrit aucun rapport : pas de bruit dans .vibe-agent/logs.
+  const nrepo = path.join(SANDBOX, 'repo-r99-noreport');
+  fs.mkdirSync(nrepo, { recursive: true });
+  execFileSync('git', ['init', '-q', nrepo]);
+  fs.writeFileSync(path.join(nrepo, 'a.txt'), '1');
+  execFileSync('git', ['-C', nrepo, 'add', '.']);
+  execFileSync('git', ['-C', nrepo, 'commit', '-q', '-m', 'init']);
+  const nr = runNode(BKLG, ['reintegrate', '--cwd', nrepo, '--execute']);
+  ok(/Rien à réintégrer/.test(nr.out) && !/Rapport complet/.test(nr.out),
+    'R99-d : refus « rien à réintégrer » -> aucun rapport (pas de bruit)');
 }
 
 // Faux binaire `rtk` (node shebang) piloté par RTK_TEST_MODE — partagé par RTK1 (lot #81) et

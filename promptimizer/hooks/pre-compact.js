@@ -25,7 +25,9 @@ function main() {
   const root = gitRoot(input.cwd || process.cwd());
   if (root) {
     ensureLedger(root);
-    writeAutoHandoff(root); // refuse d'écraser un handoff manuel non consommé, comme au Stop
+    // Refuse d'écraser un handoff manuel non consommé, comme au Stop ; en vague, écrit le
+    // handoff DE CETTE FILLE (handoff-lot-<id>.md) et non celui d'une sœur (FIA-19).
+    writeAutoHandoff(root, input.session_id || null);
   }
   // Rappel chiffré uniquement sur compaction manuelle : l'auto est imposée, un nudge
   // serait du bruit. Fail-open : toute erreur de lecture d'occupation → passThrough.

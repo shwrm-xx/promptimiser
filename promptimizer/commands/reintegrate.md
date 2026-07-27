@@ -40,9 +40,18 @@ Flags de gate (`--execute`) :
    jamais ajouter `--allow-no-gate` de sa propre initiative.
 4. Restituer le résultat par lot (mergé + gate vert / conflit / gate rouge), le verdict du **gate
    final de vague**, le **changelog agrégé** proposé, et l'état de la vague (close ou encore
-   ouverte). En cas d'échec d'étape, corriger le lot coupable, le remettre « prêt », puis relancer
-   `--execute`. Si c'est le **gate final** qui rougit : les merges restent faits (aucun rollback
-   automatique), la branche d'intégration est rouge — corriger sur place, puis relancer.
+   ouverte). En cas d'échec d'étape, corriger le lot coupable, le remettre « prêt »
+   (`fleet ready --id <id>`), puis relancer `--execute`. Si c'est le **gate final** qui rougit :
+   les merges restent faits (aucun rollback automatique), la branche d'intégration est rouge —
+   corriger sur place, puis relancer.
+5. **Rapport persisté** : chaque `--execute` écrit `.vibe-agent/logs/reintegrate-<horodatage>.md`
+   (plan, statut par lot, sortie **intégrale** des conflits/gates rouges, changelog agrégé,
+   composition de la vague). Le chemin est affiché en fin de sortie — cite-le plutôt que de
+   recoller les diagnostics dans le contexte, et va l'y lire si un gate rouge demande un
+   diagnostic (la sortie brute n'est plus affichée dans le terminal).
+6. **Vague close = rangement automatique** : `fleet.json` est vidé (la vague redevient inerte) et
+   les `handoff-lot-*.md` des filles sont purgés. La composition de la vague reste dans le
+   rapport. Ne t'attends donc pas à retrouver les lots `reintegrated` dans `fleet show`.
 
 Le script fait foi : n'invente aucun merge, ne colle le changelog agrégé dans `CHANGELOG.md`
 qu'après exécution réussie.

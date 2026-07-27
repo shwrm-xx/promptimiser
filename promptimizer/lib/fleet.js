@@ -240,16 +240,38 @@ function requestExtension(root, id, relPath) {
   }
 }
 
-// Le lot en vol appartenant à la session `sessionId`, ou null. Une session ne « tient »
-// qu'un lot à la fois dans une vague (premier match).
+// Le lot ENCORE VIVANT appartenant à la session `sessionId`, ou null. Une session ne « tient »
+// qu'un lot à la fois dans une vague (premier match parmi les lots non réintégrés).
+// Un lot `reintegrated` est explicitement IGNORÉ (lot #99, FIA-20) : sans ce filtre, l'ex-fille
+// restait bridée par la garde de périmètre (PreToolUse refuse toute écriture hors zone) et
+// recevait au SessionStart une injection périmée « tu tiens le lot #X (état : reintegrated) »
+// — pour un lot déjà mergé. Sens du fail-open respecté : au pire la session redevient
+// autonome, jamais bridée à tort.
 function lotForSession(fleetOrRoot, sessionId) {
   try {
     if (!sessionId) return null;
     const f = fleetOrRoot && Array.isArray(fleetOrRoot.lots) ? fleetOrRoot : loadFleet(fleetOrRoot);
     if (!f.active) return null;
-    return f.lots.find((l) => l.session_owner === sessionId) || null;
+    return f.lots.find((l) => l.session_owner === sessionId && l.state !== 'reintegrated') || null;
   } catch (_) {
     return null;
+  }
+}
+
+// Vide la vague : `lots: []` en UNE écriture (une boucle removeLot ferait N lectures-écritures,
+// donc N fenêtres de course). La vague vidée redevient inerte par construction (`active` est
+// dérivé de lots.length) — sans ça, rien ne purgeait jamais fleet.json et la vague restait
+// « active » indéfiniment après réintégration. No-op si aucun fleet.json n'existe : on ne CRÉE
+// jamais un registre vide là où il n'y en avait pas. Renvoie true si le vidage a eu lieu.
+function clearWave(root) {
+  if (!root) return false;
+  try {
+    if (!fs.existsSync(fleetFile(root))) return false;
+    const f = loadFleet(root);
+    if (!f.lots.length) return false;
+    return saveFleet(root, Object.assign({}, f, { lots: [] }));
+  } catch (_) {
+    return false;
   }
 }
 
@@ -328,10 +350,12 @@ module.exports = {
   setLotState,
   setIntegrationHead,
   removeLot,
+  clearWave,
   requestExtension,
   pendingExtensions,
   lotForSession,
   fleetLines,
   waveHandoffLines,
   STATES,
+  MAX_STR,
 };

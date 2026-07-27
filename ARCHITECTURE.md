@@ -283,8 +283,25 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   **prioritaire** de `compactResumeMessage`, placé en 2ᵉ position pour survivre au rognage du cap —
   c'est là que la garantie de périmètre compte le plus, le contexte compacté ayant perdu la
   contrainte « ne modifie que X »). Le hook installé v1.3.0 **ignore** ces champs : sans impact tant qu'aucune vague n'est
-  posée, mais la 1ʳᵉ vague réelle exigera un redéploiement du plugin. L'écriture par les sessions
-  (inscription, transitions) et le calcul de vague viennent aux lots #79–#80.
+  posée, mais la 1ʳᵉ vague réelle exigera un redéploiement du plugin.
+  **Écriture outillée du registre** (lot #99, FIA-21) : `backlog.js fleet join|ready|show`
+  enveloppe `upsertLot`/`setLotState`/`loadFleet`. Avant, s'inscrire dans la vague ou passer un
+  lot « prêt » se faisait **à la main dans le JSON** : une faute de frappe et `loadFleet`
+  (fail-open, contrat hooks) désactivait TOUTE la vague **en silence** — garde de périmètre et
+  injection éteintes sans un mot. Comme c'est une **commande** et non un hook, les refus sont
+  explicites (`--id` absent, `--state` hors `STATES`, propriétaire introuvable, fleet illisible)
+  tout en gardant la convention `exit 0`. `--session` retombe sur l'id persisté dans
+  `session-state.json` (l'assistant n'a aucun autre moyen de connaître le sien). `fleet show`
+  **distingue** « absent » de « JSON corrompu » — que `loadFleet` confond — en lisant le fichier
+  **avant** tout `loadFleet` (`readJson` met un JSON invalide en quarantaine dès la 1ʳᵉ lecture) :
+  le fail-open des hooks reste muet, le diagnostic passe par la commande.
+  **Purge de fin de vague** (lot #99, FIA-20) : `lotForSession` ignore les lots `reintegrated` —
+  sans ce filtre l'ex-fille restait **bridée** par la garde de périmètre et recevait une injection
+  périmée « tu tiens le lot #X (état : reintegrated) ». Et à la clôture, `runPipeline` **range** :
+  `fleet.clearWave` (vidage en UNE écriture — une boucle `removeLot` ferait N fenêtres de course)
+  + `handoff.purgeLotHandoffs`. `clearWave` ne crée jamais un `fleet.json` absent. La composition
+  de la vague n'est pas perdue : un **snapshot pris avant le vidage** part dans le rapport de
+  réintégration (ci-dessous).
   **`fleet.waveHandoffLines(root)`** (lot #91) : pointeur d'**une** ligne pour la session
   **orchestratrice** (pas d'inscription dans la vague, contrairement à `fleetLines` ci-dessus) —
   wave_id + décompte de lots + renvoi vers `/pmz:parallelize`, jamais le plan complet (celui-ci
@@ -486,6 +503,18 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
      seul le signal de clôture est retenu (l'humain arbitre, D3 palier 2). Cas dégénéré (aucun
      `verify` dans la vague) : on **clôt en le disant** (`finalGate.reason = 'no-gate'`) plutôt que
      de bloquer.
+- **Rapport de réintégration persisté** (lot #99, FIA-22) : le bloc changelog agrégé et surtout la
+  **sortie des gates rouges** n'existaient que sur le stdout du `--execute` — une session qui
+  crashe ou qui omet le collage les perdait **sans recours** (une ré-exécution renvoie
+  `nothing-ready`, les lots étant déjà `reintegrated`, et rien ne sait régénérer le bloc ; le
+  diagnostic du conflit/gate rouge n'était même pas affiché en mode humain, seulement en `--json`).
+  Le CLI écrit donc `.vibe-agent/logs/reintegrate-<horodatage>-<pid>.md` **avant toute sortie**,
+  donc sur **tous** les chemins de retour (conflit, gate rouge, succès) : plan exécuté, statut par
+  lot, sortie **intégrale** des échecs, gate final, bloc changelog, snapshot de la vague pris avant
+  la purge. Même motif de « tiroir brut » que `lib/output-fallback` : horodaté à la seconde (un
+  rerun le même jour n'écrase rien), **jamais injecté** au SessionStart (aucun code SessionStart ne
+  lit `.vibe-agent/logs`), référencé par **chemin** dans la sortie. Un simple **refus**
+  (`nothing-ready`, `no-gate`) n'écrit rien : aucun diagnostic à conserver.
 - **Ledgers projet** (`.vibe-agent/{read,context}-ledger.json`) : auto-créés par
   `ensureLedger` (tout hook qui touche au projet) puis maintenus par `post-tool-use.js`
   (atomique `tmp`+`rename`, cap FIFO). Servent l'advisory `/check-context`. Granularité
@@ -732,6 +761,23 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   ni écrasé ni injecté. La détection de « lot ouvert » de `stop.js` utilise
   `gitStatusMeaningful` (porcelain **sans** `.vibe-agent/`) : le churn ledgers/handoff ne compte
   pas comme lot ouvert et ne bloque pas sa clôture.
+  **Handoff PAR LOT en vague** (lot #99, FIA-19) : `handoff.md` est clé sur le seul `root`. En
+  vague parallèle, N sessions filles partagent le même checkout donc le même `.vibe-agent/` — un
+  fichier unique = *last-writer-wins* : l'état du lot A remplacé par celui du lot B juste avant
+  la reprise de A. Une session **inscrite au fleet** écrit donc `handoff-lot-<id>.md` ;
+  `handoff.md` reste celui de l'orchestrateur. En **lecture**, la fille essaie son fichier de lot
+  puis retombe sur `handoff.md` (elle démarre donc sur le handoff de l'orchestrateur tant qu'elle
+  n'a pas écrit le sien) ; en **écriture**, jamais de repli — ce serait précisément le
+  last-writer-wins qu'on supprime. Activé **uniquement** quand la fille partage le root
+  (`lot.worktree` vide) : en mode worktree chaque fille a déjà son `.vibe-agent` isolé, un fichier
+  par lot y serait mort-né. Hors vague : strictement rien ne change (invariant mono-session).
+  Articulation avec le registre de vague : **`fleet.json` reste le handoff PARTAGÉ** (structure —
+  qui tient quoi, périmètres, tête d'intégration), **`handoff-lot-*` est le handoff PAR SESSION**
+  (état riche : décisions, non-vérifié, prochaine action) ; ni l'un ni l'autre ne porte le plan,
+  qui se recalcule depuis le backlog. Purge à la réintégration (`purgeLotHandoffs`, cf. « Registre
+  de vague ») — sinon péremption d'état dans `.vibe-agent`. Le cas mono-session « deux
+  `/close-batch` successifs s'écrasent » n'est **pas** corrigé : l'écrasement dernier-état est le
+  design assumé.
 - **Archive des lots clos — tier 0** (`.vibe-agent/archive/index.md`, `lib/archive.js` + CLI
   `scripts/archive.js`, epic « Archive à tiroirs », lot #94) : contrepartie **durable** du handoff.
   Le handoff reste un fichier unique écrasé (canal de reprise) ; l'archive est un référentiel

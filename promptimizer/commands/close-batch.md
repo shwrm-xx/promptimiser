@@ -26,14 +26,18 @@ Point de départ : `node ~/.claude/promptimizer/scripts/close-batch.js`
    action) et meurt au tour suivant ; la fiche sert la **mémoire** (décisions + pourquoi,
    non-vérifié, dette) et est versionnée, immuable. Interdits : diff, contenu de fichier,
    listing de code, sortie de tests — le sha et le CHANGELOG font foi pour le volatil.
-6. Produire un handoff de moins de 800 tokens et l'écrire dans `.vibe-agent/handoff.md`
+6. Produire un handoff de moins de 800 tokens et l'écrire dans le fichier annoncé par la
+   checklist (« Handoff à écrire dans : … ») — `.vibe-agent/handoff.md` hors vague, un
+   `handoff-lot-<id>.md` propre à la session si elle tient un lot d'une vague parallèle (deux
+   filles écriraient sinon le même fichier et s'écraseraient)
    (écraser le contenu ; première ligne `<!-- pmz:handoff:manual -->`). Y inclure les
    lignes machine `pmz:skip: <chemin>` (fichiers à ne pas relire) et
    `pmz:summary: <chemin> — <résumé en une phrase>` (résumé servi à la place d'une
    relecture ; « — » = tiret cadratin obligatoire). Le champ « Prochaine action
    recommandée » doit nommer le lot suivant **et son modèle préconisé** — jamais l'un
    sans l'autre.
-6ter. Archiver le handoff manuel **avant** qu'il ne soit détruit :
+6ter. Archiver le handoff manuel **avant** qu'il ne soit détruit — la commande exacte (avec le
+   bon fichier) est donnée par la checklist :
    `node ~/.claude/promptimizer/scripts/archive.js raw --id N --file .vibe-agent/handoff.md`.
    Le handoff manuel a une vie unique — injecté au démarrage suivant, il est aussitôt
    rebasculé en auto puis écrasé par le premier Stop. Cette copie tier 2 (locale, non

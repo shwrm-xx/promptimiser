@@ -175,6 +175,14 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   archivée) — plus besoin d'éditer le JSON à la main, hors de toute garde.
 - **Après un `/clear` ou une compaction** : le handoff (ou le lot en cours) est réinjecté —
   le plan ne se perd pas.
+- **Vagues parallèles fiables** : quand plusieurs sessions travaillent le même dépôt, chacune a son
+  propre handoff (`handoff-lot-<id>.md`) — plus de dernier-écrivain-gagne qui remplaçait l'état
+  d'un lot par celui d'un autre. Le registre de vague s'écrit **par commande**
+  (`backlog.js fleet join | ready | show`) et non à la main : un `fleet.json` cassé désactivait
+  toute la vague en silence, `fleet show` le dit maintenant. Une fois la vague réintégrée, tout est
+  **rangé** (registre vidé, handoffs de lot purgés) et chaque `reintegrate --execute` laisse un
+  **rapport** dans `.vibe-agent/logs/` — plan, gates rouges, changelog agrégé — que le crash d'une
+  session ne peut plus emporter.
 - **Archive des lots clos, à tiroirs** : la mémoire longue du projet, **jamais réinjectée** dans le
   contexte — l'historique ne coûte rien tant qu'on ne l'ouvre pas, et on n'ouvre qu'un tiroir à la
   fois. Chaque clôture ajoute une ligne à `.vibe-agent/archive/index.md` (id, date, sha, epic,

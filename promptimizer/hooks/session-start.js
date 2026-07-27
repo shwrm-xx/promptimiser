@@ -59,11 +59,13 @@ function backlogFallback(root) {
 // Ajoute le handoff de la session précédente (écrit par stop.js ou /fresh-session)
 // au message injecté, puis le marque consommé (un handoff manuel redevient
 // écrasable par le handoff auto). Fail-open : renvoie msg inchangé au moindre doute.
-function withHandoff(root, msg) {
+// `sessionId` : en vague parallèle, la fille lit SON handoff-lot-<id>.md en priorité (repli
+// sur handoff.md tant qu'elle n'en a pas écrit un) — cf. lib/handoff, FIA-19.
+function withHandoff(root, msg, sessionId) {
   try {
-    const h = readHandoff(root);
+    const h = readHandoff(root, sessionId);
     if (h && h.text) {
-      markConsumed(root);
+      markConsumed(root, sessionId);
       try { seedAvoidReread(root, parseSkipPaths(h.text)); } catch (_) { /* fail-open */ }
       try { seedSummaries(root, parseSummaryLines(h.text)); } catch (_) { /* fail-open */ }
       return msg + '\n\n' + MSG_HANDOFF + '\n\n' + h.text;
@@ -161,7 +163,7 @@ function main() {
     }
     st.session_start_reminded = true;
     saveSessionState(root, st);
-    return injectContext('SessionStart', withFleet(root, input.session_id || null, withHandoff(root, msg)));
+    return injectContext('SessionStart', withFleet(root, input.session_id || null, withHandoff(root, msg, input.session_id || null)));
   }
   // Non initialisé, et uniquement au vrai démarrage (l'état n'est pas persistable
   // hors projet initialisé).
@@ -183,7 +185,7 @@ function main() {
   }
   // Sinon : on PROPOSE seulement (l'init réelle se fait après confirmation).
   // Le handoff éventuel (ledger auto-créé sans socle visible) est injecté aussi.
-  return injectContext('SessionStart', withHandoff(root, MSG_NON_INIT));
+  return injectContext('SessionStart', withHandoff(root, MSG_NON_INIT, input.session_id || null));
 }
 
 main();

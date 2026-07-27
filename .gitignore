@@ -10,8 +10,10 @@ node_modules/
 *.pmz-backup-*.json
 *.vsg-backup-*.json
 
-# État PMZ éphémère (réécrit à chaque fin de tour)
+# État PMZ éphémère (réécrit à chaque fin de tour) — handoff.md et, en vague parallèle,
+# un handoff par lot tenu par une session fille
 .vibe-agent/handoff.md
+.vibe-agent/handoff-lot-*.md
 
 # Dépôt git imbriqué (checkout séparé), hors périmètre de ce dépôt
 /pmz/

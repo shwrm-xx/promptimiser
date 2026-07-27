@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 'use strict';
 // Checklist de clôture (format spec). Pré-rempli via audit-batch quand détectable.
+const path = require('path');
 const { compute } = require('./audit-batch');
+const handoff = require('../lib/handoff');
+const { previousSessionId } = require('../lib/state');
 const { modelEffortTag } = require('../lib/backlog');
 const { runVerify, git } = require('../lib/project');
 const archive = require('../lib/archive');
@@ -32,6 +35,20 @@ function yn(v) { return v ? 'oui' : 'non'; }
 // qui l'écrit. C'est ICI, et nulle part ailleurs, que le résultat de la vérification existe
 // (calculé quelques lignes plus bas) — il n'est persisté dans aucun champ du backlog. Émis
 // dans la checklist plutôt qu'écrit d'office : la machine ne sait pas rédiger un « pourquoi ».
+// Chemin (relatif au repo) où CETTE session doit écrire son handoff manuel. `handoff.md` hors
+// vague ; `handoff-lot-<id>.md` pour une session fille inscrite au fleet (lot #99, FIA-19) —
+// sinon deux filles s'écraseraient, et son propre handoff auto masquerait le manuel qu'elle
+// aurait écrit dans handoff.md. L'id de session vient de session-state.json : l'assistant n'a
+// aucun moyen de connaître le sien.
+function handoffRel(root) {
+  try {
+    const f = handoff.handoffFile(root, previousSessionId(root));
+    return `.vibe-agent/${path.basename(f)}`;
+  } catch (_) {
+    return '.vibe-agent/handoff.md';
+  }
+}
+
 function ficheBlock(root, cur, verifyVerdict) {
   try {
     if (!cur) return '';
@@ -55,7 +72,7 @@ Squelette :
 \`\`\`markdown
 ${md}\`\`\`
 Puis archive le handoff manuel avant qu'il ne soit détruit :
-\`node ${PMZ_BASE}/scripts/archive.js raw --id ${cur.id} --file .vibe-agent/handoff.md\`
+\`node ${PMZ_BASE}/scripts/archive.js raw --id ${cur.id} --file ${handoffRel(root)}\`
 `;
   } catch (_) {
     return '';
@@ -107,6 +124,8 @@ function main() {
 - Lot suivant à reprendre dans le handoff : #${bl.next.id} « ${bl.next.title} »${modelEffortTag(bl.next)} — reporter ce tag modèle/effort dans le handoff (champ « Prochaine action recommandée »)` : ''}
 ` : '';
   const out = `## Clôture du lot
+
+Handoff à écrire dans : \`${handoffRel(d.root)}\`
 
 Checklist :
 - Demande littérale traitée : à confirmer

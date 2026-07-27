@@ -228,8 +228,15 @@ function reintegrate(root, json, execute, into, gates) {
 
   // --execute : exécution réelle du pipeline.
   const res = reint.runPipeline(root, { into, gate: g.gate, allowNoGate: g.allowNoGate, finalGate: g.finalGate });
+  // FIA-22 : rapport persisté AVANT toute sortie, donc valable pour TOUS les chemins de retour
+  // (conflit, gate rouge, succès). Écrit seulement si quelque chose a réellement été tenté —
+  // un refus (nothing-ready, no-gate) n'a aucun diagnostic à conserver.
+  const report = (res.merged && res.merged.length) || res.finalGate
+    ? reint.writeReintegrateReport(root, res, { waveId: fleet.wave_id })
+    : null;
+  const reportLine = report ? `Rapport complet (plan, sorties de gates, bloc changelog) : ${report}` : null;
   if (json) {
-    return out(JSON.stringify({ executed: true, ...res }, null, 2));
+    return out(JSON.stringify({ executed: true, report, ...res }, null, 2));
   }
   if (res.reason === 'no-integration-branch') return out('Refusé : aucune branche d\'intégration (ni fleet.integration_branch, ni --into, ni branche courante).');
   if (res.reason === 'nothing-ready') return out('Rien à réintégrer : aucun lot « prêt à merger ».');
@@ -252,7 +259,10 @@ function reintegrate(root, json, execute, into, gates) {
   }
   if (!res.ok && res.culprit) {
     out('');
+    // La sortie brute du conflit/gate rouge n'est PAS affichée ici (elle noierait le message) :
+    // elle est intégralement dans le rapport persisté, référencé par chemin.
     out(`⛔ Vague NON close : corrige le lot #${res.culprit.id}, remets-le « prêt », puis relance --execute.`);
+    if (reportLine) out(reportLine);
     return;
   }
   out('');
@@ -268,11 +278,136 @@ function reintegrate(root, json, execute, into, gates) {
     out('');
   }
   if (res.reason === 'final-gate-failed') {
-    return out('⛔ Vague NON close : les merges restent faits (aucun rollback automatique), la branche d\'intégration est rouge. Corrige sur place, puis relance --execute (ou --final-gate) pour reclôturer.');
+    out('⛔ Vague NON close : les merges restent faits (aucun rollback automatique), la branche d\'intégration est rouge. Corrige sur place, puis relance --execute (ou --final-gate) pour reclôturer.');
+    if (reportLine) out(reportLine);
+    return;
   }
   out(res.waveClosed
     ? '🎉 Vague entièrement réintégrée et close. Colle le bloc ci-dessus dans CHANGELOG.md, puis commit.'
     : 'Lots prêts réintégrés. La vague reste ouverte (des lots sont encore en vol).');
+  // Rangement de fin de vague (FIA-19/FIA-20) : annoncé, jamais silencieux — l'orchestrateur
+  // doit savoir que fleet.json est vidé (la vague redevient inerte) et que les handoffs de lot
+  // ont disparu. Le snapshot de la vague reste dans le rapport.
+  if (res.waveClosed && (res.wavePurged || res.handoffsPurged)) {
+    out(`Rangement : fleet.json vidé (vague inerte)${res.handoffsPurged ? `, ${res.handoffsPurged} handoff(s) de lot purgé(s)` : ''}.`);
+  }
+  if (reportLine) out(reportLine);
+}
+
+// FIA-21 (lot #99) : canal d'écriture OUTILLÉ du registre de vague. Jusqu'ici, s'inscrire dans
+// fleet.json et passer un lot « prêt » se faisaient à la main dans le JSON : une faute de frappe
+// et loadFleet (fail-open, contrat hooks) désactive TOUTE la vague en silence — garde de
+// périmètre ET injection de périmètre éteintes, sans un mot. Ici on est dans une COMMANDE, pas
+// un hook : les refus sont explicites (toujours exit 0, cf. en-tête).
+function fleetCmd(root, sub, json) {
+  const fleetLib = require('../lib/fleet');
+  const fs = require('fs');
+  const file = fleetLib.fleetFile(root);
+  const rel = '.vibe-agent/fleet.json';
+
+  // Diagnostic du fichier AVANT tout loadFleet : readJson quarantine un JSON invalide
+  // (rename en .corrupt) dès la première lecture — après, on ne saurait plus distinguer
+  // « absent » de « corrompu », que loadFleet confond de toute façon (les deux → vague inerte).
+  function diagnose() {
+    if (!fs.existsSync(file)) {
+      const quarantined = fs.existsSync(`${file}.corrupt`);
+      return { state: 'absent', quarantined };
+    }
+    try {
+      const v = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (!v || typeof v !== 'object') return { state: 'invalid', why: 'racine JSON non-objet' };
+      return { state: 'ok' };
+    } catch (e) {
+      return { state: 'invalid', why: String((e && e.message) || 'JSON invalide') };
+    }
+  }
+
+  if (sub === 'show' || !sub) {
+    const d = diagnose();
+    if (d.state === 'invalid') {
+      if (json) return out(JSON.stringify({ active: false, diagnostic: 'invalid', why: d.why }, null, 2));
+      out(`⚠️ Vague DÉSACTIVÉE : ${rel} existe mais son JSON est illisible (${d.why}).`);
+      out('Les hooks échouent en silence (contrat fail-open) : garde de périmètre ET injection de vague sont éteintes SANS avertissement.');
+      return out('Répare le fichier à la main, ou supprime-le et réinscris les lots avec `fleet join`.');
+    }
+    if (d.state === 'absent') {
+      if (json) return out(JSON.stringify({ active: false, diagnostic: d.quarantined ? 'quarantined' : 'absent' }, null, 2));
+      if (d.quarantined) out(`⚠️ ${rel} absent mais ${rel}.corrupt présent : un fleet corrompu a été mis en quarantaine — la vague est éteinte.`);
+      return out('Aucune vague active (pas de fleet.json). Les sessions sont autonomes.');
+    }
+    const f = fleetLib.loadFleet(root);
+    if (json) return out(JSON.stringify(f, null, 2));
+    if (!f.active) return out(`Vague inerte : ${rel} présent mais aucun lot en vol (vague close ou purgée).`);
+    out(`Vague${f.wave_id ? ` « ${f.wave_id} »` : ''} : ${f.lots.length} lot(s).`);
+    if (f.integration_branch || f.integration_head) {
+      out(`Tête d'intégration : ${f.integration_branch || '?'}${f.integration_head ? `@${String(f.integration_head).slice(0, 7)}` : ''}.`);
+    }
+    for (const l of f.lots) {
+      const per = l.perimeter.length ? ` — périmètre : ${l.perimeter.join(', ')}` : ' — ⚠️ AUCUN périmètre (écritures non bridées)';
+      const ext = l.ext_requests.length ? ` — demandes hors zone : ${l.ext_requests.join(', ')}` : '';
+      out(`- #${l.id}${l.title ? ` « ${l.title} »` : ''} [${l.state}] — session ${l.session_owner} — branche \`${l.branch || '?'}\`${per}${ext}`);
+    }
+    return;
+  }
+
+  // Number(null) vaut 0 (fini !) : tester la PRÉSENCE du flag avant sa finitude, sinon un
+  // `fleet ready` sans --id irait chercher un lot #0 fantôme.
+  const rawId = flag('id');
+  const idn = Number(rawId);
+  if (rawId == null || String(rawId).trim() === '' || !Number.isFinite(idn)) {
+    return out('Refusé : --id manquant ou non numérique. Ex. `fleet join --id 42 --perimeter "src/a/**"`.');
+  }
+  const d = diagnose();
+  if (d.state === 'invalid') {
+    return out(`Refusé : ${rel} est illisible (${d.why}) — l'écrire par-dessus perdrait les autres lots de la vague. Répare-le (ou supprime-le) d'abord, puis relance.`);
+  }
+
+  if (sub === 'join') {
+    // Une entrée sans session_owner est rejetée par normalizeLot : le refus doit être explicite
+    // ici, pas un no-op silencieux. Repli sur l'id de session persisté (session-state.json),
+    // que l'assistant n'a aucun moyen de connaître autrement.
+    const session = flag('session') || previousSessionId(root);
+    if (!session) {
+      return out('Refusé : --session manquante et aucun id de session persisté dans .vibe-agent/session-state.json. '
+        + 'Sans propriétaire, le lot ne peut être attribué à personne (ni garde de périmètre, ni injection).');
+    }
+    const state = flag('state') || 'in_flight';
+    if (!fleetLib.STATES.includes(state)) {
+      return out(`Refusé : --state invalide (« ${state} »). Valeurs acceptées : ${fleetLib.STATES.join(' | ')}.`);
+    }
+    const perimeter = flagList('perimeter');
+    const fields = [
+      { name: '--session', value: session, max: fleetLib.MAX_STR },
+      { name: '--branch', value: flag('branch'), max: fleetLib.MAX_STR },
+      { name: '--title', value: flag('title'), max: fleetLib.MAX_STR },
+    ].concat(perimeter.map((p, i) => ({ name: `--perimeter[${i + 1}]`, value: p, max: fleetLib.MAX_STR })));
+    if (truncGuard(fields)) return;
+
+    const b = backlog.loadBacklog(root);
+    const known = b.lots.find((x) => x.id === idn);
+    const okw = fleetLib.upsertLot(root, {
+      id: idn,
+      session_owner: session,
+      branch: flag('branch') || (known ? backlog.waveBranch(known) : null),
+      perimeter,
+      state,
+      title: flag('title') || (known ? known.title : null),
+    });
+    if (!okw) return out(`Refusé : inscription du lot #${idn} impossible (écriture de ${rel} en échec).`);
+    const warn = known ? '' : ` ⚠️ Aucun lot #${idn} au plan (backlog.json) — vérifie l'id.`;
+    const noPer = perimeter.length ? '' : ' ⚠️ Sans --perimeter, la garde d\'écriture ne bride RIEN pour cette session.';
+    out(`Lot #${idn} inscrit dans la vague (session ${session}, état ${state}).${warn}${noPer}`);
+    return;
+  }
+
+  if (sub === 'ready') {
+    if (!fleetLib.setLotState(root, idn, 'ready')) {
+      return out(`Refusé : lot #${idn} absent du registre de vague (inscris-le d'abord : \`fleet join --id ${idn}\`).`);
+    }
+    return out(`Lot #${idn} passé « prêt à merger ». L'orchestrateur peut le réintégrer (\`reintegrate --execute\`).`);
+  }
+
+  return out(`Sous-commande fleet inconnue : ${sub}. Sous-commandes : join | ready | show.`);
 }
 
 function main() {
@@ -282,7 +417,11 @@ function main() {
   // Garde anti-troncature (#88) : un flag mono-valeur non quoté (« --title fait quand : X »)
   // ne capte que le 1er token ; les tokens nus suivants seraient jetés en silence.
   // On les repère et on rejette explicitement plutôt que de tronquer sans le dire.
-  const argStart = (process.argv[2] || '').startsWith('--') ? 2 : 3;
+  // Dispatch à DEUX tokens pour `fleet <sub>` (seul verbe à sous-commandes) : le sous-verbe
+  // n'est pas un argument orphelin, il décale le début du balayage argv d'un cran.
+  const rawSub = process.argv[3] || '';
+  const sub = cmd === 'fleet' && rawSub && !rawSub.startsWith('--') ? rawSub : null;
+  const argStart = (process.argv[2] || '').startsWith('--') ? 2 : (sub ? 4 : 3);
   const orphans = backlog.orphanArgs(process.argv, argStart);
   if (orphans.length) {
     return out(`Refusé : argument(s) orphelin(s) ignoré(s) — ${orphans.map((o) => `« ${o} »`).join(', ')}. `
@@ -474,6 +613,8 @@ function main() {
 
   if (cmd === 'parallelize') return parallelize(root, json, flag('epic'));
 
+  if (cmd === 'fleet') return fleetCmd(root, sub, json);
+
   if (cmd === 'reintegrate') {
     return reintegrate(root, json, process.argv.includes('--execute'), flag('into'), {
       gate: flag('gate'), finalGate: flag('final-gate'), allowNoGate: process.argv.includes('--allow-no-gate'),
@@ -488,7 +629,7 @@ function main() {
     return;
   }
 
-  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | reopen | depends | next | parallelize | reintegrate | reconcile | epic | verify | trigram | export.`);
+  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | reopen | depends | next | parallelize | fleet <join|ready|show> | reintegrate | reconcile | epic | verify | trigram | export.`);
 }
 
 if (require.main === module) {

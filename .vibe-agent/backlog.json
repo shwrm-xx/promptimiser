@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 100,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-27T12:06:43.606Z",
+  "updated_at": "2026-07-27T12:51:25.516Z",
   "lots": [
     {
       "id": 1,
@@ -2302,26 +2302,34 @@
       "id": 99,
       "title": "Fiabilité vague : handoff par lot, purge fleet, écriture outillée",
       "scope": "fait quand : FIA-19 (handoff-lot-<id>.md, une fille en vague ne peut plus écraser le handoff d'une autre) ; FIA-20 (lotForSession ignore les lots reintegrated, fleet vidé au waveClosed) ; FIA-21 (backlog.js fleet join/ready/show, diagnostic JSON corrompu explicite) ; FIA-22 (rapport reintegrate-<id>.md persisté, gates rouges inclus) — les 4 couverts, tests + doc à jour.",
-      "status": "todo",
+      "status": "in_progress",
       "model_hint": "opus",
       "effort_hint": "high",
       "epic": "Archive à tiroirs",
-      "verify": null,
+      "verify": "node test/run-tests.js",
       "closed_commit": null,
       "closed_at": null,
       "closed_session_id": null,
       "closed_occupancy": null,
       "closed_verify": null,
       "cost_tokens": 0,
-      "started_at": null,
+      "started_at": "2026-07-27T12:10:34.823Z",
       "lot_number": null,
       "note": null,
-      "session_touches": 0,
+      "session_touches": 2,
       "perimeter": [],
       "depends_on": [
         97
       ],
-      "session_owner": null
+      "session_owner": null,
+      "integrations": {
+        "command_optimizer": {
+          "snapshot_start": {
+            "commands": 1,
+            "delivered_tokens": 4
+          }
+        }
+      }
     }
   ]
 }

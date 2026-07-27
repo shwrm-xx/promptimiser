@@ -224,7 +224,9 @@ function main() {
     // (c) handoff auto : dernier état connu, ÉCRASÉ à chaque fin de tour (un seul
     // fichier, pas de bloat) ; session-start.js l'injectera au prochain démarrage.
     // Ne touche jamais un handoff manuel (/fresh-session) non encore consommé.
-    writeAutoHandoff(root);
+    // `sid` : en vague parallèle, une fille inscrite écrit son handoff-lot-<id>.md et non
+    // handoff.md — sans quoi N filles sur le même checkout s'écrasent mutuellement (FIA-19).
+    writeAutoHandoff(root, sid);
   }
 
   // Arbitre de tour (#57) : plafonne le nombre de nudges concaténés, priorité à la sévérité

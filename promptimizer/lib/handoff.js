@@ -6,6 +6,14 @@
 // Un handoff manuel n'est JAMAIS écrasé par l'auto tant qu'il n'a pas été consommé :
 // session-start.js l'injecte au démarrage suivant puis le rebascule en auto.
 // Un fichier sans marqueur PMZ (notes utilisateur) n'est ni écrasé ni injecté.
+//
+// EN VAGUE PARALLÈLE (lot #99, FIA-19) : N sessions filles partagent le même checkout donc
+// le même .vibe-agent/ — un fichier unique = last-writer-wins (l'état du lot A remplacé par
+// celui du lot B juste avant la reprise de A). Chaque fille INSCRITE au fleet écrit donc son
+// propre `handoff-lot-<id>.md` ; `handoff.md` reste celui de l'orchestrateur. Hors vague (cas
+// ultra-majoritaire) et en mode worktree (chaque fille a déjà son .vibe-agent isolé) :
+// strictement rien ne change. Le fleet reste le handoff PARTAGÉ de la vague (structure : qui
+// tient quoi, tête d'intégration) ; handoff-lot-* est le handoff PAR SESSION (état riche).
 const fs = require('fs');
 const path = require('path');
 const { vibeDir, git, gitStatusMeaningful, lastCommitEpoch } = require('./project');
@@ -13,7 +21,7 @@ const { writeAtomicText } = require('./fsjson');
 const { loadContextLedger, topWaste, scoredSummaries } = require('./ledger');
 const { readEpic, getLotCounter } = require('./lot');
 const { summaryLines, readTodoSnapshot } = require('./backlog');
-const { waveHandoffLines } = require('./fleet');
+const { waveHandoffLines, lotForSession } = require('./fleet');
 
 const AUTO_MARKER = '<!-- pmz:handoff:auto -->';
 const MANUAL_MARKER = '<!-- pmz:handoff:manual -->';
@@ -23,8 +31,74 @@ const MAX_READ_LINES = 10;
 const MAX_WASTE_LINES = 3;
 const MAX_SUMMARY_LINES = 5;
 
-function handoffFile(root) {
+const LOT_HANDOFF_RE = /^handoff-lot-(\d+)\.md$/;
+
+function baseHandoffFile(root) {
   return path.join(vibeDir(root), 'handoff.md');
+}
+
+function lotHandoffFile(root, id) {
+  return path.join(vibeDir(root), `handoff-lot-${Number(id)}.md`);
+}
+
+// Fichier où CETTE session ÉCRIT son handoff. `handoff-lot-<id>.md` si et seulement si la
+// session tient un lot en vol dans une vague partageant ce checkout (pas de worktree) ;
+// `handoff.md` sinon. Fail-open : au moindre doute, le fichier historique.
+function handoffFile(root, sessionId) {
+  const base = baseHandoffFile(root);
+  if (!sessionId) return base;
+  try {
+    const mine = lotForSession(root, sessionId);
+    // worktree : la fille a son propre checkout donc son propre .vibe-agent — un fichier par
+    // lot y serait mort-né (personne ne le lirait). On garde handoff.md.
+    if (!mine || mine.worktree) return base;
+    return lotHandoffFile(root, mine.id);
+  } catch (_) {
+    return base;
+  }
+}
+
+// Fichiers candidats à la LECTURE, dans l'ordre : le handoff de lot d'abord (état propre à
+// cette fille), `handoff.md` en repli. Le repli est ce qui permet à une fille de démarrer sur
+// le handoff de l'orchestrateur tant qu'elle n'a pas encore écrit le sien.
+function handoffCandidates(root, sessionId) {
+  const base = baseHandoffFile(root);
+  const mine = handoffFile(root, sessionId);
+  return mine === base ? [base] : [mine, base];
+}
+
+// Premier candidat porteur d'un marqueur PMZ : { file, raw }, ou null. Point d'entrée UNIQUE
+// de readHandoff et markConsumed — les deux doivent viser exactement le même fichier.
+function resolveHandoff(root, sessionId) {
+  for (const f of handoffCandidates(root, sessionId)) {
+    try {
+      const raw = fs.readFileSync(f, 'utf8');
+      if (raw.includes(MANUAL_MARKER) || raw.includes(AUTO_MARKER)) return { file: f, raw };
+    } catch (_) {
+      /* candidat suivant */
+    }
+  }
+  return null;
+}
+
+// Supprime les handoffs de lot (réintégration : la fille n'existe plus, son état riche devient
+// de la péremption dans .vibe-agent). `ids` omis → TOUS, y compris les orphelins d'une vague
+// précédente. Renvoie le nombre de fichiers retirés. Best-effort, jamais d'exception.
+function purgeLotHandoffs(root, ids) {
+  let n = 0;
+  try {
+    const dir = vibeDir(root);
+    const keep = Array.isArray(ids) ? new Set(ids.map(Number)) : null;
+    for (const name of fs.readdirSync(dir)) {
+      const m = LOT_HANDOFF_RE.exec(name);
+      if (!m) continue;
+      if (keep && !keep.has(Number(m[1]))) continue;
+      try { fs.unlinkSync(path.join(dir, name)); n++; } catch (_) { /* fail-open */ }
+    }
+  } catch (_) {
+    /* fail-open */
+  }
+  return n;
 }
 
 // Extrait les chemins des lignes `pmz:skip: <chemin>` d'un handoff manuel — sème
@@ -62,27 +136,27 @@ function parseSummaryLines(text) {
 }
 
 // Lit le handoff pour injection. null si absent, illisible ou sans marqueur PMZ.
-function readHandoff(root) {
+// `sessionId` (optionnel) : en vague, sert à lire le handoff DE CETTE FILLE en priorité.
+function readHandoff(root, sessionId) {
   try {
-    const raw = fs.readFileSync(handoffFile(root), 'utf8');
-    const manual = raw.includes(MANUAL_MARKER);
-    if (!manual && !raw.includes(AUTO_MARKER)) return null;
-    let text = raw.trim();
+    const h = resolveHandoff(root, sessionId);
+    if (!h) return null;
+    const manual = h.raw.includes(MANUAL_MARKER);
+    let text = h.raw.trim();
     if (text.length > MAX_INJECT_CHARS) text = text.slice(0, MAX_INJECT_CHARS) + '\n[handoff tronqué]';
-    return { text, manual };
+    return { text, manual, file: h.file };
   } catch (_) {
     return null;
   }
 }
 
 // Handoff manuel consommé (injecté) -> rebasculé en auto : le prochain stop.js
-// reprend la main et le remplace par l'état courant.
-function markConsumed(root) {
+// reprend la main et le remplace par l'état courant. Vise le MÊME fichier que readHandoff.
+function markConsumed(root, sessionId) {
   try {
-    const f = handoffFile(root);
-    const raw = fs.readFileSync(f, 'utf8');
-    if (!raw.includes(MANUAL_MARKER)) return;
-    writeAtomicText(f, raw.split(MANUAL_MARKER).join(AUTO_MARKER));
+    const h = resolveHandoff(root, sessionId);
+    if (!h || !h.raw.includes(MANUAL_MARKER)) return;
+    writeAtomicText(h.file, h.raw.split(MANUAL_MARKER).join(AUTO_MARKER));
   } catch (_) {
     /* fail-open */
   }
@@ -134,10 +208,13 @@ function skipCandidates(root, lastCommitMs) {
 
 // Écrit le handoff auto (dernier état connu). Refuse d'écraser un handoff manuel
 // non consommé ou un fichier sans marqueur PMZ. Fail-silent.
-function writeAutoHandoff(root) {
+// `sessionId` (optionnel) : en vague, écrit `handoff-lot-<id>.md` au lieu de `handoff.md` —
+// une fille ne peut donc plus écraser l'état d'une sœur (FIA-19). JAMAIS de repli en lecture
+// ici : écrire dans handoff.md serait précisément le last-writer-wins qu'on supprime.
+function writeAutoHandoff(root, sessionId) {
   try {
     if (!root) return false;
-    const f = handoffFile(root);
+    const f = handoffFile(root, sessionId);
     if (fs.existsSync(f) && !fs.readFileSync(f, 'utf8').includes(AUTO_MARKER)) return false;
 
     const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'], root) || '?';
@@ -211,4 +288,15 @@ function writeAutoHandoff(root) {
   }
 }
 
-module.exports = { handoffFile, readHandoff, parseSkipPaths, parseSummaryLines, markConsumed, writeAutoHandoff, AUTO_MARKER, MANUAL_MARKER };
+module.exports = {
+  handoffFile,
+  lotHandoffFile,
+  purgeLotHandoffs,
+  readHandoff,
+  parseSkipPaths,
+  parseSummaryLines,
+  markConsumed,
+  writeAutoHandoff,
+  AUTO_MARKER,
+  MANUAL_MARKER,
+};
