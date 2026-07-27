@@ -172,6 +172,11 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   il ne se perd plus entre deux sessions.
 - **Après un `/clear` ou une compaction** : le handoff (ou le lot en cours) est réinjecté —
   le plan ne se perd pas.
+- **Archive des lots clos** : chaque clôture ajoute une ligne à `.vibe-agent/archive/index.md`
+  (id, date, sha, epic, verify, titre) — versionné git, greppable, et **jamais réinjecté** dans le
+  contexte : l'historique ne coûte rien tant qu'on ne le consulte pas. Rétro-remplir un projet
+  existant : `node ~/.claude/promptimizer/scripts/archive.js backfill --dry-run` puis sans
+  `--dry-run`.
 
 ## Slash commands (secours)
 

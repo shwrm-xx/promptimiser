@@ -2,6 +2,47 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-27 — lot #94 « Archive tier 0 : index, filet doneLot, backfill des lots clos » (epic « Archive à tiroirs »)
+
+Premier tiroir de l'archive : un référentiel **durable et versionné** des lots clos, contrepartie
+du handoff (fichier unique écrasé, gitignoré, dont le narratif riche n'avait qu'une vie — perdu
+pour les ~90 lots déjà clos). L'archive n'est **jamais** réinjectée dans le contexte : l'historique
+ne coûte rien tant qu'on ne le consulte pas.
+
+- **`lib/archive.js`** (nouveau) — tier 0 : `.vibe-agent/archive/index.md`, une ligne par lot clos,
+  format contraint et greppable (`#0094 | date | sha | epic:… | verify:… | fiche:… | titre`).
+  Markdown ligne-à-ligne et pas JSON : une ligne corrompue n'invalide pas le reste, là où un JSON
+  corrompu retombe en bloc sur le fallback de `readJson`. Écriture atomique (`writeAtomicText`,
+  lot #93) + `git add` best-effort (modèle `stageBacklog`). `appendIndexLine` est **idempotent par
+  id** et sa fusion **non dégradante** : un `fiche:oui` ou un `verify` connu n'est jamais réécrit
+  en `non`/`inconnu` par un rappel machine. Champs sanitisés (`|` → `/`, sauts de ligne aplatis) :
+  un titre piégé ne casse pas le format.
+- **Filet machine dans `doneLot`** (`lib/backlog.js`) : l'index reçoit sa ligne après un
+  `saveBacklog` réussi, donc même quand aucune fiche narrative n'est écrite (auto-clôture au Stop,
+  clôture CLI). Le `fiche:non` rend la dette de documentation **visible** au lieu de la masquer.
+  Fail-open strict (ce code tourne dans le hook Stop) : une archive impossible ne casse jamais une
+  clôture.
+- **Frontière git** — `templates/vibe-gitignore` : bloc `!archive/` → `!archive/**` →
+  `archive/raw/` (l'ordre compte, dernier motif gagnant ; git ne ré-inclut jamais le contenu d'un
+  dossier exclu). Tier 0/1 versionné, tier 2 (brut) ignoré. `!trigram` rétro-porté au passage
+  (présent dans le dépôt vivant, absent du template).
+- **Migration de la base installée** — `archive.ensureArchiveGitignore()`, appelée par
+  `runBootstrap` : `copyIfAbsent` ne met jamais à jour un `.gitignore` existant, les projets
+  bootstrappés avant l'archive la garderaient ignorée (précédent vécu : le backlog perdu faute
+  d'être suivi par git). Append-only, idempotent, fail-open.
+- **`scripts/archive.js backfill [--dry-run]`** (nouveau) — rétro-remplissage tier 0 depuis
+  `backlog.json`, reprenable et idempotent (skip des ids déjà indexés). Source d'ordre = l'**id**
+  (`closed_at` n'est pas fiable). Appliqué à ce dépôt : **92 lots** indexés.
+- **Pare-feu** : aucun hook ni module de la chaîne d'injection ne requiert `lib/archive.js`. Le
+  test canari qui verrouille cet invariant arrive au lot #95, avec les tiroirs tier 1/2.
+- **Tests** : +44 assertions (`node test/run-tests.js` → 1330 OK, 0 échec) — frontière git,
+  migration idempotente, filet `doneLot`, non-dégradation, sanitisation, lignes hors format
+  préservées, backfill `--dry-run`/rejeu, fail-open (`archive/` remplacé par un fichier), CLI.
+- **Doc** : `ARCHITECTURE.md` — nouvelle puce « Archive des lots clos — tier 0 » et **amendement
+  explicite** de la décision « Handoff : un seul fichier écrasé, pas d'historique » (le handoff
+  reste le canal de reprise ; l'archive est un référentiel séparé qui répond aux objections
+  d'origine). `README.md` — section archive + commande de backfill.
+
 ## 2026-07-22 — lot #93 « Socle d'écriture sûre : writeAtomicText + quarantaine JSON » (epic « Archive à tiroirs »)
 
 1er lot d'implémentation issu de l'étude du lot #92 (DEP-4, DEP-5/FIA-13, FIA-23) : `handoff.md`

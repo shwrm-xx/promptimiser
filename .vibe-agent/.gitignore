@@ -11,3 +11,7 @@
 !backlog.json
 !rules.yaml
 !trigram
+# Archive des lots clos (tier 0/1) : DURABLE, versionnée. Le brut (tier 2) reste ignoré.
+!archive/
+!archive/**
+archive/raw/

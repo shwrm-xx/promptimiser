@@ -49,6 +49,12 @@ function runBootstrap(root) {
   // durable et ne doit JAMAIS être perdu) tout en ignorant l'état éphémère réécrit à
   // chaque tour. Posé avant les ledgers pour qu'ils naissent déjà ignorés.
   copyIfAbsent('vibe-gitignore', path.join(vd, '.gitignore'), created, skipped);
+  // Migration de la base installée : copyIfAbsent ne met JAMAIS à jour un .gitignore
+  // déjà présent — sans ceci, les projets bootstrappés avant l'archive la garderaient
+  // ignorée (précédent vécu : le backlog perdu faute d'être suivi par git). Append-only,
+  // idempotent, fail-open ; requis paresseusement (l'archive n'est jamais dans la chaîne
+  // d'injection, cf. pare-feu lib/archive.js).
+  try { require('./archive').ensureArchiveGitignore(root); } catch (_) { /* fail-open */ }
   copyIfAbsent('rules.yaml', path.join(vd, 'rules.yaml'), created, skipped);
   const contextLedgerPath = path.join(vd, 'context-ledger.json');
   copyIfAbsent('context-ledger.json', contextLedgerPath, created, skipped);

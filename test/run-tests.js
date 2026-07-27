@@ -851,6 +851,145 @@ section('Sécurisation du backlog — .vibe-agent/.gitignore whitelist + staging
     'commit du socle : ledgers éphémères NON suivis');
 }
 
+// ============================ K bis. ARCHIVE TIER 0 (lot #94) ============================
+section('Archive tier 0 — index.md versionné, filet doneLot, backfill (lot #94)');
+{
+  const archive = require(path.join(PKG, 'lib', 'archive'));
+  const backlog = require(path.join(PKG, 'lib', 'backlog'));
+  const ARCHIVE_CLI = path.join(PKG, 'scripts', 'archive.js');
+  const mkArchiveRepo = (name) => {
+    const repo = path.join(SANDBOX, name);
+    fs.mkdirSync(repo, { recursive: true });
+    execFileSync('git', ['init', '-q', repo]);
+    bootstrapLib.runBootstrap(repo);
+    return repo;
+  };
+  const ignored = (repo, rel) => {
+    try { execFileSync('git', ['-C', repo, 'check-ignore', '-q', rel]); return true; } catch (_) { return false; }
+  };
+  const idxLines = (repo) => {
+    const f = path.join(repo, '.vibe-agent', 'archive', 'index.md');
+    if (!fs.existsSync(f)) return [];
+    return fs.readFileSync(f, 'utf8').split('\n').filter((l) => /^#\d{4} \| /.test(l));
+  };
+
+  // --- Frontière git : le template whiteliste archive/ (tier 0/1) et ré-ignore raw/ (tier 2).
+  const repo = mkArchiveRepo('repo-archive');
+  const gi = fs.readFileSync(path.join(repo, '.vibe-agent', '.gitignore'), 'utf8');
+  ok(/^!archive\/$/m.test(gi) && /^!archive\/\*\*$/m.test(gi) && /^archive\/raw\/$/m.test(gi),
+    'template vibe-gitignore : bloc archive complet (!archive/, !archive/**, archive/raw/)');
+  ok(gi.indexOf('!archive/\n') < gi.indexOf('!archive/**'), 'gitignore : !archive/ précède !archive/** (ordre = dernier gagnant)');
+  ok(/^!trigram$/m.test(gi), 'template vibe-gitignore : !trigram rétro-porté depuis le dépôt vivant');
+  ok(!ignored(repo, '.vibe-agent/archive/index.md') && !ignored(repo, '.vibe-agent/archive/lots/lot-0001.md'),
+    'archive tier 0/1 : NON gitignorée (index.md, lots/)');
+  ok(ignored(repo, '.vibe-agent/archive/raw/lot-0001.md'), 'archive tier 2 (raw/) : gitignorée');
+
+  // --- Filet machine doneLot : une ligne d'index par lot clos, même sans fiche.
+  const l1 = backlog.addLot(repo, 'Archive tier 0 : index et filet', 'fait quand : …', null, 'Archive à tiroirs');
+  backlog.startLot(repo, l1.id);
+  const closed = backlog.doneLot(repo, l1.id, 'abc1234');
+  ok(closed && closed.status === 'done', 'doneLot : le lot est bien clos (le filet ne perturbe pas la clôture)');
+  let lines = idxLines(repo);
+  ok(lines.length === 1, 'filet doneLot : exactement une ligne d\'index écrite');
+  ok(/^#0001 \| \d{4}-\d{2}-\d{2} \| abc1234 \| epic:Archive à tiroirs \| verify:inconnu \| fiche:non \| Archive tier 0 : index et filet$/.test(lines[0]),
+    'filet doneLot : ligne au format tier 0 (id 4 chiffres, date, sha, epic, verify:inconnu, fiche:non, titre)');
+  const stagedIdx = execFileSync('git', ['-C', repo, 'diff', '--cached', '--name-only'], { encoding: 'utf8' });
+  ok(/\.vibe-agent\/archive\/index\.md/.test(stagedIdx), 'index.md stagé automatiquement (survit à git clean, part au prochain commit)');
+  execFileSync('git', ['-C', repo, 'clean', '-fd'], { encoding: 'utf8' });
+  ok(fs.existsSync(path.join(repo, '.vibe-agent', 'archive', 'index.md')), 'index.md survit à git clean -fd (stagé)');
+
+  // --- Idempotence par id : rejouer la même entrée n'ajoute rien et ne réécrit pas.
+  const again = archive.appendIndexLine(repo, archive.entryFromLot(closed));
+  ok(again.action === 'unchanged', 'appendIndexLine : entrée identique → no-op (unchanged)');
+  ok(idxLines(repo).length === 1, 'appendIndexLine : aucun doublon après rejeu');
+  ok(backlog.doneLot(repo, l1.id, 'abc1234') && idxLines(repo).length === 1,
+    'doneLot rappelé sur un lot déjà clos : toujours une seule ligne');
+
+  // --- Non-dégradation : une fiche déjà signalée ne repasse jamais à fiche:non.
+  archive.appendIndexLine(repo, { id: l1.id, date: '2026-07-27', commit: 'abc1234', epic: 'Archive à tiroirs', verify: 'OK', fiche: 'oui', title: 'Archive tier 0 : index et filet' });
+  ok(/verify:OK \| fiche:oui/.test(idxLines(repo)[0]), 'appendIndexLine : verify/fiche enrichis (mise à jour par id)');
+  archive.appendIndexLine(repo, archive.entryFromLot(closed)); // filet machine, verify:inconnu + fiche:non
+  ok(/verify:OK \| fiche:oui/.test(idxLines(repo)[0]),
+    'appendIndexLine : le filet machine ne dégrade JAMAIS fiche:oui/verify connu (merge non dégradant)');
+
+  // --- Sanitisation : un `|` ou un saut de ligne dans le titre ne casse pas le format.
+  archive.appendIndexLine(repo, { id: 7, date: '2026-07-27', commit: 'deadbee', epic: null, title: 'Titre | piégé\navec saut' });
+  const l7 = idxLines(repo).find((l) => l.startsWith('#0007'));
+  ok(l7 && archive.parseEntry(l7).title === 'Titre / piégé avec saut', 'appendIndexLine : | et saut de ligne neutralisés dans le titre');
+  ok(l7 && archive.parseEntry(l7).epic === '—', 'appendIndexLine : epic absente → tiret cadratin, jamais de champ vide');
+  ok(idxLines(repo).length === 2 && idxLines(repo)[0].startsWith('#0001'), 'index : lignes triées par id croissant');
+
+  // --- Lignes hors format : conservées, jamais perdues à la réécriture.
+  const idxFile = path.join(repo, '.vibe-agent', 'archive', 'index.md');
+  fs.appendFileSync(idxFile, 'ligne humaine hors format\n');
+  archive.appendIndexLine(repo, { id: 9, date: '2026-07-27', commit: 'cafe123', title: 'neuf' });
+  ok(fs.readFileSync(idxFile, 'utf8').includes('ligne humaine hors format'), 'index : une ligne hors format survit à la réécriture');
+  ok(archive.readIndex(repo).map((e) => e.id).join(',') === '1,7,9', 'readIndex : entrées parsées et triées, lignes hors format ignorées');
+
+  // --- Migration d'un projet déjà bootstrappé (vieux .gitignore sans !archive/).
+  const old = mkArchiveRepo('repo-archive-old');
+  const oldGi = path.join(old, '.vibe-agent', '.gitignore');
+  fs.writeFileSync(oldGi, '*\n!.gitignore\n!backlog.json\n!rules.yaml\n');
+  ok(ignored(old, '.vibe-agent/archive/index.md'), 'vieux .gitignore : l\'archive serait ignorée (le problème à migrer)');
+  ok(archive.ensureArchiveGitignore(old) === true, 'ensureArchiveGitignore : bloc ajouté sur un .gitignore existant');
+  ok(archive.ensureArchiveGitignore(old) === false, 'ensureArchiveGitignore : idempotent (2e appel = no-op)');
+  ok((fs.readFileSync(oldGi, 'utf8').match(/^!archive\/$/gm) || []).length === 1, 'ensureArchiveGitignore : bloc ajouté une seule fois');
+  ok(!ignored(old, '.vibe-agent/archive/index.md') && ignored(old, '.vibe-agent/archive/raw/x.md'),
+    'après migration : tier 0/1 versionné, tier 2 ignoré');
+  fs.writeFileSync(oldGi, '*\n!.gitignore\n'); // .gitignore rétrogradé -> runBootstrap doit re-migrer
+  bootstrapLib.runBootstrap(old);
+  ok(/^!archive\/$/m.test(fs.readFileSync(oldGi, 'utf8')), 'runBootstrap : migre un .gitignore existant (copyIfAbsent ne le ferait pas)');
+
+  // --- Backfill : --dry-run n'écrit rien, l'application est reprenable et idempotente.
+  const bf = mkArchiveRepo('repo-archive-backfill');
+  for (const t of ['Lot un', 'Lot deux', 'Lot trois']) {
+    const l = backlog.addLot(bf, t, 'fait quand : …');
+    backlog.startLot(bf, l.id);
+    backlog.doneLot(bf, l.id, 'sha' + l.id);
+  }
+  const openLot = backlog.addLot(bf, 'Lot ouvert', 'fait quand : …');
+  fs.rmSync(path.join(bf, '.vibe-agent', 'archive'), { recursive: true, force: true }); // repart d'une archive vide
+  const dry = archive.backfill(bf, { dryRun: true });
+  ok(dry.ok && dry.total === 3 && dry.added.length === 3, 'backfill --dry-run : 3 lots clos détectés (le lot ouvert exclu)');
+  ok(!fs.existsSync(path.join(bf, '.vibe-agent', 'archive', 'index.md')), 'backfill --dry-run : rien écrit sur disque');
+  const run1 = archive.backfill(bf, {});
+  ok(run1.ok && run1.added.length === 3 && idxLines(bf).length === 3, 'backfill : 3 lignes écrites');
+  ok(idxLines(bf).every((l) => /verify:inconnu \| fiche:non/.test(l)), 'backfill : verify:inconnu / fiche:non (le résultat n\'a jamais été persisté)');
+  const run2 = archive.backfill(bf, {});
+  ok(run2.ok && run2.added.length === 0 && run2.skipped === 3, 'backfill rejoué : 0 ajout, 3 déjà indexés (idempotent)');
+  ok(idxLines(bf).length === 3, 'backfill rejoué : aucun doublon');
+  ok(!idxLines(bf).some((l) => /Lot ouvert/.test(l)), 'backfill : un lot non clos n\'entre jamais dans l\'index');
+  backlog.startLot(bf, openLot.id);
+  backlog.doneLot(bf, openLot.id, 'sha9');
+  ok(idxLines(bf).length === 4, 'clôture après backfill : le filet complète l\'index (pas de conflit)');
+
+  // --- Fail-open : l'archive ne casse jamais une clôture ni un flux.
+  const fo = mkArchiveRepo('repo-archive-failopen');
+  fs.mkdirSync(path.join(fo, '.vibe-agent', 'archive'), { recursive: true });
+  fs.rmSync(path.join(fo, '.vibe-agent', 'archive'), { recursive: true, force: true });
+  fs.writeFileSync(path.join(fo, '.vibe-agent', 'archive'), 'pas un dossier'); // mkdir impossible
+  const lf = backlog.addLot(fo, 'Lot fail-open', 'fait quand : …');
+  backlog.startLot(fo, lf.id);
+  const closedFo = backlog.doneLot(fo, lf.id, 'ffff111');
+  ok(closedFo && closedFo.status === 'done', 'archive impossible (archive/ = fichier) : la clôture backlog réussit quand même');
+  ok(archive.appendIndexLine(fo, { id: 1, title: 'x' }).ok === false, 'appendIndexLine : échec propre (ok:false), jamais de throw');
+  ok(archive.appendIndexLine(null, { id: 1 }).ok === false, 'appendIndexLine : root nul → échec propre');
+  ok(archive.appendIndexLine(repo, { id: 'zzz' }).action === 'error', 'appendIndexLine : id non numérique refusé');
+  ok(archive.readIndex(path.join(SANDBOX, 'nexistepas')).length === 0, 'readIndex : dépôt inconnu → []');
+  ok(archive.backfill(null, {}).ok === false, 'backfill : root nul → échec propre');
+
+  // --- CLI scripts/archive.js : toujours exit 0.
+  const cliDry = runNode(ARCHIVE_CLI, ['backfill', '--dry-run', '--cwd', bf]);
+  ok(cliDry.code === 0 && /Backfill tier 0 — 4 lot\(s\) clos · 0 ligne\(s\) à ajouter · 4 déjà indexé\(s\)\./.test(cliDry.out),
+    'CLI backfill --dry-run : compte-rendu exact, exit 0');
+  ok(runNode(ARCHIVE_CLI, ['fantaisie', '--cwd', bf]).code === 0, 'CLI : commande inconnue → exit 0 (fail-open)');
+  ok(runNode(ARCHIVE_CLI, ['backfill', '--cwd', SANDBOX]).code === 0, 'CLI : hors dépôt git → exit 0');
+
+  // --- Le plugin embarque bien l'archive (EXCLUDE ne la touche pas).
+  const bpSrc = fs.readFileSync(path.join(PKG, 'install', 'build-plugin.js'), 'utf8');
+  ok(!/EXCLUDE = new Set\(\[[^\]]*archive/.test(bpSrc), 'build-plugin : lib/archive.js et scripts/archive.js NON exclus du plugin');
+}
+
 // ============================ L. INIT PROJET EN COURS (--augment) ============================
 section('Init d\'un projet en cours — augmentation taguée de CLAUDE.md/AGENTS.md existants');
 {

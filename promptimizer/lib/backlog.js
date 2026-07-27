@@ -419,7 +419,16 @@ function doneLot(root, id, commitSha, lotNumber, sessionId, occupancy) {
     if (gain) lot.integrations = { command_optimizer: gain };
     else delete lot.integrations;
   } catch (_) { delete lot.integrations; }
-  return saveBacklog(root, b) ? lot : null;
+  const saved = saveBacklog(root, b);
+  // Filet machine tier 0 (archive à tiroirs) : une ligne d'index par lot clos, MÊME quand
+  // aucune fiche narrative n'est écrite (auto-clôture au Stop, clôture CLI). Le `fiche:non`
+  // rend la dette de documentation visible au lieu de la masquer. Idempotent par id côté
+  // archive : le double chemin Stop + CLI ne produit ni doublon ni dégradation.
+  // Fail-open STRICT : ce code tourne dans le hook Stop, il ne casse jamais une clôture.
+  if (saved) {
+    try { require('./archive').appendIndexLine(root, require('./archive').entryFromLot(lot)); } catch (_) { /* fail-open */ }
+  }
+  return saved ? lot : null;
 }
 
 // Bilan chiffré d'une epic (lot #58) : appelé juste après doneLot sur le lot qui vient de

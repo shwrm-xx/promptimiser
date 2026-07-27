@@ -612,8 +612,9 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   par le lot, figé de fait à la clôture, affiché par `show` ; cf. puce « Coût réel par lot » plus
   haut. **Durabilité par défaut** (le backlog ne doit JAMAIS être perdu) : le
   bootstrap pose un `.vibe-agent/.gitignore` **whitelist** (`*` puis `!.gitignore`, `!backlog.json`,
-  `!rules.yaml`) — l'état éphémère (ledgers, handoff, session-state, snapshot) reste hors git, seul
-  le plan durable est suivi ; et `saveBacklog` **stage** le fichier à chaque écriture (survit à un
+  `!rules.yaml`, `!trigram`, `!archive/` + `!archive/**` + `archive/raw/`) — l'état éphémère
+  (ledgers, handoff, session-state, snapshot) reste hors git, seul le durable est suivi ; et
+  `saveBacklog` **stage** le fichier à chaque écriture (survit à un
   `git clean`, part au prochain commit dès sa création). Sa disparition passée venait de ce qu'il
   n'était pas suivi par git. À part : `.vibe-agent/todo-snapshot.json`, capture passive de la
   todo-list Claude Code (écrasée à chaque `TodoWrite`, sens unique outil→disque — granularité
@@ -665,6 +666,28 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   ni écrasé ni injecté. La détection de « lot ouvert » de `stop.js` utilise
   `gitStatusMeaningful` (porcelain **sans** `.vibe-agent/`) : le churn ledgers/handoff ne compte
   pas comme lot ouvert et ne bloque pas sa clôture.
+- **Archive des lots clos — tier 0** (`.vibe-agent/archive/index.md`, `lib/archive.js` + CLI
+  `scripts/archive.js`, epic « Archive à tiroirs », lot #94) : contrepartie **durable** du handoff.
+  Le handoff reste un fichier unique écrasé (canal de reprise) ; l'archive est un référentiel
+  **séparé, versionné git, jamais injecté**. Tier 0 = `index.md`, une ligne par lot clos, format
+  contraint et greppable :
+  `#0094 | 2026-07-27 | <sha> | epic:<epic> | verify:<OK|ÉCHEC|timeout|aucune|inconnu> | fiche:<oui|non> | <titre>`.
+  Markdown ligne-à-ligne et **pas** JSON : lu par l'humain ET par `grep`, diff git lisible, merge
+  d'un append trivial, et une ligne corrompue n'invalide pas le reste — là où un JSON corrompu
+  retombe en bloc sur le fallback de `readJson` (mode de perte totale déjà observé sur les ledgers).
+  **Filet machine** : `doneLot` (`lib/backlog.js`) appelle `appendIndexLine` après un `saveBacklog`
+  réussi — l'index est donc complet même quand aucune fiche narrative n'est écrite (auto-clôture au
+  Stop, clôture CLI), et le `fiche:non` rend la dette de documentation **visible** au lieu de la
+  masquer. `appendIndexLine` est **idempotent par id** et sa fusion est **non dégradante** (un
+  `fiche:oui` ou un `verify` connu n'est jamais réécrit en `non`/`inconnu` par un rappel machine) :
+  le double chemin Stop + CLI ne produit ni doublon ni régression. Écriture atomique
+  (`writeAtomicText`) + `git add` best-effort (modèle `stageBacklog`). Rétro-remplissage :
+  `node …/scripts/archive.js backfill [--dry-run]`, reprenable et idempotent (skip des ids déjà
+  présents), source = `backlog.json` (`closed_at` n'est pas fiable, l'**id** est le seul ordre sûr).
+  **Pare-feu** : aucun hook ni module de la chaîne d'injection (`session-start.js`, `handoff.js`,
+  `messages.js`, `pre-compact.js`) ne requiert `lib/archive.js` en lecture — l'archive s'écrit à la
+  clôture et se lit **à la demande**, jamais toute seule. Tiroirs tier 1 (fiches narratives) et
+  tier 2 (brut, non versionné) : lot #95. Spec : `mwn/promptimizer-archive-handoffs/`.
 - **`pmz:skip` du handoff → `avoid_reread_notes`** (`lib/handoff.js#parseSkipPaths`,
   `lib/ledger.js#seedAvoidReread`, lot T3 ; boucle fermée lot #51) : des lignes `pmz:skip:
   <chemin>` sèment `avoid_reread_notes` (read-ledger) dès l'injection du handoff au SessionStart
@@ -1061,6 +1084,16 @@ plusieurs sessions réelles (capture fournie par l'utilisateur, 2026-07-12).
   pouvant pas générer un handoff riche (pas d'accès au modèle), l'auto mécanique garantit un
   plancher toujours présent, et le manuel de `/fresh-session` l'enrichit quand l'utilisateur
   clôture proprement.
+  **Amendée (lot #94, epic « Archive à tiroirs »)** : le handoff RESTE un fichier unique écrasé —
+  c'est le canal de *reprise*, la décision ci-dessus tient. Mais la conclusion « pas d'historique »
+  était trop large : le narratif riche de fin de lot (décisions **et pourquoi**, non-vérifié,
+  dette) n'avait qu'UNE vie et a été perdu pour les ~90 lots clos, ce que git/CHANGELOG ne
+  restituent pas (ils portent le *quoi*, pas le *pourquoi* ni le non-vérifié). L'archive
+  (`.vibe-agent/archive/`) est un référentiel **séparé** qui répond aux objections d'origine :
+  bloat → une entrée courte et bornée par lot ; nettoyage → immuables et versionnées ; « valeur
+  seulement pour la session suivante » → faux pour les décisions et le non-vérifié, prouvé par la
+  perte constatée. Elle n'est **jamais** injectée automatiquement (pare-feu, voir § Flux de
+  données) : c'est ce qui rend l'historique gratuit en contexte.
 - **Rappels qui nomment la commande exacte** (`/close-batch`, `/fresh-session`) plutôt qu'une
   prose générique : le même audit a montré que les skills PMZ n'étaient invoqués que quelques
   fois sur 76 sessions malgré des rappels de coût réguliers — l'écart entre « le mécanisme
