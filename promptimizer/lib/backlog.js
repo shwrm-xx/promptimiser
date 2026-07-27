@@ -59,6 +59,7 @@ const MAX_VERIFY = 150; // commande shell de preuve de clôture, exécutée par 
 const MAX_OWNER = 80; // id de session propriétaire d'un lot en cours (mode fleet, cf. D3)
 const MAX_DEPENDS = 20; // ids de lots dont ce lot dépend (ordre de réintégration, cf. D3)
 const MAX_NOTE = 200;
+const MAX_REOPEN = 5; // entrées d'historique de réouverture conservées par lot (les + récentes)
 const MAX_TODOS = 30;
 const MAX_TODO_CHARS = 120;
 const STATUSES = ['todo', 'in_progress', 'done', 'dropped'];
@@ -164,6 +165,28 @@ function normalizeDepends(deps, selfId) {
   return out;
 }
 
+// Historique de RÉOUVERTURE d'un lot (FIA-25, lot #98) : une entrée par `reopen`, la plus
+// récente en dernier, capée à MAX_REOPEN. Chaque entrée fige ce que la réouverture EFFACE du
+// cycle précédent (commit de clôture, verdict verify) — sans quoi cette trace disparaîtrait
+// avec les champs closed_*. Clé DROPPÉE (undefined) si vide, comme `integrations` : un lot
+// jamais rouvert — l'immense majorité — ne porte pas le champ.
+function normalizeReopened(x) {
+  if (!Array.isArray(x)) return undefined;
+  const out = [];
+  for (const e of x) {
+    if (!e || typeof e !== 'object') continue;
+    const note = trunc(e.note, MAX_NOTE);
+    if (!note) continue;
+    out.push({
+      at: typeof e.at === 'string' ? e.at : null,
+      note,
+      from_commit: e.from_commit || null,
+      from_verify: CLOSED_VERIFY_VALUES.includes(e.from_verify) ? e.from_verify : null,
+    });
+  }
+  return out.length ? out.slice(-MAX_REOPEN) : undefined;
+}
+
 // Normalisation défensive : fichier absent/corrompu/champ invalide → backlog vide valide.
 function loadBacklog(root) {
   const empty = { version: 1, next_id: 1, created_at: null, updated_at: null, lots: [] };
@@ -211,6 +234,8 @@ function loadBacklog(root) {
       session_owner: l.session_owner ? trunc(l.session_owner, MAX_OWNER) : null,
       // Métrologie RTK par lot (lot #83) — optionnel, absent des lots legacy (clé droppée si vide).
       integrations: normalizeIntegrations(l.integrations),
+      // Historique de réouverture (lot #98) — optionnel, clé droppée si le lot n'a jamais été rouvert.
+      reopened: normalizeReopened(l.reopened),
     }));
   const maxId = lots.reduce((m, l) => Math.max(m, l.id), 0);
   return {
@@ -535,6 +560,48 @@ function noteLot(root, id, note) {
   return saveBacklog(root, b) ? lot : null;
 }
 
+// Rouvre un lot CLOS (FIA-25, lot #98) — la soupape qui manquait aux 4 refus `status === 'done'`
+// des setters (« clos = clos » reste la règle, mais un scope insuffisant découvert après coup ou
+// une régression doivent avoir un chemin OUTILLÉ plutôt qu'une édition de backlog.json à la main).
+// Repasse le lot en `todo`, JAMAIS `in_progress` : `startLot` reste le seul chemin qui inscrit
+// session_owner/vague. EFFACE tous les champs de clôture, sinon le prochain cycle afficherait des
+// valeurs de l'ancien : `doneLot` réécrit bien commit/date/session/occupancy, mais PAS
+// `closed_verify` — il est posé par `setClosedVerify`, qui refuse d'écraser un verdict déjà là.
+// Note OBLIGATOIRE : une réouverture détruit de la trace, elle doit dire pourquoi ; le commit et
+// le verdict effacés sont conservés dans l'entrée d'historique (`reopened`).
+// null si lot introuvable, note vide, ou lot pas `done` (déjà ouvert, ou `dropped` — statut
+// distinct, hors périmètre : un lot abandonné se re-crée, il ne se rouvre pas).
+function reopenLot(root, id, note) {
+  const n = trunc(note, MAX_NOTE);
+  if (!n) return null;
+  const b = loadBacklog(root);
+  const lot = findLot(b, id);
+  if (!lot || lot.status !== 'done') return null;
+  const entry = {
+    at: now(), note: n, from_commit: lot.closed_commit || null, from_verify: lot.closed_verify || null,
+  };
+  lot.reopened = (Array.isArray(lot.reopened) ? lot.reopened : []).concat([entry]).slice(-MAX_REOPEN);
+  lot.status = 'todo';
+  lot.closed_commit = null;
+  lot.closed_at = null;
+  lot.closed_session_id = null;
+  lot.closed_occupancy = null;
+  lot.closed_verify = null;
+  if (!saveBacklog(root, b)) return null;
+  // Trace tier 1 : la fiche du cycle clos n'est jamais démentie ni écrasée, on lui AJOUTE la
+  // ligne de réouverture. Fail-open strict (même contrat qu'à la clôture) : pas de fiche, ou
+  // échec d'écriture → le champ `reopened` du backlog reste la trace. La ligne d'index tier 0
+  // est laissée telle quelle : la clôture a bien eu lieu, et la re-clôture la remettra à jour
+  // (mergeEntry, lib/archive.js).
+  try {
+    const archive = require('./archive');
+    const d = entry.at.slice(0, 10);
+    archive.appendFicheLine(root, lot.id, `> Rouvert le ${d} — ${n} `
+      + `(clôture effacée : commit ${entry.from_commit || '—'}, verify ${entry.from_verify || '—'}).`);
+  } catch (_) { /* fail-open */ }
+  return lot;
+}
+
 function currentLot(b) {
   return b.lots.find((l) => l.status === 'in_progress') || null;
 }
@@ -839,11 +906,11 @@ function exportMarkdown(b) {
 }
 
 module.exports = {
-  backlogFile, loadBacklog, saveBacklog, addLot, setVerify, setClosedVerify, setPerimeter, setDepends, startLot, doneLot, dropLot, noteLot,
+  backlogFile, loadBacklog, saveBacklog, addLot, setVerify, setClosedVerify, setPerimeter, setDepends, startLot, doneLot, dropLot, noteLot, reopenLot,
   touchLot, addCost, currentLot, nextLot, blockedByOf, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
   epicBilan, estimateCost, canCoexist, pairwiseCoexist, planWaves, waveBranch,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot, modelEffortTag,
   exportCsv, exportMarkdown, orphanArgs, overflowFields, isTruncated, VALUE_FLAGS, BOOL_FLAGS,
-  MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_OWNER, MAX_DEPENDS, MAX_NOTE, MAX_TODOS, EFFORT_LEVELS,
+  MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_OWNER, MAX_DEPENDS, MAX_NOTE, MAX_REOPEN, MAX_TODOS, EFFORT_LEVELS,
   COST_BUDGET_TOKENS, COST_WARN_TOKENS, CLOSED_VERIFY_VALUES,
 };

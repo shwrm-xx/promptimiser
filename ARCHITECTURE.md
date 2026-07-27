@@ -655,7 +655,27 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   aucune mesure disponible. Champ `cost_tokens` (lot #43) : coût réel cumulé du lot = tokens de sortie sommés par
   `stop.js` sur tous les tours où il était `in_progress` (`addCost`) — agrégat trans-session porté
   par le lot, figé de fait à la clôture, affiché par `show` ; cf. puce « Coût réel par lot » plus
-  haut. **Durabilité par défaut** (le backlog ne doit JAMAIS être perdu) : le
+  haut. **Dépendances corrigeables après création** (`backlog.js depends --id N [--depends "2,3"]`,
+  FIA-24, lot #98) : sans `--depends`, lecture ; avec, remplacement intégral via le `setDepends`
+  déjà existant (`normalizeDepends` : self exclu, dédoublonné, capé `MAX_DEPENDS`) ; `--depends ""`
+  vide la liste. Refus explicites sur `--id` inconnu, lot clos/abandonné, ou valeur non numérique
+  (une faute de frappe ne doit pas se traduire par un vidage silencieux) ; un id ne correspondant à
+  aucun lot est **averti** et non refusé — `blockedByOf`/`planWaves` le tiennent pour satisfait
+  (tolérance hors-plan volontaire). **Réouverture d'un lot clos** (`backlog.js reopen --id N --note
+  "raison"`, `lib/backlog.js: reopenLot`, FIA-25, lot #98) : la soupape aux quatre refus
+  `status === 'done'` des setters. Repasse le lot en `todo` — **jamais** `in_progress`, `startLot`
+  reste le seul chemin qui inscrit `session_owner`/vague — et **efface** `closed_commit`,
+  `closed_at`, `closed_session_id`, `closed_occupancy`, `closed_verify`. Cet effacement n'est pas
+  cosmétique : `doneLot` réécrit bien les quatre premiers au cycle suivant, mais **pas**
+  `closed_verify` (posé par `setClosedVerify`, qui refuse d'écraser un verdict déjà là) — sans lui,
+  un lot re-clos hériterait du verdict de l'ancien cycle. `--note` **obligatoire** (une réouverture
+  détruit de la trace, elle doit dire pourquoi) ; l'historique `reopened` (`{at, note, from_commit,
+  from_verify}`, capé `MAX_REOPEN` = 5, clé **droppée** si vide comme `integrations`) conserve le
+  commit et le verdict effacés. Refus explicite si le lot est déjà ouvert, ou `dropped` (statut
+  distinct : un lot abandonné se re-crée, il ne se rouvre pas). Côté archive, la fiche tier 1 est
+  **complétée** en pied, jamais écrasée (`archive.appendFicheLine`), et la ligne d'index tier 0 est
+  laissée telle quelle — la clôture a bien eu lieu, et la re-clôture la remet à jour (`mergeEntry`).
+  **Durabilité par défaut** (le backlog ne doit JAMAIS être perdu) : le
   bootstrap pose un `.vibe-agent/.gitignore` **whitelist** (`*` puis `!.gitignore`, `!backlog.json`,
   `!rules.yaml`, `!trigram`, `!archive/` + `!archive/**` + `archive/raw/`) — l'état éphémère
   (ledgers, handoff, session-state, snapshot) reste hors git, seul le durable est suivi ; et
@@ -743,6 +763,11 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   doit porter le **bon** id (pas de fiche mal rangée) et la borne dure de 8 000 caractères refuse
   plutôt que de rogner — une fiche trop longue est un symptôme (diff ou listing collé), pas un cas
   à couper. Une fiche écrite passe sa ligne d'index en `fiche:oui` via la fusion non dégradante.
+  **Une seule exception à l'immuabilité** (lot #98) : `appendFicheLine` **ajoute** une ligne en pied
+  — jamais une réécriture de section — utilisée par la réouverture d'un lot (`reopenLot`) pour
+  inscrire « rouvert le AAAA-MM-JJ, raison ». La fiche du cycle clos n'est ni démentie ni écrasée ;
+  sans fiche existante, l'appel est un no-op explicite (`missing`) et le champ `reopened` du backlog
+  reste la seule trace.
   **Tier 2** = `archive/raw/lot-NNNN.md`, le brut (retour de sous-agent, handoff manuel intégral) :
   **non versionné** (volumineux, porteur de chemins machine), jamais stagé, écrasable sans cérémonie
   — sa perte au clone est acceptable puisque la fiche capture le stable.

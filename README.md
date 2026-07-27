@@ -169,7 +169,10 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   un message visible (zéro token ajouté au contexte) le signale sans attendre la fin du tour.
 - **Plan de lots durable** : `.vibe-agent/backlog.json` est versionné par défaut (un
   `.vibe-agent/.gitignore` ignore l'état éphémère mais garde le plan), et stagé à chaque écriture —
-  il ne se perd plus entre deux sessions.
+  il ne se perd plus entre deux sessions. Un plan reste **corrigeable** : `backlog.js depends --id N
+  --depends "2,3"` réécrit les dépendances d'un lot après coup, et `backlog.js reopen --id N --note
+  "raison"` rouvre un lot clos à tort (repassé « à faire », trace de clôture effacée et raison
+  archivée) — plus besoin d'éditer le JSON à la main, hors de toute garde.
 - **Après un `/clear` ou une compaction** : le handoff (ou le lot en cours) est réinjecté —
   le plan ne se perd pas.
 - **Archive des lots clos, à tiroirs** : la mémoire longue du projet, **jamais réinjectée** dans le
@@ -177,8 +180,9 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   fois. Chaque clôture ajoute une ligne à `.vibe-agent/archive/index.md` (id, date, sha, epic,
   verify, titre — versionné, greppable) et `/close-batch` fait rédiger une **fiche**
   `archive/lots/lot-NNNN.md` : décisions **et pourquoi**, vérifié / non vérifié, dette. Versionnée
-  et immuable une fois posée ; ni diff ni listing de code (le sha et le CHANGELOG font foi pour le
-  volatil). Le brut intégral (`archive/raw/`, local, non versionné) garde le handoff manuel et les
+  et immuable une fois posée — seule exception, une réouverture de lot y **ajoute** une ligne en
+  pied (« rouvert le …, raison ») sans rien réécrire ; ni diff ni listing de code (le sha et le
+  CHANGELOG font foi pour le volatil). Le brut intégral (`archive/raw/`, local, non versionné) garde le handoff manuel et les
   retours de sous-agents avant leur destruction.
   Consultation : `/pmz:archive` (index), `/pmz:archive 57` (la fiche du lot #57), le brut seulement
   sur confirmation explicite. Rétro-remplir un projet existant :

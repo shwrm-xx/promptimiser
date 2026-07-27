@@ -300,6 +300,34 @@ function writeFiche(root, id, markdown, opts) {
   }
 }
 
+// Complète une fiche EXISTANTE d'une ligne, sans jamais l'écraser (lot #98) : une réouverture
+// ne dément pas la fiche du cycle clos, elle s'y ajoute en pied. Seul chemin d'écriture non
+// immuable de tier 1 — volontairement limité à l'AJOUT d'une ligne, jamais à la réécriture d'une
+// section. No-op explicite si aucune fiche n'existe (`missing`) : le champ `reopened` du backlog
+// reste alors la seule trace. Codes d'action : appended | missing | too-long | error.
+function appendFicheLine(root, id, line) {
+  const n = Number(id);
+  const res = { ok: false, action: 'error', file: null };
+  try {
+    if (!root || !Number.isFinite(n)) return res;
+    const text = String(line == null ? '' : line).trim();
+    if (!text) return res;
+    res.file = ficheFile(root, n);
+    if (!fs.existsSync(res.file)) { res.action = 'missing'; return res; }
+    const prev = fs.readFileSync(res.file, 'utf8');
+    if (prev.includes(text)) { res.ok = true; res.action = 'appended'; return res; } // rejeu : no-op
+    const next = prev.replace(/\s*$/, '') + '\n\n' + text + '\n';
+    if (next.length > MAX_FICHE_CHARS) { res.action = 'too-long'; return res; }
+    if (!writeAtomicText(res.file, next)) return res;
+    try { git(['add', '--', path.relative(root, res.file)], root); } catch (_) { /* fail-open */ }
+    res.ok = true;
+    res.action = 'appended';
+    return res;
+  } catch (_) {
+    return res;
+  }
+}
+
 // Lecture d'une fiche — CLI UNIQUEMENT (pare-feu : jamais depuis la chaîne d'injection).
 function readFiche(root, id) {
   try { return fs.readFileSync(ficheFile(root, id), 'utf8'); } catch (_) { return null; }
@@ -398,6 +426,6 @@ function backfill(root, opts) {
 module.exports = {
   archiveDir, indexFile, ficheDir, ficheFile, rawDir, rawFile, ficheMarker, ensureArchiveGitignore,
   appendIndexLine, readIndex, backfill, entryFromLot, formatEntry, parseEntry,
-  ficheSkeleton, writeFiche, readFiche, writeRaw, readRaw, rawInfo,
+  ficheSkeleton, writeFiche, readFiche, appendFicheLine, writeRaw, readRaw, rawInfo,
   GITIGNORE_BLOCK, VERIFY_VALUES, FICHE_VALUES, MAX_FICHE_CHARS,
 };

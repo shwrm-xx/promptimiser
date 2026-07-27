@@ -5973,6 +5973,107 @@ section('backlog — CLI reintegrate : refus sans gate + restitution du gate fin
   ok(fleet.loadFleet(repo).lots.find((l) => l.id === 1).state === 'reintegrated', 'CG3 : fleet -> lot reintegrated');
 }
 
+// ============ R98. CLI depends (FIA-24) + reopen (FIA-25) (lot #98) ============
+section('backlog — CLI depends corrigeable + reopen d\'un lot clos (lot #98)');
+{
+  const archive = require(path.join(PKG, 'lib', 'archive'));
+  const repo = path.join(SANDBOX, 'repo-reopen');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const lotOf = (id) => backlogLib.loadBacklog(repo).lots.find((l) => l.id === id);
+
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot A98', '--model', 'sonnet']);
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot B98', '--model', 'sonnet']);
+
+  // D1. lecture sans --depends (aucune écriture)
+  const rd0 = runNode(BKLG, ['depends', '--cwd', repo, '--id', '2']);
+  ok(/Dépendances du lot #2 : \(aucune\)/.test(rd0.out), 'D1 : depends sans --depends -> lecture');
+
+  // D2. écriture + avertissement sur id inexistant (jamais un refus : tolérance hors-plan)
+  const rd1 = runNode(BKLG, ['depends', '--cwd', repo, '--id', '2', '--depends', '1,42']);
+  ok(JSON.stringify(lotOf(2).depends_on) === JSON.stringify([1, 42]), 'D2 : depends --depends "1,42" persisté');
+  ok(/#1, #42/.test(rd1.out) && /⚠️.*#42/.test(rd1.out), 'D2 : id sans lot correspondant -> averti, pas refusé');
+
+  // D3. --depends "" vide la liste (distingué du flag absent)
+  runNode(BKLG, ['depends', '--cwd', repo, '--id', '2', '--depends', '']);
+  ok(lotOf(2).depends_on.length === 0, 'D3 : --depends "" vide la liste');
+
+  // D4. refus explicites : id inconnu, valeur non numérique
+  ok(/Lot #99 introuvable/.test(runNode(BKLG, ['depends', '--cwd', repo, '--id', '99', '--depends', '1']).out),
+    'D4 : --id inconnu -> refus explicite');
+  const rdBad = runNode(BKLG, ['depends', '--cwd', repo, '--id', '2', '--depends', 'abc']);
+  ok(/Refusé/.test(rdBad.out) && /« abc »/.test(rdBad.out) && lotOf(2).depends_on.length === 0,
+    'D4 : --depends non numérique -> refus explicite (pas un vidage silencieux)');
+
+  // D5. normalizeDepends réutilisé : self exclu, dédoublonné
+  runNode(BKLG, ['depends', '--cwd', repo, '--id', '2', '--depends', '2,1,1']);
+  ok(JSON.stringify(lotOf(2).depends_on) === JSON.stringify([1]), 'D5 : self + doublon écartés (normalizeDepends)');
+
+  // R1. reopen refusé sur un lot déjà ouvert
+  ok(/déjà ouvert/.test(runNode(BKLG, ['reopen', '--cwd', repo, '--id', '2', '--note', 'x']).out),
+    'R1 : reopen sur lot todo -> refus explicite');
+
+  // R2. reopen refusé sur un lot abandonné (statut distinct, hors périmètre)
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot C98', '--model', 'sonnet']);
+  runNode(BKLG, ['drop', '--cwd', repo, '--id', '3', '--note', 'hors périmètre']);
+  ok(/abandonné, pas clos/.test(runNode(BKLG, ['reopen', '--cwd', repo, '--id', '3', '--note', 'x']).out),
+    'R2 : reopen sur lot dropped -> refus explicite');
+
+  // R3. --note obligatoire : sans elle, le lot reste clos
+  runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
+  runNode(BKLG, ['done', '--cwd', repo, '--id', '1', '--commit', 'aaa1111']);
+  backlogLib.setClosedVerify(repo, 1, 'ok');
+  ok(lotOf(1).status === 'done' && lotOf(1).closed_verify === 'ok', 'R3 : lot #1 clos avec verdict verify');
+  const rn = runNode(BKLG, ['reopen', '--cwd', repo, '--id', '1']);
+  ok(/Refusé : --note manquante/.test(rn.out) && lotOf(1).status === 'done', 'R3 : reopen sans --note -> refus, lot intact');
+
+  // R4. fiche tier 1 : la réouverture la COMPLÈTE, ne l'écrase jamais
+  const sk = archive.ficheSkeleton({ id: 1, title: 'Lot A98', date: '2026-07-27', commit: 'aaa1111', verify: 'OK' });
+  archive.writeFiche(repo, 1, sk, { title: 'Lot A98', date: '2026-07-27', commit: 'aaa1111', verify: 'OK' });
+  const rr = runNode(BKLG, ['reopen', '--cwd', repo, '--id', '1', '--note', 'régression sur X']);
+  ok(/rouvert \(à faire\)/.test(rr.out) && /réouverture n°1/.test(rr.out), 'R4 : reopen -> lot rouvert, sortie explicite');
+  const fiche = archive.readFiche(repo, 1);
+  ok(/## Objectif/.test(fiche) && /> Rouvert le \d{4}-\d{2}-\d{2} — régression sur X/.test(fiche),
+    'R4 : fiche complétée en pied, sections d\'origine intactes');
+  ok(/commit aaa1111, verify ok/.test(fiche), 'R4 : la ligne de fiche conserve le commit et le verdict effacés');
+
+  // R5. tous les champs de clôture effacés, historique posé
+  const l1 = lotOf(1);
+  ok(l1.status === 'todo' && !l1.closed_commit && !l1.closed_at && !l1.closed_session_id
+    && l1.closed_occupancy === null && l1.closed_verify === null, 'R5 : tous les champs closed_* effacés');
+  ok(Array.isArray(l1.reopened) && l1.reopened.length === 1 && l1.reopened[0].from_commit === 'aaa1111'
+    && l1.reopened[0].from_verify === 'ok' && /^\d{4}-/.test(l1.reopened[0].at || ''),
+    'R5 : entrée d\'historique (at, note, commit + verdict effacés)');
+  ok(!('reopened' in lotOf(2)) || lotOf(2).reopened === undefined, 'R5 : lot jamais rouvert -> clé reopened absente');
+
+  // R6. le cycle suivant repart propre (pas d'héritage de l'ancien verdict)
+  runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
+  runNode(BKLG, ['done', '--cwd', repo, '--id', '1', '--commit', 'bbb2222']);
+  backlogLib.setClosedVerify(repo, 1, 'failed');
+  ok(lotOf(1).closed_commit === 'bbb2222' && lotOf(1).closed_verify === 'failed',
+    'R6 : re-clôture -> commit et verdict du NOUVEAU cycle (aucun héritage)');
+  const idx = archive.readIndex(repo).find((e) => e.id === 1);
+  ok(idx && idx.commit === 'bbb2222' && idx.fiche === 'oui', 'R6 : ligne d\'index tier 0 remise à jour, fiche:oui préservé');
+
+  // R7. cap MAX_REOPEN (les plus récentes conservées) + note tronquée refusée par le CLI
+  for (let i = 0; i < backlogLib.MAX_REOPEN + 2; i++) {
+    backlogLib.reopenLot(repo, 1, 'raison ' + i);
+    backlogLib.doneLot(repo, 1, 'ccc' + i);
+  }
+  const hist = lotOf(1).reopened;
+  ok(hist.length === backlogLib.MAX_REOPEN && /raison 6$/.test(hist[hist.length - 1].note),
+    'R7 : historique capé à MAX_REOPEN, les plus récentes conservées');
+  const rlong = runNode(BKLG, ['reopen', '--cwd', repo, '--id', '1', '--note', 'z'.repeat(backlogLib.MAX_NOTE + 10)]);
+  ok(/Refusé/.test(rlong.out) && lotOf(1).status === 'done', 'R7 : --note au-delà du plafond -> refus (garde #90), lot intact');
+
+  // R8. appendFicheLine : no-op explicite quand aucune fiche n'existe
+  ok(archive.appendFicheLine(repo, 2, 'ligne').action === 'missing', 'R8 : appendFicheLine sans fiche -> missing');
+  ok(archive.appendFicheLine(repo, 1, '').action === 'error', 'R8 : appendFicheLine ligne vide -> error (aucune écriture)');
+}
+
 // Faux binaire `rtk` (node shebang) piloté par RTK_TEST_MODE — partagé par RTK1 (lot #81) et
 // RTK2 (lot #82, statut/doctor). argv rewrite: [node, rtk, 'rewrite', '<cmd>'] ; argv version:
 // [node, rtk, '--version'].

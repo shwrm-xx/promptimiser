@@ -354,6 +354,58 @@ function main() {
     return out(l ? `Verify du lot #${l.id} enregistrée : ${l.verify}` : `Lot #${id} introuvable ou commande vide.`);
   }
 
+  // FIA-24 (lot #98) : `setDepends` existait sans chemin CLI — corriger une dépendance après
+  // création (ajout, retrait, faute de frappe d'id) imposait d'éditer backlog.json à la main,
+  // hors des gardes que le reste du CLI applique. Sans --depends : LECTURE. Avec --depends "" :
+  // vidage explicite (flagList filtre les vides — d'où le test de présence sur argv, pas sur la
+  // liste). Remplacement intégral, comme setDepends côté lib.
+  if (cmd === 'depends') {
+    const b = backlog.loadBacklog(root);
+    const cur = b.lots.find((x) => x.id === Number(id));
+    if (!cur) return out(`Lot #${id} introuvable.`);
+    const fmt = (ds) => (ds.length ? ds.map((d) => '#' + d).join(', ') : '(aucune)');
+    if (!process.argv.includes('--depends')) {
+      return out(`Dépendances du lot #${cur.id} : ${fmt(cur.depends_on)}`);
+    }
+    const raw = flagList('depends');
+    const bad = raw.filter((s) => !Number.isFinite(Number(s)));
+    if (bad.length) {
+      return out(`Refusé : --depends attend des ids de lots — ${bad.map((s) => `« ${s} »`).join(', ')} n'en sont pas. `
+        + 'Ex. --depends "2,3" ; pour vider : --depends "".');
+    }
+    const lot = backlog.setDepends(root, id, raw.map(Number));
+    if (!lot) return out(`Refusé : le lot #${cur.id} est ${LABELS[cur.status]} — ses dépendances ne sont plus modifiables.`);
+    // Ids ne correspondant à aucun lot : AVERTIS, pas refusés — `blockedByOf`/`planWaves` les
+    // traitent comme satisfaits (tolérance hors-plan volontaire), mais c'est le symptôme n°1
+    // de la faute de frappe que cette commande sert justement à corriger.
+    const unknown = lot.depends_on.filter((d) => !b.lots.some((x) => x.id === d));
+    const warn = unknown.length ? ` ⚠️ Aucun lot ne porte ${unknown.map((d) => '#' + d).join(', ')} (dépendance ignorée au calcul de vagues).` : '';
+    return out(`Dépendances du lot #${lot.id} : ${fmt(lot.depends_on)}.${warn}`);
+  }
+
+  // FIA-25 (lot #98) : soupape de réouverture d'un lot clos (scope insuffisant découvert après
+  // coup, régression). --note obligatoire : la réouverture EFFACE la trace de clôture.
+  if (cmd === 'reopen') {
+    if (truncGuard([{ name: '--note', value: flag('note'), max: backlog.MAX_NOTE }])) return;
+    const note = flag('note');
+    const b = backlog.loadBacklog(root);
+    const cur = b.lots.find((x) => x.id === Number(id));
+    if (!cur) return out(`Lot #${id} introuvable.`);
+    if (cur.status === 'dropped') {
+      return out(`Refusé : le lot #${cur.id} est abandonné, pas clos — un lot dropped se re-crée (add), il ne se rouvre pas.`);
+    }
+    if (cur.status !== 'done') return out(`Refusé : le lot #${cur.id} est déjà ouvert (${LABELS[cur.status]}).`);
+    if (!note) {
+      return out('Refusé : --note manquante. Une réouverture efface la trace de clôture (commit, verdict verify, '
+        + 'session, occupation) — elle doit dire pourquoi. Ex. --note "régression détectée sur X".');
+    }
+    const lot = backlog.reopenLot(root, id, note);
+    if (!lot) return out(`Lot #${id} : échec d'écriture, rien n'a été modifié.`);
+    const n = (lot.reopened || []).length;
+    return out(`Lot #${lot.id} « ${lot.title} » rouvert (à faire)${backlog.modelEffortTag(lot)} — clôture effacée`
+      + `, réouverture n°${n} tracée. Démarre-le avec : backlog.js start --id ${lot.id}`);
+  }
+
   if (cmd === 'start') {
     const lot = backlog.startLot(root, id, flag('owner'));
     if (!lot) return out(`Lot #${id} introuvable ou déjà clos/abandonné.`);
@@ -436,7 +488,7 @@ function main() {
     return;
   }
 
-  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | next | parallelize | reintegrate | reconcile | epic | verify | trigram | export.`);
+  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | reopen | depends | next | parallelize | reintegrate | reconcile | epic | verify | trigram | export.`);
 }
 
 if (require.main === module) {

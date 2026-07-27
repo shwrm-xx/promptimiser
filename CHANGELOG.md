@@ -2,6 +2,44 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-27 — lot #98 « CLI backlog : depends corrigeable + reopen d'un lot clos » (epic « Archive à tiroirs »)
+
+Deux corrections du plan de lots qui n'avaient aucun chemin outillé et imposaient d'éditer
+`.vibe-agent/backlog.json` à la main — hors des gardes (anti-troncature, normalisation, refus
+d'orphelins) que le reste du CLI applique systématiquement.
+
+- **`backlog.js depends --id N [--depends "2,3"]`** (FIA-24, `scripts/backlog.js`) — `setDepends`
+  existait et était exporté depuis le lot #76, mais aucune sous-commande ne l'appelait : seul
+  `add --depends` posait `depends_on`, **à la création**. Sans `--depends` : lecture. Avec :
+  remplacement intégral (`normalizeDepends` réutilisé — self exclu, dédoublonné, capé) ;
+  `--depends ""` vide la liste. Refus explicites sur `--id` inconnu, lot clos/abandonné et valeur
+  non numérique — une faute de frappe ne doit pas se traduire par un **vidage silencieux**. Un id
+  ne correspondant à aucun lot est **averti**, pas refusé : `blockedByOf`/`planWaves` le tiennent
+  pour satisfait (tolérance hors-plan volontaire), mais c'est le symptôme n°1 de la coquille que
+  cette commande sert à corriger.
+- **`backlog.js reopen --id N --note "raison"`** (FIA-25, `lib/backlog.js: reopenLot`) — soupape aux
+  quatre refus `status === 'done'` des setters (« clos = clos » reste la règle, mais une régression
+  ou un scope insuffisant découvert après coup devaient avoir un chemin outillé). Repasse le lot en
+  `todo` — **jamais** `in_progress`, `startLot` reste le seul chemin qui inscrit
+  `session_owner`/vague — et **efface** `closed_commit`/`closed_at`/`closed_session_id`/
+  `closed_occupancy`/`closed_verify`. L'effacement de `closed_verify` est le point non évident :
+  `doneLot` réécrit les quatre autres au cycle suivant, mais le verdict est posé par
+  `setClosedVerify`, qui **refuse d'écraser** un verdict déjà là — sans cet effacement, un lot
+  re-clos hériterait du verdict de l'ancien cycle. Refus explicite si le lot est déjà ouvert ou
+  `dropped` (un lot abandonné se re-crée, il ne se rouvre pas).
+- **Trace de réouverture** — `--note` obligatoire (une réouverture détruit de la trace) ; nouvel
+  historique `reopened` sur le lot (`{at, note, from_commit, from_verify}`, capé à 5, clé droppée
+  si vide comme `integrations`) qui **conserve le commit et le verdict effacés**. Côté archive, la
+  fiche tier 1 est **complétée** en pied via `archive.appendFicheLine` — seule exception à son
+  immuabilité, un **ajout** de ligne, jamais une réécriture de section ; sans fiche, no-op explicite
+  (`missing`). La ligne d'index tier 0 est laissée telle quelle : la clôture a bien eu lieu, et la
+  re-clôture la remet à jour (`mergeEntry`).
+- **Tests** — 23 assertions (`test/run-tests.js`, section « CLI depends corrigeable + reopen ») :
+  lecture/écriture/vidage de `depends`, refus id inconnu et non numérique, avertissement id
+  orphelin ; refus `reopen` sur `todo`/`dropped`/sans note, effacement complet des `closed_*`,
+  historique capé, fiche complétée sans écrasement, absence d'héritage du verdict au cycle suivant,
+  index tier 0 remis à jour. Suite complète verte (1531 OK, 0 échec).
+
 ## 2026-07-27 — lot #97 « Série fiable : depends_on dans nextLot + gates de vague » (epic « Archive à tiroirs »)
 
 Trois trous de fiabilité fermés ensemble : le graphe `depends_on` n'était exploité que par le
