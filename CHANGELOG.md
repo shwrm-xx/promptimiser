@@ -2,6 +2,25 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-28 — « Doc : champ US, champ Jira, frontière pointeur-seul » (epic « US & Jira », backlog #104)
+
+Lot de doc pure qui clôt l'epic : les trois surfaces documentaires portent désormais les deux
+champs (#101/#102), leurs commandes, le pattern US et la frontière assumée.
+
+- **ARCHITECTURE.md** — bullet manquant du champ `us` (lot #101 : `MAX_US=200`, garde
+  d'existence doublée CLI+lib, gabarit `templates/us-template.md`, `/pmz:scope` statue jamais
+  en silence) ajouté avant le bullet `integrations.jira` qui y renvoyait dans le vide ;
+  décision « Maille User Story : non » réconciliée avec le pointeur `us` (l'US reste un
+  document référencé, jamais une ligne du plan) ; nouvelle décision « **Frontière US/Jira :
+  pointeur seul, zéro réseau, zéro secret** » — l'option MCP Atlassian est écartée à ce stade
+  avec la raison (token = violation « zéro secret », réseau dans des hooks fail-open,
+  dépendance externe ; le besoin couvert est la traçabilité, pas la synchronisation).
+- **README.md** — bullet « Pointeurs US & Jira » dans « Comportement dans Claude Code » :
+  les deux champs, leurs commandes (`add --us`, `add --jira`, `jira --id N --set`), le
+  gabarit US, les surfaces de traçabilité (show, export, fiche d'archive, trailer
+  `PMZ-Jira`) et la frontière pointeur-seul.
+- Aucun code touché ; liens vérifiés (gabarit et scripts référencés existent dans le dépôt).
+
 ## 2026-07-28 — « Trailer PMZ-Jira + pointeurs dans la fiche d'archive » (epic « US & Jira », backlog #103)
 
 Troisième lot de l'epic « US & Jira » : fait remonter les pointeurs `us`/`integrations.jira`

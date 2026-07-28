@@ -420,6 +420,18 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   4 colonnes dérivées ajoutées — `command_optimizer_provider`, `command_tokens_saved`
   (mesuré seulement), `command_saving_ratio` (mesuré seulement), `command_evidence` — vides pour
   un lot sans métrologie.
+- **Champ `us` : pointeur US vérifié** (lot #101, epic « US & Jira ») : un lot peut porter un
+  **chemin** (relatif à la racine du dépôt, `MAX_US=200`) vers une User Story détaillée —
+  persona/besoin/bénéfice, critères d'acceptation numérotés, hors-périmètre — jamais son
+  **contenu** : même pattern « résumé court + fichier référencé » déjà imposé pour un
+  scope/note qui déborde. Gabarit : `promptimizer/templates/us-template.md` (part tel quel
+  dans le canal plugin). CLI : `add --us docs/us/US-42.md` avec **garde d'existence doublée**
+  (refus explicite côté CLI *et* revalidation dans `addLot` — défense en profondeur) : un
+  chemin introuvable est refusé, jamais avalé — un pointeur mort serait pire qu'aucune US.
+  `show`/`export` réaffichent le pointeur tel quel (`[US : …]`, colonne `us`) ; vide, jamais
+  inventé, pour un lot sans US. `/pmz:scope` **statue** sur l'US de chaque lot (chemin existant
+  ou « pas d'US » assumé), jamais en silence — et n'invente jamais de chemin : US pas encore
+  rédigée → l'écrire d'abord dans le dépôt, sinon omettre `--us`.
 - **`integrations.jira`** (lot #102, epic « US & Jira ») : partage le même champ `integrations`
   que la métrologie RTK ci-dessus, sous un sous-clé distincte `{ key }` — un **pointeur borné et
   validé en format** (`JIRA_KEY_RE`, ex. `PROJ-123`), jamais une synchronisation ni un contenu
@@ -1317,7 +1329,22 @@ plusieurs sessions réelles (capture fournie par l'utilisateur, 2026-07-12).
   la US n'en change aucune quand l'exécutant est Claude. `title` + `scope` « fait quand : … »
   est la US compressée (le critère d'acceptation sans la cérémonie) ; la granularité sous-lot
   reste les todos volatiles (`todo-snapshot.json`). Pas de hiérarchie epic→feature→lot : une
-  « feature » = un epic court (2-5 lots).
+  « feature » = un epic court (2-5 lots). Le champ `us` (lot #101) ne rouvre **pas** cette
+  décision : la maille de pilotage reste le lot, l'US est un **document optionnel référencé**
+  (un pointeur vers un fichier du dépôt), jamais une ligne du plan ni un niveau de hiérarchie.
+- **Frontière US/Jira : pointeur seul, zéro réseau, zéro secret** (epic « US & Jira »,
+  lots #101-#104) : le backlog **référence** une US (chemin de fichier du dépôt) et un ticket
+  Jira (clé `PROJ-123`), il ne **synchronise** rien — pas d'appel réseau, pas de contenu
+  dupliqué depuis Jira, pas d'état de ticket suivi. Le besoin réel est la **traçabilité**
+  (retrouver le ticket depuis un commit via le trailer `PMZ-Jira`, depuis la fiche d'archive,
+  depuis l'export CSV — et inversement), pas la synchronisation. **Option MCP Atlassian
+  écartée à ce stade** : une intégration vivante exigerait un token API (violation « zéro
+  secret » du dépôt), des appels réseau dans des hooks fail-open (une panne ou latence Jira
+  dégraderait des sessions locales qui n'en ont pas besoin), et une dépendance externe
+  (violation « zéro dépendance »). Si le besoin de lecture/écriture Jira émerge un jour, il
+  passera par un MCP configuré **côté utilisateur** (hors PMZ) — les clés posées par PMZ
+  restant le point de jonction. Cf. aussi « Epic = label, pas conteneur » ci-dessous : une
+  table de tickets avec statuts serait le début du Jira que `backlog.js` refuse par principe.
 - **Epic = label, pas conteneur** : pas de table `epics[]` ni de cycle de vie d'epic — un label
   (fichier `.vibe-agent/epic`, écrit par `/scope` via `backlog.js epic --set`, + champ
   optionnel `epic` du lot backlog, cap 60c, lot #28) suffit pour le filtrage (`backlog.js show
