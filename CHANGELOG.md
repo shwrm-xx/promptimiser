@@ -2,6 +2,38 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-28 — « Carte de clôture unique + reco session fraîche hors arbitre » (epic « Reco de session fraîche », backlog #108)
+
+Premier lot de l'epic. Le tour de clôture d'un lot poussait **trois** nudges ℹ (lot clos + suivant,
+bilan d'epic, carte chiffrée) plus la preuve de verify : 4 candidats pour les 3 places de l'arbitre,
+donc la carte était systématiquement évincée — et la transition ne se rejoue pas. Pire, la reco
+« nouvelle session » vivait comme une ligne du premier de ces messages : évincée avec lui, au moment
+précis où repartir coûte le moins. Ce lot fusionne les trois en une carte et sort la reco du concours.
+
+- **`lib/messages.js`** — `closureCardMessage(lot, next, prog, blockedBy, {rereadsAvoided, bilan})` :
+  une carte, un glyphe, une place d'arbitre — lot clos + avancement + coût + durée + relectures
+  évitées, ligne d'epic conditionnelle, lot suivant (et son blocage `depends_on`). Nouveau
+  `freshSessionCodaMessage(next)` pour la prescription. `lotClosedMessage` disparaît (fusionné) ;
+  `epicBilanMessage`/`lotClosureCardMessage` restent pour le canal OpenCode, sur les mêmes
+  constructeurs de lignes (`epicBilanLine`, `lotClosureCardHeadLine`) — aucun libellé dupliqué.
+  `MSG_ACTIF`/`MSG_ACTIF_SLIM` prescrivent « puis session fraîche » après la clôture.
+- **`hooks/stop.js`** — la coda est ajoutée **après `arbitrate()`**, donc hors plafond : la reco de
+  session fraîche n'est jamais évincée. Auto-clôture **armée sur le backlog** en plus du flag de
+  session : un seul lot `in_progress` + arbre propre + un commit tombé depuis son `started_at`
+  (`git log -1 --format=%cI`). Sans ça, un lot démarré dans une session et commité dans la suivante
+  (flag remis à zéro entre les deux) restait `in_progress` indéfiniment — ni clôture, ni carte, ni
+  preuve, ni numéro de lot.
+- Décision : **prescription ≠ diagnostic**. L'arbitre borne le bruit de constats concurrents ; une
+  action unique et non rejouable n'entre pas dans ce concours. Critère écrit dans
+  [ARCHITECTURE.md](ARCHITECTURE.md) pour que la coda reste l'exception et non la porte de sortie.
+- Replis assumés : lot legacy sans `started_at` → pas d'armement backlog (comportement d'avant) ;
+  `%cI` à la seconde → un lot démarré ET commité dans la même seconde n'est pas détecté. Canal
+  OpenCode non porté (hors périmètre du lot) : il garde le flag seul et ses toasts séparés.
+- Vérification : `node test/run-tests.js` — 1723 OK, 0 échec (25 nouveaux cas : carte fusionnée à
+  un seul glyphe, lignes conditionnelles, budget d'arbitre, coda actionnable, e2e clôture normale,
+  e2e tour saturé où la carte est évincée mais la coda survit, e2e armement backlog en session
+  fraîche, garde « aucun commit depuis le démarrage », repli lot legacy, protocole injecté).
+
 ## 2026-07-28 — « Validation de structure de l'US » (epic « Formalisation US », backlog #107)
 
 Troisième lot de l'epic. La commande `us` (lot #106) posait un pointeur sans jamais vérifier ce

@@ -10,7 +10,8 @@ const MSG_ACTIF = [
   'Priorité : réduire les relectures de contexte.',
   'Utilise git grep/git diff avant Read complet.',
   'Lot terminé : propose la clôture via une question à choix (OK / Non), jamais en texte',
-  'libre ; sur OK, déroule /close-batch (vérif ciblée + changelog + commit + handoff court).',
+  'libre ; sur OK, déroule /close-batch (vérif ciblée + changelog + commit + handoff court),',
+  'puis session fraîche — enchaîner un nouveau lot dans la même session coûte le contexte du précédent.',
 ].join('\n');
 
 // Variante SessionStart pour projet déjà augmenté : les règles PMZ vivent déjà dans le
@@ -19,7 +20,8 @@ const MSG_ACTIF = [
 const MSG_ACTIF_SLIM = [
   'Promptimizer actif. Règles : bloc « pmz:rules » du CLAUDE.md (ne pas les répéter).',
   'Lot terminé : propose la clôture via une question à choix (OK / Non), jamais en texte',
-  'libre ; sur OK, déroule /close-batch (vérif ciblée + changelog + commit + handoff court).',
+  'libre ; sur OK, déroule /close-batch (vérif ciblée + changelog + commit + handoff court),',
+  'puis session fraîche — enchaîner un nouveau lot dans la même session coûte le contexte du précédent.',
 ].join('\n');
 
 const MSG_NON_INIT = [
@@ -273,20 +275,17 @@ function autoInitMessage({ gitInitDone, committed }) {
   return lines.join('\n');
 }
 
-// Annonce d'auto-clôture d'un lot du backlog (stop.js, systemMessage — jamais injecté).
-// `blockedBy` (lot #97) : ids des dépendances encore ouvertes du lot suivant, calculés à la volée
-// par backlog.blockedByOf — jamais lus sur l'objet lot (le marqueur n'est pas persisté).
-function lotClosedMessage(lot, next, prog, blockedBy) {
-  const lines = [`Lot « ${lot.title} » clos (${prog.done}/${prog.total}).`];
-  if (next) {
-    lines.push(`Suivant : « ${next.title} »${next.scope ? ` — ${String(next.scope).slice(0, 100)}` : ''}.`);
-    const bl = Array.isArray(blockedBy) ? blockedBy : [];
-    if (bl.length) lines.push(`⚠️ Bloqué par ${bl.map((d) => '#' + d).join(', ')} encore ouvert : clôture cette dépendance avant de démarrer (tous les lots restants sont bloqués).`);
-    lines.push('Nouvelle session recommandée : le handoff reprendra ce plan au démarrage.');
-  } else {
-    lines.push('Plan de lots terminé.');
-  }
-  return withSeverity(SEV.INFO, lines);
+// Lignes « lot suivant » de la carte de clôture — jadis un nudge autonome (lotClosedMessage),
+// fusionné dans la carte unique au lot #108. `blockedBy` (lot #97) : ids des dépendances encore
+// ouvertes du lot suivant, calculés à la volée par backlog.blockedByOf — jamais lus sur l'objet lot
+// (le marqueur n'est pas persisté). La reco « nouvelle session » n'est plus ici : c'est une
+// PRESCRIPTION, émise en coda HORS arbitre par stop.js (cf. freshSessionCodaMessage).
+function nextLotLines(next, blockedBy) {
+  if (!next) return ['Plan de lots terminé.'];
+  const lines = [`Suivant : « ${next.title} »${next.scope ? ` — ${String(next.scope).slice(0, 100)}` : ''}.`];
+  const bl = Array.isArray(blockedBy) ? blockedBy : [];
+  if (bl.length) lines.push(`⚠️ Bloqué par ${bl.map((d) => '#' + d).join(', ')} encore ouvert : clôture cette dépendance avant de démarrer (tous les lots restants sont bloqués).`);
+  return lines;
 }
 
 // Réinjection ENRICHIE après compaction (SessionStart source=compact, additionalContext).
@@ -509,12 +508,13 @@ function fmtDurationApprox(ms) {
 // backlog.epicBilan) — chiffres déjà persistés par lot (cost_tokens #43, started_at/closed_at),
 // aucun recalcul depuis le transcript. Nudge VISIBLE (systemMessage stop.js / toast OpenCode)
 // donc passe par la grammaire de sévérité et l'arbitre de tour (#57) comme les autres.
+function epicBilanLine(bilan) {
+  return `Epic « ${bilan.epic} » terminée : ${bilan.count} lot(s), ${fmtK(bilan.totalCost)} tokens`
+    + ` (≈ ${fmtK(bilan.avgCost)}/lot)${bilan.durationMs != null ? `, ${fmtDurationApprox(bilan.durationMs)}` : ''}.`;
+}
+
 function epicBilanMessage(bilan) {
-  const lines = [
-    `Epic « ${bilan.epic} » terminée : ${bilan.count} lot(s), ${fmtK(bilan.totalCost)} tokens`
-    + ` (≈ ${fmtK(bilan.avgCost)}/lot)${bilan.durationMs != null ? `, ${fmtDurationApprox(bilan.durationMs)}` : ''}.`,
-  ];
-  return withSeverity(SEV.INFO, lines);
+  return withSeverity(SEV.INFO, [epicBilanLine(bilan)]);
 }
 
 // Carte de clôture (lot #59) : mini-récap chiffré émis à CHAQUE auto-clôture de lot —
@@ -523,7 +523,7 @@ function epicBilanMessage(bilan) {
 // durée (started_at -> closed_at, même logique que epicBilan), relectures évitées grâce à
 // l'hygiène de lecture (read-ledger.avoid_reread_notes — fichiers qu'une relecture aurait
 // re-coûté). Nudge VISIBLE (systemMessage stop.js), passe par l'arbitre de tour (#57).
-function lotClosureCardMessage(lot, rereadsAvoided) {
+function lotClosureCardHeadLine(lot, rereadsAvoided, prog) {
   const cost = Number.isFinite(lot.cost_tokens) ? lot.cost_tokens : 0;
   const durationMs = (lot.started_at && lot.closed_at)
     ? new Date(lot.closed_at).getTime() - new Date(lot.started_at).getTime()
@@ -531,7 +531,43 @@ function lotClosureCardMessage(lot, rereadsAvoided) {
   const bits = [`~${fmtK(cost)} tokens`];
   if (Number.isFinite(durationMs) && durationMs >= 0) bits.push(fmtDurationApprox(durationMs));
   bits.push(`${rereadsAvoided || 0} relecture(s) évitée(s)`);
-  return withSeverity(SEV.INFO, [`Carte de clôture — lot « ${lot.title} » : ${bits.join(', ')}.`]);
+  const clos = prog ? ` clos (${prog.done}/${prog.total})` : '';
+  return `Carte de clôture — lot « ${lot.title} »${clos} : ${bits.join(', ')}.`;
+}
+
+function lotClosureCardMessage(lot, rereadsAvoided) {
+  return withSeverity(SEV.INFO, [lotClosureCardHeadLine(lot, rereadsAvoided, null)]);
+}
+
+// Carte de clôture UNIQUE (lot #108) — fusionne en UN SEUL nudge les trois INFO qui sortaient jadis
+// séparées à chaque auto-clôture : « lot clos + suivant » (#97), bilan d'epic (#58) et carte chiffrée
+// (#59). Séparées, elles occupaient à elles seules les 3 places de l'arbitre de tour (#57) : la
+// moindre alerte ⚠/⛔ du même tour en évinçait une, et au dernier lot d'une epic elles étaient 4
+// candidates pour 3 places — la carte chiffrée, poussée en dernier, perdait toujours. Or la
+// transition n'est PAS rejouable (le lot est done au tour suivant) : évincée = perdue pour de bon.
+// Fusionnées, c'est tout ou rien, et le tour de clôture ne consomme plus qu'une place.
+// `opts` : { rereadsAvoided, bilan } — bilan absent (cas courant) = pas de ligne d'epic.
+// La reco « nouvelle session » n'est PAS dans la carte : prescription, pas diagnostic (coda hors
+// arbitre, cf. freshSessionCodaMessage).
+function closureCardMessage(lot, next, prog, blockedBy, opts) {
+  const o = opts || {};
+  const lines = [lotClosureCardHeadLine(lot, o.rereadsAvoided, prog)];
+  if (o.bilan) lines.push(epicBilanLine(o.bilan));
+  return withSeverity(SEV.INFO, lines.concat(nextLotLines(next, blockedBy)));
+}
+
+// Coda de clôture (lot #108) : la reco « nouvelle session » est une PRESCRIPTION (l'action à
+// prendre, maintenant), pas un diagnostic de plus — elle est donc émise APRÈS arbitrate(), hors
+// plafond de nudges, 1× par clôture (la branche d'auto-clôture ne se rejoue pas). Jadis noyée dans
+// lotClosedMessage (INFO), elle disparaissait dès qu'une alerte du tour évinçait la carte : or
+// l'instant où repartir en session fraîche coûte le MOINS (lot clos, handoff frais, plan persisté)
+// est précisément celui où la reco ne doit pas se perdre.
+function freshSessionCodaMessage(next) {
+  const lines = ['Nouvelle session recommandée maintenant : lot clos, handoff frais — /pmz:fresh-session.'];
+  lines.push(next
+    ? 'Le handoff reprendra le plan au démarrage ; enchaîner ici repartirait avec tout le contexte du lot clos.'
+    : 'Enchaîner ici repartirait avec tout le contexte du lot clos, pour rien.');
+  return withSeverity(SEV.INFO, lines);
 }
 
 // Vigie modèle réel vs préconisé (lot #42) : le modèle qui répond ce tour ne correspond pas
@@ -585,10 +621,10 @@ function rtkStartupLine(status) {
 
 module.exports = {
   MSG_ACTIF, MSG_ACTIF_SLIM, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
-  occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, redZonePrescriptionMessage, sessionTitleMessage, autoInitMessage, lotClosedMessage,
+  occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, redZonePrescriptionMessage, sessionTitleMessage, autoInitMessage,
   compactResumeMessage, COMPACT_RESUME_CAP, backlogResumeMessage, largeWithPlanMessage,
   costlyTurnMessage, driftMessage, loopingCommandMessage, gitDebtMessage, claudeMdMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
-  closureWithDraftMessage, epicBilanMessage, lotClosureCardMessage,
+  closureWithDraftMessage, epicBilanMessage, lotClosureCardMessage, closureCardMessage, freshSessionCodaMessage,
   fmtK, statusLineText, rtkStatusLine, rtkStartupLine,
 };

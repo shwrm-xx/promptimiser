@@ -14,7 +14,7 @@ if (disabled()) process.exit(0);
 
 const { parseHookInput } = require('../lib/stdin');
 const { systemMessage, passThrough } = require('../lib/output');
-const { gitRoot, ensureLedger, gitStatusMeaningful, changelogTouched, runVerify } = require('../lib/project');
+const { gitRoot, ensureLedger, gitStatusMeaningful, changelogTouched, runVerify, git } = require('../lib/project');
 const { writeAutoHandoff } = require('../lib/handoff');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { loadContextLedger, loadReadLedger, recordOccupancy, evaluateWaste } = require('../lib/ledger');
@@ -29,11 +29,33 @@ const claudemd = require('../lib/claudemd');
 const notify = require('../lib/notify');
 const { arbitrate } = require('../lib/arbiter');
 const {
-  MSG_CLOTURE, occupancyMessage, redZonePrescriptionMessage, lotClosedMessage, epicBilanMessage,
+  MSG_CLOTURE, occupancyMessage, redZonePrescriptionMessage,
   costlyTurnMessage, driftMessage, loopingCommandMessage, gitDebtMessage, claudeMdMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
-  closureWithDraftMessage, lotClosureCardMessage,
+  closureWithDraftMessage, closureCardMessage, freshSessionCodaMessage,
 } = require('../lib/messages');
+
+// Un commit est-il tombé DEPUIS le démarrage du lot ? (lot #108) Sert d'armement de l'auto-clôture
+// quand le flag de session `closure_reminded_for_batch` n'a jamais été posé (lot démarré dans une
+// session, commité dans une autre — le flag est remis à zéro à chaque session, si bien que le lot
+// restait `in_progress` pour toujours et que la carte de clôture ne sortait jamais). Comparaison
+// date de commit de HEAD vs `started_at` du lot : aucune persistance nouvelle, et robuste aux
+// sessions fraîches, contrairement à un sha mémorisé dans l'état de session.
+// Sans `started_at` (lot legacy) -> false : on retombe sur l'ancien armement, jamais de régression.
+// Fail-open total : toute erreur git/date -> false (pas de clôture inventée).
+function committedSinceLotStart(root, lot) {
+  try {
+    if (!lot || !lot.started_at) return false;
+    const iso = git(['log', '-1', '--format=%cI', 'HEAD'], root);
+    if (!iso) return false; // pas encore de commit dans le repo
+    const head = new Date(iso).getTime();
+    const start = new Date(lot.started_at).getTime();
+    if (!Number.isFinite(head) || !Number.isFinite(start)) return false;
+    return head > start;
+  } catch (_) {
+    return false;
+  }
+}
 
 function main() {
   const input = parseHookInput();
@@ -41,6 +63,9 @@ function main() {
   const sid = input.session_id || null;
   const cwd = input.cwd || process.cwd();
   const parts = [];
+  // Coda de clôture (lot #108) : prescription hors arbitre — émise APRÈS arbitrate(), donc jamais
+  // évincée par le plafond de nudges. Reste null tant qu'aucun lot n'est clos ce tour.
+  let coda = null;
 
   // (a) occupation contexte — fonctionne même hors projet (ne dépend que du transcript).
   const occ = occupancy.evaluate(input.transcript_path, sid);
@@ -169,55 +194,64 @@ function main() {
       if (rereads.length) parts.push(avoidableRereadsMessage(rereads));
       st.closure_reminded_for_batch = true;
       saveSessionState(root, st);
-    } else if (!open && st.closure_reminded_for_batch) {
-      st.closure_reminded_for_batch = false; // working tree propre -> nouveau lot
-      st.cost_reminded_for_batch = false;    // ... réarme aussi l'alerte de coût par lot (#43)
-      saveSessionState(root, st);
-      const closedNumber = incrementLot(root); // lot fermé -> le prochain sera proposé au SessionStart suivant
+    } else if (!open) {
+      const wasReminded = st.closure_reminded_for_batch === true;
+      if (wasReminded) {
+        st.closure_reminded_for_batch = false; // working tree propre -> nouveau lot
+        st.cost_reminded_for_batch = false;    // ... réarme aussi l'alerte de coût par lot (#43)
+        saveSessionState(root, st);
+      }
       // Auto-clôture du lot backlog — cas univoque seulement (exactement un in_progress) ;
       // sinon on ne touche à rien (réconciliation via backlog.js reconcile / close-batch).
+      // Armement (lot #108) : le flag de session ci-dessus (le tree a été vu sale PUIS propre
+      // dans CETTE session) OU, à défaut, l'état du BACKLOG lui-même — un lot en cours, un arbre
+      // propre et un commit tombé depuis son démarrage. Sans ce second armement, un lot démarré
+      // dans une session et commité dans la suivante (flag remis à zéro entre les deux) restait
+      // `in_progress` indéfiniment : ni clôture, ni carte, ni preuve.
       const b = loadBacklog(root);
       const inProg = b.lots.filter((l) => l.status === 'in_progress');
-      if (inProg.length === 1) {
-        const done = doneLot(root, inProg[0].id, null, closedNumber, sid, turn && turn.occ);
-        if (done) {
-          notify.notifyLotClosed(done); // opt-in (#75) ; événement one-shot, pas d'anti-spam dédié nécessaire
-          const after = loadBacklog(root);
-          const nxt = nextLot(after);
-          parts.push(lotClosedMessage(done, nxt, progress(after), blockedByOf(after, nxt)));
-          // Bilan d'epic (lot #58) : émis en plus, seulement quand ce lot clôturait le
-          // DERNIER lot en attente de son epic (epicBilan renvoie null sinon). Poussé AVANT
-          // la carte de clôture (#59) : à sévérité INFO égale et sous plafond de l'arbitre
-          // (#57, stable à égalité -> le premier poussé survit), le bilan d'epic — rare,
-          // un seul par epic — doit primer sur la carte, elle qui sort à CHAQUE lot.
-          const bilan = epicBilan(after, done);
-          if (bilan) parts.push(epicBilanMessage(bilan));
-          // Carte de clôture (lot #59) : mini-récap chiffré à CHAQUE clôture (coût, durée,
-          // relectures évitées) — try/catch dédié, une erreur de lecture du ledger ne doit
-          // jamais faire échouer la clôture déjà acquise ci-dessus.
-          try {
-            const rl = loadReadLedger(root);
-            parts.push(lotClosureCardMessage(done, rl.avoid_reread_notes.length));
-          } catch (_) { /* fail-open : pas de carte ce tour */ }
-          // (b2) Preuve de clôture (lot #44) — APRÈS que doneLot a persisté l'état (un dépassement
-          // du watchdog pendant le verify ne peut donc plus corrompre le backlog). Jamais bloquant :
-          // le lot est déjà marqué fait quoi qu'il arrive ici. try/catch dédié -> fail-open local.
-          try {
-            const verify = done.verify
-              ? Object.assign({ cmd: done.verify }, runVerify(root, done.verify, VERIFY_AUTOCLOSE_MS))
-              : null;
-            // Verdict persisté (lot #96) : distinct de l'affichage éphémère ci-dessous, qui peut
-            // être évincé par le plafond de nudges de l'arbitre — sans cette écriture, un lot clos
-            // sur verify ROUGE serait indiscernable a posteriori d'un lot prouvé. setClosedVerify
-            // est idempotent (n'écrase jamais un verdict déjà posé) : fail-open local, la clôture
-            // déjà persistée par doneLot n'est jamais remise en cause par un souci d'écriture ici.
-            const verdict = !done.verify ? 'none' : (verify.ok ? 'ok' : (verify.timedOut ? 'timeout' : 'failed'));
-            setClosedVerify(root, done.id, verdict);
-            // tree propre ici -> changelogTouched se réduit au dernier commit (celui de clôture).
-            const changelogMissing = !changelogTouched(root);
-            const proof = closureProofMessage(verify, changelogMissing, !done.verify);
-            if (proof) parts.push(proof);
-          } catch (_) { /* fail-open : la clôture reste acquise, pas de preuve ce tour */ }
+      const armed = inProg.length === 1 && (wasReminded || committedSinceLotStart(root, inProg[0]));
+      if (wasReminded || armed) {
+        const closedNumber = incrementLot(root); // lot fermé -> le prochain sera proposé au SessionStart suivant
+        if (armed) {
+          const done = doneLot(root, inProg[0].id, null, closedNumber, sid, turn && turn.occ);
+          if (done) {
+            notify.notifyLotClosed(done); // opt-in (#75) ; événement one-shot, pas d'anti-spam dédié nécessaire
+            const after = loadBacklog(root);
+            const nxt = nextLot(after);
+            // Carte de clôture UNIQUE (lot #108) : lot clos + suivant (#97) + bilan d'epic (#58,
+            // seulement au DERNIER lot de son epic) + chiffres du lot (#59) en UN nudge, donc UNE
+            // place d'arbitre — jadis 3 (voire 4 avec la preuve) pour un plafond de 3, la carte
+            // chiffrée était systématiquement évincée. try/catch dédié sur le ledger de lecture :
+            // une erreur y perdrait le compte de relectures, jamais la carte ni la clôture acquise.
+            let rereadsAvoided = 0;
+            try { rereadsAvoided = loadReadLedger(root).avoid_reread_notes.length; } catch (_) { /* chiffre absent, carte quand même */ }
+            parts.push(closureCardMessage(done, nxt, progress(after), blockedByOf(after, nxt), {
+              rereadsAvoided,
+              bilan: epicBilan(after, done),
+            }));
+            // Reco de session fraîche : PRESCRIPTION, émise en coda hors arbitre (cf. plus bas).
+            coda = freshSessionCodaMessage(nxt);
+            // (b2) Preuve de clôture (lot #44) — APRÈS que doneLot a persisté l'état (un dépassement
+            // du watchdog pendant le verify ne peut donc plus corrompre le backlog). Jamais bloquant :
+            // le lot est déjà marqué fait quoi qu'il arrive ici. try/catch dédié -> fail-open local.
+            try {
+              const verify = done.verify
+                ? Object.assign({ cmd: done.verify }, runVerify(root, done.verify, VERIFY_AUTOCLOSE_MS))
+                : null;
+              // Verdict persisté (lot #96) : distinct de l'affichage éphémère ci-dessous, qui peut
+              // être évincé par le plafond de nudges de l'arbitre — sans cette écriture, un lot clos
+              // sur verify ROUGE serait indiscernable a posteriori d'un lot prouvé. setClosedVerify
+              // est idempotent (n'écrase jamais un verdict déjà posé) : fail-open local, la clôture
+              // déjà persistée par doneLot n'est jamais remise en cause par un souci d'écriture ici.
+              const verdict = !done.verify ? 'none' : (verify.ok ? 'ok' : (verify.timedOut ? 'timeout' : 'failed'));
+              setClosedVerify(root, done.id, verdict);
+              // tree propre ici -> changelogTouched se réduit au dernier commit (celui de clôture).
+              const changelogMissing = !changelogTouched(root);
+              const proof = closureProofMessage(verify, changelogMissing, !done.verify);
+              if (proof) parts.push(proof);
+            } catch (_) { /* fail-open : la clôture reste acquise, pas de preuve ce tour */ }
+          }
         }
       }
     }
@@ -232,6 +266,11 @@ function main() {
   // Arbitre de tour (#57) : plafonne le nombre de nudges concaténés, priorité à la sévérité
   // (via le glyphe de tête, sans re-parser la prose). Ordre de lecture d'origine préservé.
   const shown = arbitrate(parts);
+  // Coda de clôture (#108) : ajoutée APRÈS l'arbitre, donc HORS plafond. L'arbitre borne le bruit
+  // de DIAGNOSTIC (constats concurrents d'un même tour) ; une PRESCRIPTION unique et non rejouable
+  // — repartir en session fraîche maintenant — n'est pas du bruit et ne se met pas en concurrence
+  // avec lui. Toujours en dernier : c'est l'action qui clôt le bloc.
+  if (coda) shown.push(coda);
   if (shown.length) return systemMessage(shown.join('\n\n'));
   return passThrough();
 }

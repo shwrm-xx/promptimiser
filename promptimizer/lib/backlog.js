@@ -742,7 +742,7 @@ function blockedByOf(b, lot) {
 // proposition aveugle (« Suivant : … » sur un lot qui ne peut pas encore démarrer) : exactement le
 // rouge en cascade que le graphe devait prévenir. On saute donc les todos bloqués.
 // Repli anti-régression : si TOUS les todos sont bloqués (cycle), on renvoie quand même le premier
-// — jamais null tant qu'il reste des todos, sinon lotClosedMessage annoncerait « Plan de lots
+// — jamais null tant qu'il reste des todos, sinon la carte de clôture annoncerait « Plan de lots
 // terminé » à tort. Le marqueur de blocage s'obtient par blockedByOf(b, lot) ; la forme de retour
 // reste un lot nu (aucun des 8 consommateurs de nextLot n'a à changer de contrat).
 function nextLot(b) {

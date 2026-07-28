@@ -423,7 +423,8 @@ section('Grammaire de sévérité : lib/severity.js + glyphes des fabriques visi
     costlyTurnMessage: messages.costlyTurnMessage({ delta: 60000, out: 30000, req: 3 }),
     bustIntraMessage: messages.bustIntraMessage({ busts: [{ first: false, cacheCreation: 12000 }], cacheCreation: 12000 }),
     pauseTtlMessage: messages.pauseTtlMessage({ busts: [{ first: true, cacheCreation: 8000 }], cacheCreation: 8000 }),
-    lotClosedMessage: messages.lotClosedMessage({ title: 'L' }, null, { done: 1, total: 2 }),
+    closureCardMessage: messages.closureCardMessage({ title: 'L' }, null, { done: 1, total: 2 }, null, {}),
+    freshSessionCodaMessage: messages.freshSessionCodaMessage(null),
     lotCostMessage: messages.lotCostMessage({ title: 'L' }, 260000),
     wasteBucketMessage: messages.wasteBucketMessage(50000, [{ path: 'a.js', waste: 30000 }]),
     subagentNudgeMessage: messages.subagentNudgeMessage(320000, { fullReads: 4, reads: 6 }),
@@ -2132,7 +2133,7 @@ section('Backlog — auto-clôture au Stop, handoff enrichi, titre de session');
   const r2 = runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empty });
   let msg = '';
   try { msg = JSON.parse(r2.out).systemMessage || ''; } catch (_) {}
-  ok(/Lot « Premier périmètre » clos \(1\/3\)/.test(msg), 'auto-clôture : message « clos (n/y) »');
+  ok(/Carte de clôture — lot « Premier périmètre » clos \(1\/3\)/.test(msg), 'auto-clôture : message « clos (n/y) »');
   ok(/Suivant : « Deuxième périmètre »/.test(msg), 'auto-clôture : lot suivant annoncé');
   const b1 = backlogLib.loadBacklog(repo);
   const done1 = b1.lots.find((l) => l.id === 1);
@@ -4166,7 +4167,7 @@ section('Clôture prouvée : verify à l\'auto-clôture + garde-fou CHANGELOG (l
     const r = runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empT });
     const m = sysMsg(r);
     ok(backlogLib.loadBacklog(repo).lots[0].status === 'done', 'e2e : lot auto-clôturé');
-    ok(/Lot « Lot prouvé » clos/.test(m), 'e2e : message de clôture présent');
+    ok(/Carte de clôture — lot « Lot prouvé » clos/.test(m), 'e2e : message de clôture présent');
     ok(/Verify du lot \(`node -e "process\.exit\(0\)"`\) : OK\./.test(m), 'e2e : verify exécutée à l\'auto-clôture, résultat OK visible');
     ok(/Rappel doux.*CHANGELOG\.md/s.test(m), 'e2e : commit de clôture sans CHANGELOG -> rappel doux');
     ok(backlogLib.loadBacklog(repo).lots[0].closed_verify === 'ok', 'e2e : closed_verify persisté = ok (lot #96)');
@@ -5772,7 +5773,7 @@ section('backlog — blockedByOf + nextLot respecte depends_on (pur, lib/backlog
   ok(B.blockedByOf(s4, s4.lots[1]).join() === '1', 'S4 : dépendance in_progress bloque');
 
   // S5. Repli anti-régression : cycle -> on renvoie QUAND MÊME le premier todo (jamais null tant
-  // qu'il reste des todos, sinon lotClosedMessage annoncerait « Plan de lots terminé » à tort).
+  // qu’il reste des todos, sinon la carte de clôture annoncerait « Plan de lots terminé » à tort).
   const s5 = mk([{ id: 1, status: 'todo', depends_on: [2] }, { id: 2, status: 'todo', depends_on: [1] }]);
   const n5 = B.nextLot(s5);
   ok(n5 && n5.id === 1, 'S5 : cycle -> nextLot renvoie le premier todo (jamais null)');
@@ -5792,9 +5793,9 @@ section('backlog — blockedByOf + nextLot respecte depends_on (pur, lib/backlog
 section('messages — marqueur de blocage dans les 3 surfaces d\'annonce (lib/messages.js, lot #97)');
 {
   const prog = { done: 1, total: 3 };
-  const closed = messages.lotClosedMessage({ title: 'Fait' }, { title: 'Suivant', scope: 'x' }, prog, [3]);
-  ok(/Bloqué par #3 encore ouvert/.test(closed), 'M1 : lotClosedMessage affiche le blocage du lot suivant');
-  ok(!/Bloqué par/.test(messages.lotClosedMessage({ title: 'Fait' }, { title: 'Suivant' }, prog, [])),
+  const closed = messages.closureCardMessage({ title: 'Fait' }, { title: 'Suivant', scope: 'x' }, prog, [3], {});
+  ok(/Bloqué par #3 encore ouvert/.test(closed), 'M1 : la carte de clôture affiche le blocage du lot suivant');
+  ok(!/Bloqué par/.test(messages.closureCardMessage({ title: 'Fait' }, { title: 'Suivant' }, prog, [], {})),
     'M1 : rien d\'affiché quand rien ne bloque (aucun bruit)');
   const res = messages.backlogResumeMessage(null, { id: 7, title: 'Suivant' }, prog, [3, 4]);
   ok(/Bloqué par #3, #4/.test(res) && !/Démarre-le/.test(res), 'M2 : backlogResumeMessage remplace « Démarre-le » par l\'avertissement');
@@ -7205,6 +7206,150 @@ section('backlog — validation de structure de l\'US à la clôture (epic « Fo
 
   ok(backlogLib.BOOL_FLAGS.includes('allow-incomplete-us'),
     'O7 : --allow-incomplete-us déclaré booléen (sinon avalé comme valeur par la garde d\'orphelins)');
+}
+
+section('Carte de clôture unique + coda de session fraîche hors arbitre (epic « Reco de session fraîche », lot #108)');
+{
+  const sev108 = require(path.join(PKG, 'lib', 'severity'));
+  const { arbitrate } = require(path.join(PKG, 'lib', 'arbiter'));
+  const sysMsg108 = (r) => { try { return JSON.parse(r.out).systemMessage || ''; } catch (_) { return ''; } };
+  function bootRepo108(name) {
+    const repo = path.join(SANDBOX, name);
+    fs.mkdirSync(path.join(repo, '.vibe-agent'), { recursive: true });
+    execFileSync('git', ['init', '-q', repo]);
+    fs.writeFileSync(path.join(repo, '.vibe-agent', '.gitignore'), '*\n!.gitignore\n!backlog.json\n!rules.yaml\n');
+    fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+    return repo;
+  }
+
+  // P1. La carte fusionne les TROIS informations de clôture en UN seul nudge (un seul glyphe).
+  const doneLotFixture = { title: 'Mon lot', cost_tokens: 14000, started_at: '2026-01-01T00:00:00.000Z', closed_at: '2026-01-01T02:00:00.000Z' };
+  const bilanFixture = { epic: 'Mon Epic', count: 2, totalCost: 14000, avgCost: 7000, durationMs: 7200000 };
+  const card = messages.closureCardMessage(doneLotFixture, { title: 'Suivant', scope: 'y' }, { done: 1, total: 2 }, [], { rereadsAvoided: 3, bilan: bilanFixture });
+  ok((card.match(new RegExp(sev108.GLYPH.info, 'g')) || []).length === 1,
+    'P1 : un seul glyphe -> un seul nudge, donc UNE seule place d\'arbitre pour tout le tour de clôture');
+  ok(/Carte de clôture — lot « Mon lot » clos \(1\/2\)/.test(card) && /14k tokens/.test(card) && /2 h/.test(card) && /3 relecture\(s\) évitée\(s\)/.test(card),
+    'P1 : la carte porte le lot clos, l\'avancement et les chiffres (#59 + #97 fusionnés)');
+  ok(/Epic « Mon Epic » terminée : 2 lot\(s\), 14k tokens/.test(card), 'P1 : le bilan d\'epic (#58) est une LIGNE de la carte, plus un nudge concurrent');
+  ok(/Suivant : « Suivant » — y\./.test(card), 'P1 : le lot suivant est annoncé dans la même carte');
+
+  // P2. Cas courant (pas de fin d'epic) + plan terminé : aucune ligne fantôme.
+  const cardPlain = messages.closureCardMessage(doneLotFixture, { title: 'Suivant' }, { done: 1, total: 2 }, [], { rereadsAvoided: 0 });
+  ok(!/Epic «/.test(cardPlain), 'P2 : pas de bilan (lot au milieu d\'une epic) -> aucune ligne d\'epic');
+  const cardEnd = messages.closureCardMessage(doneLotFixture, null, { done: 2, total: 2 }, null, {});
+  ok(/Plan de lots terminé\./.test(cardEnd) && !/Suivant :/.test(cardEnd), 'P2 : plus de lot suivant -> « Plan de lots terminé. »');
+
+  // P3. La reco de session fraîche a QUITTÉ la carte (elle est devenue une coda hors arbitre).
+  ok(!/session/i.test(cardPlain), 'P3 : la carte ne porte plus la reco « nouvelle session » (prescription sortie de la carte)');
+  const coda = messages.freshSessionCodaMessage({ title: 'Suivant' });
+  ok(/\/pmz:fresh-session/.test(coda) && /Nouvelle session recommandée maintenant/.test(coda),
+    'P3 : la coda est une prescription actionnable (commande nommée)');
+  ok(/handoff/.test(coda), 'P3 : la coda dit pourquoi c\'est le bon moment (handoff frais)');
+
+  // P4. Budget d'arbitre : le tour de clôture le plus chargé (carte + preuve) ne sature plus le
+  // plafond — avant la fusion, 3 INFO + 1 preuve = 4 candidats pour 3 places.
+  const proof = messages.closureProofMessage({ cmd: 'x', ok: true }, false);
+  ok(arbitrate([card, proof]).length === 2, 'P4 : clôture complète = 2 nudges seulement (plus jamais 4 pour 3 places)');
+
+  // P5. e2e : auto-clôture classique -> carte unique + coda, dans cet ordre.
+  {
+    const repo = bootRepo108('repo-108-card');
+    const l1 = backlogLib.addLot(repo, 'Lot carte', 'fait quand : vert', 'opus', null, 'node -e "process.exit(0)"');
+    backlogLib.addLot(repo, 'Lot suivant', 'fait quand : vert', 'opus');
+    backlogLib.startLot(repo, l1.id);
+    const empty108 = path.join(SANDBOX, 'empty-108.jsonl');
+    fs.writeFileSync(empty108, '');
+    fs.writeFileSync(path.join(repo, 'w.txt'), 'x');
+    runHook('stop.js', { session_id: 's108-a', cwd: repo, transcript_path: empty108 }); // arme le flag
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'lot carte fini']);
+    const m = sysMsg108(runHook('stop.js', { session_id: 's108-a', cwd: repo, transcript_path: empty108 }));
+    ok(/Carte de clôture — lot « Lot carte » clos \(1\/2\)/.test(m), 'P5 : e2e -> carte unique émise à l\'auto-clôture');
+    ok((m.match(/Carte de clôture/g) || []).length === 1, 'P5 : une seule carte (pas de doublon avec l\'ancien « Lot … clos »)');
+    ok(/\/pmz:fresh-session/.test(m), 'P5 : e2e -> coda de session fraîche émise');
+    ok(m.lastIndexOf('/pmz:fresh-session') > m.indexOf('Carte de clôture'), 'P5 : la coda arrive en DERNIER (elle clôt le bloc)');
+    ok(/Suivant : « Lot suivant »/.test(m), 'P5 : le lot suivant reste annoncé');
+  }
+
+  // P6. e2e : tour saturé d'alertes -> la carte est bien évincée par l'arbitre, la coda NON
+  // (poussée après arbitrate() : c'est la prescription, pas un diagnostic de plus).
+  {
+    const repo = bootRepo108('repo-108-coda-survit');
+    const l = backlogLib.addLot(repo, 'Lot noyé', 'fait quand : vert', 'opus'); // pas de verify -> preuve ⚠
+    backlogLib.startLot(repo, l.id);
+    const tr = path.join(SANDBOX, 'trans-108.jsonl');
+    fs.writeFileSync(tr, '{"type":"user"}\n' + usageLine(2000, 100000, 0, 500) + '\n'); // occ 102k : sous la zone rouge
+    fs.writeFileSync(path.join(repo, 'w.txt'), 'x');
+    runHook('stop.js', { session_id: 's108-b', cwd: repo, transcript_path: tr }); // arme le flag + baseline du tour
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'lot noyé fini']);
+    fs.appendFileSync(tr, usageLine(2000, 400000, 0, 60000) + '\n'); // occ 402k : zone rouge ⛔ + tour coûteux ⚠
+    const m = sysMsg108(runHook('stop.js', { session_id: 's108-b', cwd: repo, transcript_path: tr }));
+    ok(backlogLib.loadBacklog(repo).lots[0].status === 'done', 'P6 : la clôture a bien eu lieu (l\'éviction ne touche que l\'affichage)');
+    ok(!/Carte de clôture/.test(m), 'P6 : 3 nudges ⚠/⛔ concurrents -> la carte (ℹ) est évincée par le plafond');
+    ok(/\/pmz:fresh-session/.test(m), 'P6 : la coda survit à la saturation (hors arbitre) — la reco n\'est JAMAIS perdue');
+  }
+
+  // P7. e2e : armement par le BACKLOG — lot démarré dans une session, commité dans une autre.
+  // Le flag closure_reminded_for_batch est remis à zéro à chaque session : avant #108, ce lot
+  // restait `in_progress` pour toujours (ni clôture, ni carte, ni preuve).
+  {
+    const repo = bootRepo108('repo-108-armement');
+    const l = backlogLib.addLot(repo, 'Lot orphelin', 'fait quand : vert', 'opus');
+    backlogLib.startLot(repo, l.id);
+    const b = backlogLib.loadBacklog(repo);
+    b.lots[0].started_at = '2020-01-01T00:00:00.000Z'; // démarré dans une session précédente
+    backlogLib.saveBacklog(repo, b);
+    fs.writeFileSync(path.join(repo, 'w.txt'), 'x');
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'lot orphelin fini']); // commité SANS Stop sale préalable
+    const empty108b = path.join(SANDBOX, 'empty-108b.jsonl');
+    fs.writeFileSync(empty108b, '');
+    const m = sysMsg108(runHook('stop.js', { session_id: 's108-fraiche', cwd: repo, transcript_path: empty108b }));
+    ok(backlogLib.loadBacklog(repo).lots[0].status === 'done',
+      'P7 : arbre propre + un seul in_progress + commit depuis le démarrage -> auto-clôture, sans flag de session');
+    ok(/Carte de clôture — lot « Lot orphelin »/.test(m) && /\/pmz:fresh-session/.test(m),
+      'P7 : la clôture réparée émet la carte ET la coda comme une clôture normale');
+  }
+
+  // P8. Garde de l'armement : arbre propre mais AUCUN commit depuis le démarrage du lot ->
+  // rien ne se passe (sans quoi un lot fraîchement démarré serait clos au 1er Stop).
+  {
+    const repo = bootRepo108('repo-108-garde');
+    const l = backlogLib.addLot(repo, 'Lot juste démarré', 'fait quand : vert', 'opus');
+    backlogLib.startLot(repo, l.id); // started_at APRÈS le commit init
+    const empty108c = path.join(SANDBOX, 'empty-108c.jsonl');
+    fs.writeFileSync(empty108c, '');
+    const m = sysMsg108(runHook('stop.js', { session_id: 's108-garde', cwd: repo, transcript_path: empty108c }));
+    ok(backlogLib.loadBacklog(repo).lots[0].status === 'in_progress',
+      'P8 : aucun commit depuis le démarrage -> lot toujours en cours (pas de clôture inventée)');
+    ok(!/Carte de clôture/.test(m) && !/pmz:fresh-session/.test(m), 'P8 : ni carte ni coda sur un lot qui n\'a rien livré');
+  }
+
+  // P9. Lot legacy sans started_at : aucun point de comparaison -> on retombe sur l'ancien
+  // armement (flag de session), jamais de clôture au jugé.
+  {
+    const repo = bootRepo108('repo-108-legacy');
+    const l = backlogLib.addLot(repo, 'Lot legacy', 'fait quand : vert', 'opus');
+    backlogLib.startLot(repo, l.id);
+    const b = backlogLib.loadBacklog(repo);
+    b.lots[0].started_at = null; // lot d'avant l'ajout de started_at
+    backlogLib.saveBacklog(repo, b);
+    fs.writeFileSync(path.join(repo, 'w.txt'), 'x');
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'commit sans stop sale']);
+    const empty108d = path.join(SANDBOX, 'empty-108d.jsonl');
+    fs.writeFileSync(empty108d, '');
+    runHook('stop.js', { session_id: 's108-legacy', cwd: repo, transcript_path: empty108d });
+    ok(backlogLib.loadBacklog(repo).lots[0].status === 'in_progress',
+      'P9 : lot sans started_at -> pas d\'armement backlog (fail-open, comportement d\'avant #108)');
+  }
+
+  // P10. Le protocole injecté au démarrage prescrit la session fraîche APRÈS la clôture.
+  ok(/session fraîche/.test(messages.MSG_ACTIF), 'P10 : MSG_ACTIF prescrit « puis session fraîche »');
+  ok(/session fraîche/.test(messages.MSG_ACTIF_SLIM), 'P10 : MSG_ACTIF_SLIM aussi (projet déjà augmenté)');
 }
 
 // ============================ RÉSUMÉ ============================

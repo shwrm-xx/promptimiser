@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 110,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-28T07:58:01.734Z",
+  "updated_at": "2026-07-28T08:10:18.583Z",
   "lots": [
     {
       "id": 1,
@@ -2658,7 +2658,7 @@
       "id": 108,
       "title": "Carte de clôture unique + reco session fraîche hors arbitre",
       "scope": "fait quand : les 3 INFO de clôture fusionnées en 1 carte (1 seul slot d'arbitre) ; reco « nouvelle session » en coda APRÈS arbitrate(), 1x/clôture, jamais évincée ; auto-clôture armée sur le backlog (un in_progress + arbre propre + HEAD bougé), plus sur closure_reminded_for_batch ; « puis session fraîche » dans MSG_ACTIF/_SLIM ; tests verts ; ARCHITECTURE : prescription != diagnostic",
-      "status": "todo",
+      "status": "in_progress",
       "model_hint": "opus",
       "effort_hint": "high",
       "epic": "Reco de session fraîche",
@@ -2670,7 +2670,7 @@
       "closed_occupancy": null,
       "closed_verify": null,
       "cost_tokens": 0,
-      "started_at": null,
+      "started_at": "2026-07-28T08:10:18.581Z",
       "lot_number": null,
       "note": null,
       "session_touches": 0,
@@ -2681,7 +2681,15 @@
         "ARCHITECTURE.md"
       ],
       "depends_on": [],
-      "session_owner": null
+      "session_owner": null,
+      "integrations": {
+        "command_optimizer": {
+          "snapshot_start": {
+            "commands": 1,
+            "delivered_tokens": 4
+          }
+        }
+      }
     },
     {
       "id": 109,

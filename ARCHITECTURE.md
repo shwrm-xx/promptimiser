@@ -244,7 +244,7 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   un `saveBacklog` l'écrirait dans `backlog.json`), il se calcule à la volée, ce qui le rend sûr
   pour les consommateurs chauds (`statusline` à chaque refresh) ; (2) **jamais `null` tant qu'il
   reste des `todo`** — sur cycle, on renvoie quand même le premier avec son marqueur, sinon
-  `lotClosedMessage` annoncerait « Plan de lots terminé » à tort. La **forme de retour reste un lot
+  la carte de clôture annoncerait « Plan de lots terminé » à tort. La **forme de retour reste un lot
   nu** : les 8 consommateurs de `nextLot` gardent leur contrat et affichent le marqueur là où il y
   a la place (`stop`, `session-start`, CLI `next`, `about`, `audit-batch`, `⚠` en statusline).
 - **Parallélisation gouvernée — schéma backlog v2** (lot #76, épic « Vagues parallèles », 1ʳᵉ
@@ -1420,7 +1420,8 @@ plusieurs sessions réelles (capture fournie par l'utilisateur, 2026-07-12).
   non-tableau → `[]`, jamais d'exception. En pratique OpenCode dépasse rarement 3 toasts (clôture et
   preuve sont mutuellement exclusives) : le port vise la **parité de contrat**, pas un gain immédiat.
   Alternative écartée : indicateur « (+N nudges masqués) » en pied de bloc — écarté pour rester
-  littéral (plafond seul demandé) ; à rouvrir si un drop silencieux d'un `lotClosed`/`proof` gêne.
+  littéral (plafond seul demandé) ; à rouvrir si un drop silencieux d'une carte de clôture / d'une
+  preuve gêne — c'est précisément ce que le lot #108 a traité (fusion + coda hors arbitre, ci-dessous).
 
 - **Bilan d'epic auto + hitRate visible** (lot #58, epic « Coût par livrable ») : `backlog.epicBilan(b,
   lot)` s'appelle juste après `doneLot` — renvoie `null` tant qu'un lot de la MÊME epic reste
@@ -1428,9 +1429,11 @@ plusieurs sessions réelles (capture fournie par l'utilisateur, 2026-07-12).
   `started_at`/`closed_at`) : nombre de lots, coût total, coût moyen/lot, durée (écart entre le plus
   ancien `started_at` et le plus récent `closed_at`, `null` si l'une des deux dates manque — vieux
   lots créés avant l'ajout de `started_at`). Aucun recalcul depuis le transcript. `epicBilanMessage`
-  émet le nudge (glyphe INFO, grammaire #56) juste après `lotClosedMessage` ; passe par l'arbitre de
-  tour (#57) comme les autres. **Choke points identiques à #57** : bloc auto-clôture de `hooks/stop.js`
+  émet le nudge (glyphe INFO, grammaire #56) ; passe par l'arbitre de tour (#57) comme les autres.
+  **Choke points identiques à #57** : bloc auto-clôture de `hooks/stop.js`
   côté Claude Code, `closureAndHandoff` côté OpenCode (même toast, même parité de contrat).
+  *Depuis le lot #108, côté Claude Code, ce bilan n'est plus un nudge autonome mais une **ligne** de
+  la carte de clôture unique (`epicBilanLine`) ; `epicBilanMessage` reste le nudge du canal OpenCode.*
   hitRate cache : `turnstats.computeTurn().hitRate` était déjà calculé mais jamais persisté —
   `recordOccupancy` le miroir maintenant dans `context-ledger.json` (`occupancy.hit_rate`, dernière
   valeur connue conservée si absente ce tour) ; `audit-context.js` (donc `/budget` sur les deux
@@ -1449,4 +1452,36 @@ plusieurs sessions réelles (capture fournie par l'utilisateur, 2026-07-12).
   `closureAndHandoff` OpenCode), la carte est poussée **après** le bilan d'epic — à sévérité INFO
   égale, l'arbitre départage à égalité par ordre d'origine (stable) ; le bilan (rare, 1×/epic) doit
   donc primer sur la carte (systématique, 1×/lot) quand les deux coïncident et que le plafond de 3
-  force un arbitrage. Aucun recalcul depuis le transcript.
+  force un arbitrage. Aucun recalcul depuis le transcript. *Cet ordre de poussée ne concerne plus que
+  le canal OpenCode : côté Claude Code, la fusion du lot #108 (ci-dessous) a supprimé l'arbitrage.*
+
+- **Carte de clôture UNIQUE + coda de prescription hors arbitre** (lot #108, epic « Reco de session
+  fraîche »). Trois constats, un principe.
+  1. **Prescription ≠ diagnostic.** L'arbitre de tour (#57) borne le **bruit de diagnostic** : des
+     constats concurrents qui se disputent l'attention d'un même tour. Une **prescription** — l'action
+     à prendre maintenant, unique et non rejouable — n'est pas du bruit et n'a rien à faire dans ce
+     concours. `hooks/stop.js` émet donc la reco « nouvelle session » en **coda, APRÈS `arbitrate()`**,
+     hors plafond : elle ne peut plus être évincée. Elle vivait jusqu'ici comme une ligne de
+     `lotClosedMessage` (INFO) — donc perdue dès qu'une alerte du tour évinçait le message, or
+     l'instant d'après-clôture (lot clos, handoff frais, plan persisté) est exactement celui où
+     repartir coûte le moins et où la reco ne doit pas manquer. `freshSessionCodaMessage` est la seule
+     sortie de ce type ; toute nouvelle prescription doit être justifiée sur le même critère, sinon le
+     plafond ne veut plus rien dire.
+  2. **Une clôture = une carte.** `closureCardMessage` fusionne en UN nudge (donc une place
+     d'arbitre) ce qui sortait en trois : « lot clos + suivant » (#97), bilan d'epic (#58, ligne
+     conditionnelle) et chiffres du lot (#59). Séparés, ils occupaient à eux seuls les 3 places
+     disponibles et, au dernier lot d'une epic, ils étaient **4 candidats (avec la preuve #44) pour
+     3 places** : la carte chiffrée, poussée en dernier, était systématiquement évincée — et la
+     transition n'est pas rejouable (le lot est `done` au tour suivant). Fusionnés : tout ou rien.
+  3. **Auto-clôture armée sur le backlog, plus sur un flag de session.** La branche d'auto-clôture
+     exigeait `closure_reminded_for_batch` — un flag remis à zéro à **chaque session**. Un lot démarré
+     dans une session et commité dans la suivante restait donc `in_progress` **indéfiniment** : ni
+     clôture, ni carte, ni preuve, ni numéro de lot. L'armement lit désormais l'état du **backlog**
+     lui-même : *exactement un `in_progress`* + *arbre propre (meaningful)* + *un commit tombé depuis
+     le `started_at` du lot* (date de commit de HEAD, `git log -1 --format=%cI`). Aucune persistance
+     nouvelle et robuste aux sessions fraîches, contrairement à un sha mémorisé dans l'état de session.
+     Le flag reste un armement valide (chemin historique intact) ; la garde « commit depuis le
+     démarrage » est ce qui empêche de clore un lot qui n'a rien livré. Deux replis assumés : lot sans
+     `started_at` (legacy) → pas d'armement backlog ; résolution de `%cI` à la seconde → un lot démarré
+     ET commité dans la même seconde n'est pas détecté (sans objet en pratique, un lot dure des
+     minutes). Non porté côté OpenCode (`closureAndHandoff` garde le flag seul) : périmètre du lot.

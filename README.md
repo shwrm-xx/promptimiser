@@ -157,7 +157,9 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   Ces rappels visibles portent un **glyphe de sévérité** (ℹ info / ⚠ warn /
   ⛔ alert) pour lire d'un coup d'œil ce qui est normal, ce qui mérite attention et ce qui est
   anormal. Quand un tour en déclenche trop, un **arbitre** n'en garde que les 3 plus sévères
-  (ordre de lecture préservé) — pas de pavé qui noie le signal important.
+  (ordre de lecture préservé) — pas de pavé qui noie le signal important. L'arbitre borne les
+  **constats** ; la **prescription** de fin de clôture (« nouvelle session recommandée maintenant »)
+  est émise hors plafond, en dernier : elle n'est jamais évincée.
 - **Pendant le tour** : une relecture **complète** d'un gros fichier (≥ 16 Ko) déjà lu et
   inchangé déclenche une note discrète (~60 tokens, plafonnée à 1×/fichier et 3×/session) —
   jamais de blocage, juste un rappel. Si un **résumé** du fichier est connu (lignes
@@ -234,8 +236,11 @@ désinstallation. Un redémarrage de session peut être nécessaire pour l'affic
 de relectures quand l'occupation token n'est pas encore connue. `/budget` affiche aussi le
 **hitRate cache** du dernier tour quand il est connu.
 
-À la clôture du **dernier lot d'une epic**, un **bilan chiffré** est émis (nombre de lots, coût
-total, coût moyen/lot, durée) — en plus du nudge habituel de clôture de lot.
+Chaque auto-clôture de lot émet **une seule carte** : lot clos, avancement du plan, coût réel du
+lot, durée, relectures évitées, lot suivant — et, à la clôture du **dernier lot d'une epic**, le
+**bilan chiffré** de l'epic (nombre de lots, coût total, coût moyen/lot, durée) comme ligne de plus.
+Un lot en cours commité dans une **autre session** que celle qui l'a démarré est clos quand même
+(arbre propre + un seul lot en cours + un commit depuis son démarrage).
 
 _Après une mise à jour du package, relance l'installeur (`install.command`/`.sh`/`.ps1`) puis
 redémarre Claude Code : les matchers de hooks ne s'appliquent qu'à la réinstallation._
