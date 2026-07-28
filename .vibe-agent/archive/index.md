@@ -110,3 +110,4 @@
 #0105 | 2026-07-28 | 9444709 | epic:Formalisation US | verify:inconnu | fiche:oui | Retrait du pointeur Jira
 #0106 | 2026-07-28 | 06fba38 | epic:Formalisation US | verify:inconnu | fiche:oui | Gabarit US enrichi + génération du fichier
 #0107 | 2026-07-28 | 633a91e | epic:Formalisation US | verify:inconnu | fiche:oui | Validation de structure de l'US
+#0108 | 2026-07-28 | d2bb827 | epic:Reco de session fraîche | verify:inconnu | fiche:non | Carte de clôture unique + reco session fraîche hors arbitre
