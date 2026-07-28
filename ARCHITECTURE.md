@@ -432,25 +432,20 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   inventé, pour un lot sans US. `/pmz:scope` **statue** sur l'US de chaque lot (chemin existant
   ou « pas d'US » assumé), jamais en silence — et n'invente jamais de chemin : US pas encore
   rédigée → l'écrire d'abord dans le dépôt, sinon omettre `--us`.
-- **`integrations.jira`** (lot #102, epic « US & Jira ») : partage le même champ `integrations`
-  que la métrologie RTK ci-dessus, sous un sous-clé distincte `{ key }` — un **pointeur borné et
-  validé en format** (`JIRA_KEY_RE`, ex. `PROJ-123`), jamais une synchronisation ni un contenu
-  dupliqué depuis Jira (même philosophie que le pointeur `us`, lot #101). CLI : `add --jira
-  PROJ-123` (création), `jira --id N [--set KEY]` (lecture/correction après coup). Une clé mal
-  formée est refusée explicitement, côté CLI et côté lib (défense en profondeur). **Piège
-  partagé avec la métrologie RTK** : `startLot`/`doneLot` réécrivaient tout `lot.integrations`
-  au lieu du seul sous-champ `command_optimizer` — un `integrations.jira` déjà posé aurait
-  disparu en silence au (re)démarrage ou à la clôture du lot. Corrigé (les deux préservent
-  désormais l'autre sous-champ). Export : colonne `jira_key` ajoutée, vide pour un lot sans clé.
-- **Pointeurs US/Jira dans le trailer et la fiche d'archive** (lot #103, epic « US & Jira ») :
-  fait remonter `us` (#101) et `integrations.jira.key` (#102) jusqu'aux deux surfaces de
-  clôture qui les ignoraient — un trailer `PMZ-Jira` (`scripts/close-batch.js`, même bloc que
-  `PMZ-Lot`/`PMZ-Cost`/`PMZ-Model`, lot #60) et deux lignes (en-tête + section « Liens ») dans
-  `ficheSkeleton` (`lib/archive.js`, tier 1, lot #95). Toujours **conditionnel** : un lot sans
-  clé ni US ne produit aucune ligne. En corrigeant ce lot, un bug pré-existant a été trouvé et
-  réparé : `audit-batch.js#backlogSummary().current` ne portait ni `epic` ni `us` du lot réel
+- **Pointeur `us` dans la fiche d'archive** (lot #103, epic « US & Jira ») : fait remonter `us`
+  (#101) jusqu'à la seule surface de clôture qui l'ignorait — deux lignes (en-tête + section
+  « Liens ») dans `ficheSkeleton` (`lib/archive.js`, tier 1, lot #95), toujours **conditionnel** :
+  un lot sans US ne produit aucune ligne. En corrigeant ce lot, un bug pré-existant a été trouvé
+  et réparé : `audit-batch.js#backlogSummary().current` ne portait ni `epic` ni `us` du lot réel
   (projection partielle depuis le lot #95) — la fiche affichait `epic : —` pour *tout* lot en
   cours, jamais remarqué faute de test dédié sur ce champ.
+- **Pointeur Jira retiré** (lot #105, epic « Formalisation US ») : `integrations.jira`, la
+  commande `jira --id N [--set KEY]`, le trailer `PMZ-Jira` et la colonne d'export `jira_key`
+  (posés lots #102-#103) ont été retirés — jamais de connectivité Jira réelle derrière, donc pas
+  de valeur d'usage constatée pour un simple pointeur inerte, et son maintien coûtait de la doc
+  et du code à relire sans contrepartie. Cf. décision « Frontière Jira : écarté » ci-dessous pour
+  le pourquoi complet (inchangé) et « Maille User Story : non » pour le pointeur `us`, qui lui
+  reste en place.
 - **RTK visible dans le verbe PMZ** (lot #86, epic « Verbe & Vagues ») : avant ce lot, seul
   `/pmz:rtk` montrait l'état du bridge — invisible du reste du verbe. `lib/messages.js` expose
   deux primitives pures, réutilisant les 5 états de `rtk-status.computeStatus()` :
@@ -1332,19 +1327,17 @@ plusieurs sessions réelles (capture fournie par l'utilisateur, 2026-07-12).
   « feature » = un epic court (2-5 lots). Le champ `us` (lot #101) ne rouvre **pas** cette
   décision : la maille de pilotage reste le lot, l'US est un **document optionnel référencé**
   (un pointeur vers un fichier du dépôt), jamais une ligne du plan ni un niveau de hiérarchie.
-- **Frontière US/Jira : pointeur seul, zéro réseau, zéro secret** (epic « US & Jira »,
-  lots #101-#104) : le backlog **référence** une US (chemin de fichier du dépôt) et un ticket
-  Jira (clé `PROJ-123`), il ne **synchronise** rien — pas d'appel réseau, pas de contenu
-  dupliqué depuis Jira, pas d'état de ticket suivi. Le besoin réel est la **traçabilité**
-  (retrouver le ticket depuis un commit via le trailer `PMZ-Jira`, depuis la fiche d'archive,
-  depuis l'export CSV — et inversement), pas la synchronisation. **Option MCP Atlassian
-  écartée à ce stade** : une intégration vivante exigerait un token API (violation « zéro
-  secret » du dépôt), des appels réseau dans des hooks fail-open (une panne ou latence Jira
-  dégraderait des sessions locales qui n'en ont pas besoin), et une dépendance externe
-  (violation « zéro dépendance »). Si le besoin de lecture/écriture Jira émerge un jour, il
-  passera par un MCP configuré **côté utilisateur** (hors PMZ) — les clés posées par PMZ
-  restant le point de jonction. Cf. aussi « Epic = label, pas conteneur » ci-dessous : une
-  table de tickets avec statuts serait le début du Jira que `backlog.js` refuse par principe.
+- **Frontière Jira : écarté** (epic « US & Jira », lots #101-#103 ; retiré au lot #105, epic
+  « Formalisation US ») : PMZ a porté un temps un pointeur de clé Jira (`PROJ-123`, zéro réseau,
+  zéro secret, zéro synchronisation — traçabilité seule). Retiré faute d'usage réel : sans
+  connectivité Jira derrière, un pointeur inerte ne rendait pas le service attendu. **Option MCP
+  Atlassian toujours écartée**, pointeur ou pas : une intégration vivante exigerait un token API
+  (violation « zéro secret » du dépôt), des appels réseau dans des hooks fail-open (une panne ou
+  latence Jira dégraderait des sessions locales qui n'en ont pas besoin), et une dépendance
+  externe (violation « zéro dépendance »). Si un besoin réel de lecture/écriture Jira émerge un
+  jour, il passera par un MCP configuré **côté utilisateur** (hors PMZ). Cf. aussi « Epic = label,
+  pas conteneur » ci-dessous : une table de tickets avec statuts serait le début du Jira que
+  `backlog.js` refuse par principe.
 - **Epic = label, pas conteneur** : pas de table `epics[]` ni de cycle de vie d'epic — un label
   (fichier `.vibe-agent/epic`, écrit par `/scope` via `backlog.js epic --set`, + champ
   optionnel `epic` du lot backlog, cap 60c, lot #28) suffit pour le filtrage (`backlog.js show

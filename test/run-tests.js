@@ -1036,15 +1036,14 @@ section('Archive tier 1/2 — fiches, CLI à tiroirs, commande, pare-feu canari 
   ok(/archive\/raw\/lot-0012\.md/.test(sk), 'ficheSkeleton : lien vers le brut tier 2 (id zero-paddé 4 chiffres)');
   ok(archive.ficheSkeleton({ id: 3 }).includes('verify : aucune → inconnu'), 'ficheSkeleton : lot sans verify → « aucune → inconnu », jamais de valeur inventée');
 
-  // --- Pointeurs US/Jira (lot #103) : portés en-tête + section Liens quand présents, jamais inventés.
-  const skJiraUs = archive.ficheSkeleton({ id: 13, title: 'Titre', epic: 'US & Jira', date: '2026-07-28', commit: 'def5678', jira: 'PROJ-42', us: 'docs/us/us-42.md' });
-  ok(/- epic : US & Jira · clos : 2026-07-28 · commit : def5678 · session : inconnue · jira : PROJ-42 · us : docs\/us\/us-42\.md/.test(skJiraUs),
-    'ficheSkeleton : en-tête porte jira et us quand présents');
-  ok(/- Jira : PROJ-42/.test(skJiraUs) && /- US : docs\/us\/us-42\.md/.test(skJiraUs),
-    'ficheSkeleton : section Liens porte les lignes Jira et US');
-  const skNoJiraUs = archive.ficheSkeleton({ id: 14, title: 'Titre', date: '2026-07-28', commit: 'def5678' });
-  ok(!/jira :/.test(skNoJiraUs) && !/us :/.test(skNoJiraUs) && !/- Jira :/.test(skNoJiraUs) && !/- US :/.test(skNoJiraUs),
-    'ficheSkeleton : lot sans jira ni us → AUCUNE ligne (pas de null, pas de valeur inventée)');
+  // --- Pointeur US (lot #101) : porté en-tête + section Liens quand présent, jamais inventé.
+  const skUs = archive.ficheSkeleton({ id: 13, title: 'Titre', epic: 'Formalisation US', date: '2026-07-28', commit: 'def5678', us: 'docs/us/us-42.md' });
+  ok(/- epic : Formalisation US · clos : 2026-07-28 · commit : def5678 · session : inconnue · us : docs\/us\/us-42\.md/.test(skUs),
+    'ficheSkeleton : en-tête porte us quand présent');
+  ok(/- US : docs\/us\/us-42\.md/.test(skUs), 'ficheSkeleton : section Liens porte la ligne US');
+  const skNoUs = archive.ficheSkeleton({ id: 14, title: 'Titre', date: '2026-07-28', commit: 'def5678' });
+  ok(!/us :/.test(skNoUs) && !/- US :/.test(skNoUs),
+    'ficheSkeleton : lot sans us → AUCUNE ligne (pas de null, pas de valeur inventée)');
 
   // --- Écriture de la fiche : versionnée, stagée, index enrichi en fiche:oui.
   const l1 = backlog.addLot(repo, 'Lot avec fiche', 'fait quand : …', null, 'Archive à tiroirs');
@@ -1136,16 +1135,15 @@ section('Archive tier 1/2 — fiches, CLI à tiroirs, commande, pare-feu canari 
   ok(/verify : `node -e "process\.exit\(0\)"` → OK/.test(cbOut), 'close-batch : résultat verify RÉEL injecté dans le squelette');
   ok(/archive\.js raw --id \d+ --file \.vibe-agent\/handoff\.md/.test(cbOut), 'close-batch : archivage du handoff manuel AVANT sa destruction');
 
-  // --- /close-batch : le squelette de fiche porte jira/us du lot en cours (lot #103), jamais inventés.
+  // --- /close-batch : le squelette de fiche porte us du lot en cours (lot #103), jamais inventé.
   fs.mkdirSync(path.join(cb, 'docs', 'us'), { recursive: true });
   fs.writeFileSync(path.join(cb, 'docs', 'us', 'us-99.md'), '# US 99\n');
-  const lcbJU = backlog.addLot(cb, 'Lot Jira US', 'fait quand : …', 'opus', 'US & Jira', null, null,
-    null, null, 'docs/us/us-99.md', 'PROJ-99');
-  backlog.startLot(cb, lcbJU.id);
-  const cbOutJU = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', cb]).out;
-  ok(/- Jira : PROJ-99/.test(cbOutJU) && /- US : docs\/us\/us-99\.md/.test(cbOutJU),
-    'close-batch : squelette de fiche porte jira et us du lot en cours');
-  backlog.dropLot(cb, lcbJU.id);
+  const lcbU = backlog.addLot(cb, 'Lot US', 'fait quand : …', 'opus', 'Formalisation US', null, null,
+    null, null, 'docs/us/us-99.md');
+  backlog.startLot(cb, lcbU.id);
+  const cbOutU = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', cb]).out;
+  ok(/- US : docs\/us\/us-99\.md/.test(cbOutU), 'close-batch : squelette de fiche porte us du lot en cours');
+  backlog.dropLot(cb, lcbU.id);
   const cbMd = fs.readFileSync(path.join(PKG, 'commands', 'close-batch.md'), 'utf8');
   ok(/^6bis\./m.test(cbMd) && /^6ter\./m.test(cbMd), 'close-batch.md : étapes 6bis (fiche) et 6ter (handoff archivé) posées avant le 7');
   ok(cbMd.indexOf('6bis.') < cbMd.indexOf('7. Recommander'), 'close-batch.md : la fiche est rédigée avant la recommandation de session fraîche');
@@ -1963,25 +1961,9 @@ section('backlog — verify + closed_occupancy (lot #29)');
   const rCloseNoLot = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', repo]);
   ok(!/Trailers du commit/.test(rCloseNoLot.out), 'close-batch : sans lot en cours, aucun bloc trailers');
 
-  // V13b. close-batch : trailer PMZ-Jira quand le lot en cours porte une clé Jira (lot #103)
-  const lotTrailJira = backlogLib.addLot(repo, 'Lot trailers Jira', null, 'sonnet', null, null, 'medium',
-    null, null, null, 'PROJ-42');
-  backlogLib.startLot(repo, lotTrailJira.id);
-  const rCloseTrailJira = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', repo]);
-  ok(new RegExp(`PMZ-Jira: PROJ-42\\b`).test(rCloseTrailJira.out), 'close-batch : trailer PMZ-Jira = clé Jira du lot en cours');
-  backlogLib.dropLot(repo, lotTrailJira.id);
-
-  // V13c. close-batch : lot en cours SANS clé Jira → aucun trailer PMZ-Jira (jamais de valeur inventée)
-  const lotTrailNoJira = backlogLib.addLot(repo, 'Lot trailers sans Jira', null, 'sonnet');
-  backlogLib.startLot(repo, lotTrailNoJira.id);
-  const rCloseTrailNoJira = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', repo]);
-  ok(new RegExp(`PMZ-Lot: ${lotTrailNoJira.id}\\b`).test(rCloseTrailNoJira.out), 'close-batch : trailer PMZ-Lot toujours présent');
-  ok(!/PMZ-Jira:/.test(rCloseTrailNoJira.out), 'close-batch : sans clé Jira sur le lot, aucun trailer PMZ-Jira');
-  backlogLib.dropLot(repo, lotTrailNoJira.id);
-
   // V14. backlog.js export --format csv|md : en-tête + lignes, refus doux hors énum
   const rExportCsv = runNode(BKLG, ['export', '--cwd', repo, '--format', 'csv']);
-  ok(/^id,title,status,epic,us,jira_key,model_hint,effort_hint,verify,closed_verify,cost_tokens,closed_commit,closed_at,closed_session_id,closed_occupancy/.test(rExportCsv.out),
+  ok(/^id,title,status,epic,us,model_hint,effort_hint,verify,closed_verify,cost_tokens,closed_commit,closed_at,closed_session_id,closed_occupancy/.test(rExportCsv.out),
     'export --format csv : en-tête de colonnes');
   ok(rExportCsv.out.split('\n').length >= backlogLib.loadBacklog(repo).lots.length + 1,
     'export --format csv : une ligne par lot (+ en-tête)');
@@ -7073,66 +7055,6 @@ section('backlog — champ us : garde d\'existence, show, export (epic « US & J
   // un pointeur mort.
   const direct = backlogLib.addLot(repo, 'Lot direct', null, 'sonnet', null, null, null, [], [], 'chemin/mort.md');
   ok(direct === null, 'U6 : lib.addLot() refuse aussi directement un chemin --us inexistant (garde doublée)');
-}
-
-section('backlog — champ integrations.jira : garde de format, show, export, préservation RTK (lot #102)');
-{
-  const repo = path.join(SANDBOX, 'repo-jira');
-  fs.mkdirSync(repo, { recursive: true });
-  execFileSync('git', ['init', '-q', repo]);
-  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
-  execFileSync('git', ['-C', repo, 'add', '.']);
-  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
-  const lotOf = (id) => backlogLib.loadBacklog(repo).lots.find((l) => l.id === id);
-
-  // J1. --jira mal formée (pas PROJ-123) -> refus explicite, rien de persisté.
-  const rBad = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot Jira A', '--model', 'sonnet', '--jira', 'pas-une-cle']);
-  ok(/Refusé/.test(rBad.out) && /--jira/.test(rBad.out) && /pas-une-cle/.test(rBad.out),
-    'J1 : add --jira <mal formée> -> refus explicite (message nomme la clé)');
-  ok(!backlogLib.loadBacklog(repo).lots.length, 'J1 : aucun lot persisté (refus AVANT toute écriture)');
-
-  // J2. --jira bien formée -> persistée, réaffichée par add et show.
-  const rOk = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot Jira A', '--model', 'sonnet', '--jira', 'PROJ-123']);
-  ok(/\[Jira : PROJ-123\]/.test(rOk.out), 'J2 : add --jira <clé valide> -> accepté, tag [Jira : …] dans la sortie');
-  ok(lotOf(1).integrations && lotOf(1).integrations.jira.key === 'PROJ-123', 'J2 : clé Jira persistée sur le lot');
-  const rShow = runNode(BKLG, ['show', '--cwd', repo]);
-  ok(/\[Jira : PROJ-123\]/.test(rShow.out), 'J2 : show réaffiche la clé Jira');
-
-  // J3. lot posé SANS --jira : champ absent, aucune ligne [Jira : …] (pas de valeur inventée).
-  const rNoJira = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot Jira B', '--model', 'sonnet']);
-  ok(!/\[Jira :/.test(rNoJira.out), 'J3 : add sans --jira -> aucun tag [Jira : …]');
-  ok(!lotOf(2).integrations, 'J3 : integrations absent (clé droppée) sur un lot sans Jira');
-
-  // J4. `jira --id N --set` corrige après coup ; sans --set, lecture seule.
-  const rRead = runNode(BKLG, ['jira', '--cwd', repo, '--id', '2']);
-  ok(/\(aucune\)/.test(rRead.out), 'J4 : jira --id sans --set -> lecture, "(aucune)" pour un lot sans clé');
-  const rSet = runNode(BKLG, ['jira', '--cwd', repo, '--id', '2', '--set', 'PROJ-9']);
-  ok(/PROJ-9/.test(rSet.out), 'J4 : jira --id --set <valide> -> accepté');
-  ok(lotOf(2).integrations.jira.key === 'PROJ-9', 'J4 : clé Jira enregistrée par --set');
-  const rSetBad = runNode(BKLG, ['jira', '--cwd', repo, '--id', '2', '--set', 'nope']);
-  ok(/Refusé/.test(rSetBad.out), 'J4 : jira --id --set <mal formée> -> refus explicite');
-  ok(lotOf(2).integrations.jira.key === 'PROJ-9', 'J4 : refus --set n\'écrase pas la clé déjà posée');
-
-  // J5. export CSV/Markdown expose la colonne jira_key — vide pour le lot sans clé.
-  const csv = backlogLib.exportCsv(backlogLib.loadBacklog(repo));
-  const header = csv.split('\n')[0].split(',');
-  ok(header.includes('jira_key'), 'J5 : colonne jira_key présente dans l\'export CSV');
-  const rows = csv.split('\n').slice(1);
-  const jiraCol = header.indexOf('jira_key');
-  ok(rows[0].split(',')[jiraCol] === 'PROJ-123', 'J5 : export CSV — lot #1 porte sa clé Jira');
-  ok(rows[1].split(',')[jiraCol] === 'PROJ-9', 'J5 : export CSV — lot #2 porte sa clé Jira corrigée par --set');
-
-  // J6. défense en profondeur côté lib : addLot() direct refuse aussi une clé mal formée.
-  const direct = backlogLib.addLot(repo, 'Lot direct', null, 'sonnet', null, null, null, [], [], null, 'mal-formee');
-  ok(direct === null, 'J6 : lib.addLot() refuse aussi directement une clé --jira mal formée (garde doublée)');
-
-  // J7. piège historique : start puis done (avec activité RTK simulée) ne doit PAS détruire
-  // integrations.jira — startLot/doneLot écrivaient integrations.command_optimizer en
-  // remplaçant tout l'objet, ce qui effaçait la clé Jira en silence.
-  backlogLib.startLot(repo, 1);
-  ok(lotOf(1).integrations.jira.key === 'PROJ-123', 'J7 : start -> integrations.jira survit à l\'écriture du snapshot RTK');
-  backlogLib.doneLot(repo, 1, 'deadbee', 1, null, null);
-  ok(lotOf(1).integrations.jira.key === 'PROJ-123', 'J7 : done -> integrations.jira survit au calcul du gain RTK (ou son absence)');
 }
 
 // ============================ RÉSUMÉ ============================

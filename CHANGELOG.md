@@ -2,6 +2,34 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-28 — « Retrait du pointeur Jira » (epic « Formalisation US », backlog #105)
+
+Premier lot de l'epic « Formalisation US » : retrait du pointeur `integrations.jira` posé aux
+lots #102-#103 (epic « US & Jira »). Décision utilisateur : sans connectivité Jira réelle, un
+pointeur inerte ne rend pas assez de service pour justifier son coût de doc/code à relire — le
+pointeur `us` (lot #101), lui, reste en place et sera renforcé aux lots suivants.
+
+- **`lib/backlog.js`** — `JIRA_KEY_RE`, `MAX_JIRA`, `normalizeJira`, `setJira` supprimés ;
+  `normalizeIntegrations` ne porte plus que `command_optimizer` ; `addLot` perd son paramètre
+  `jira` (dernier paramètre, désormais `us`) ; `startLot`/`doneLot` simplifiés — la préservation
+  défensive du sous-champ `jira` (piège historique lot #102) n'a plus lieu d'être, un seul
+  sous-champ existe désormais dans `integrations`. Colonne d'export `jira_key` retirée.
+- **`scripts/backlog.js`** — flag `--jira` de `add` retiré, commande `jira` (lecture/`--set`)
+  supprimée, tag `[Jira : …]` retiré de `show`/`add`, `jira` retiré de la liste des commandes.
+- **`lib/archive.js`** — `ficheSkeleton` ne porte plus que `us` en en-tête et section « Liens ».
+- **`scripts/close-batch.js`** — trailer `PMZ-Jira` retiré du bloc « Trailers du commit ».
+- **`scripts/audit-batch.js`** — commentaire de `backlogSummary()` mis à jour (ne mentionne
+  plus le trailer PMZ-Jira supprimé).
+- **`ARCHITECTURE.md`** — bullet `integrations.jira` supprimé ; décision « Frontière US/Jira »
+  réécrite en « Frontière Jira : écarté » (le pointeur retiré, le refus du MCP Atlassian reste
+  valable tel quel) ; bullet « Pointeurs US/Jira dans le trailer et la fiche » réduit au seul `us`.
+- **`README.md`** — bullet « Pointeurs US & Jira » réduit à « Pointeur US », avec un renvoi vers
+  la décision d'architecture pour l'historique Jira.
+- Tests : section dédiée `integrations.jira` (7 assertions J1-J7) supprimée ; assertions
+  `ficheSkeleton`/`close-batch`/export CSV recentrées sur `us` seul. Suite verte : 1647 OK.
+- Non vérifié : aucune installation réelle testée (`~/.claude` non touché, conforme à la
+  discipline du dépôt) — seulement la suite `node test/run-tests.js` en bac à sable.
+
 ## 2026-07-28 — « Doc : champ US, champ Jira, frontière pointeur-seul » (epic « US & Jira », backlog #104)
 
 Lot de doc pure qui clôt l'epic : les trois surfaces documentaires portent désormais les deux

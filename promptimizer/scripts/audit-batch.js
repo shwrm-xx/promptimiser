@@ -24,8 +24,7 @@ function backlogSummary(root) {
         // Métrologie RTK (lot #83) : porte le snapshot de démarrage (ou le gain figé) jusqu'au
         // bilan de clôture, qui calcule le gain en direct depuis le compteur courant.
         integrations: cur.integrations || null,
-        // epic + us (lots #101/#103) : nécessaires à la fiche d'archive (en-tête + section Liens)
-        // et au trailer PMZ-Jira du commit de clôture.
+        // epic + us (lots #101/#103) : nécessaires à la fiche d'archive (en-tête + section Liens).
         epic: cur.epic || null,
         us: cur.us || null,
       } : null,

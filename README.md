@@ -175,18 +175,13 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   archivée) — plus besoin d'éditer le JSON à la main, hors de toute garde. Le nombre de
   réouvertures est exporté (colonne `reopened` du CSV/Markdown) : un lot repris deux fois cesse de
   se lire comme un lot passé du premier coup.
-- **Pointeurs US & Jira** : un lot peut référencer une User Story détaillée et/ou un ticket
-  Jira — **pointeur seul, jamais le contenu**. L'US est un fichier du dépôt (gabarit
-  `promptimizer/templates/us-template.md` : persona/besoin/bénéfice, critères d'acceptation
-  numérotés) posé via `backlog.js add --us docs/us/US-42.md` — chemin **vérifié à l'ajout**
-  (un pointeur mort est refusé). Le ticket Jira est une clé au format `PROJ-123`, posée via
-  `add --jira PROJ-123` ou corrigée après coup (`backlog.js jira --id N --set PROJ-124`) ;
-  une clé mal formée est refusée. Les deux se retrouvent partout où on trace : `show`, export
-  CSV/Markdown, fiche d'archive, et un trailer `PMZ-Jira` dans le message de commit de
-  clôture. **Frontière assumée** : zéro appel réseau, zéro secret — PMZ ne lit ni n'écrit
-  jamais dans Jira (l'option MCP Atlassian est écartée à ce stade : elle exigerait un token
-  et du réseau dans des hooks fail-open ; le besoin couvert est la traçabilité, pas la
-  synchronisation).
+- **Pointeur US** : un lot peut référencer une User Story détaillée — **pointeur seul, jamais
+  le contenu**. C'est un fichier du dépôt (gabarit `promptimizer/templates/us-template.md` :
+  persona/besoin/bénéfice, critères d'acceptation numérotés) posé via `backlog.js add --us
+  docs/us/US-42.md` — chemin **vérifié à l'ajout** (un pointeur mort est refusé). Il se
+  retrouve partout où on trace : `show`, export CSV/Markdown, fiche d'archive. (Un pointeur
+  Jira a existé un temps, retiré faute de connectivité réelle derrière — cf. ARCHITECTURE.md,
+  décision « Frontière Jira : écarté ».)
 - **Après un `/clear` ou une compaction** : le handoff (ou le lot en cours) est réinjecté —
   le plan ne se perd pas.
 - **Vagues parallèles fiables** : quand plusieurs sessions travaillent le même dépôt, chacune a son

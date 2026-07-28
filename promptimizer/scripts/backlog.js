@@ -99,7 +99,6 @@ function show(root, json, epicFilter) {
     line += backlog.modelEffortTag(l);
     if (l.verify) line += ` [verify : ${l.verify}]`;
     if (l.us) line += ` [US : ${l.us}]`;
-    if (l.integrations && l.integrations.jira) line += ` [Jira : ${l.integrations.jira.key}]`;
     if (l.perimeter && l.perimeter.length) line += ` [périmètre : ${l.perimeter.join(', ')}]`;
     if (l.depends_on && l.depends_on.length) line += ` [dépend de : ${l.depends_on.map((d) => '#' + d).join(', ')}]`;
     if (l.status === 'done' && l.closed_commit) line += ` — commit ${l.closed_commit}`;
@@ -530,7 +529,6 @@ function main() {
       { name: '--epic', value: flag('epic'), max: backlog.MAX_EPIC },
       { name: '--verify', value: flag('verify'), max: backlog.MAX_VERIFY },
       { name: '--us', value: flag('us'), max: backlog.MAX_US },
-      { name: '--jira', value: flag('jira'), max: backlog.MAX_JIRA },
     ])) return;
     const dep = parseDepends();
     if (!dep.ok) return;
@@ -543,14 +541,7 @@ function main() {
       return out(`Refusé : --us pointe vers un chemin inexistant (« ${usPath} », relatif à la racine du dépôt « ${root} »). `
         + 'Crée le fichier d\'abord (cf. templates/us-template.md), ou omets --us si l\'US n\'est pas encore rédigée.');
     }
-    // Garde de format (fait quand du lot « Champ integrations.jira ») : une clé --jira mal
-    // formée (pas « PROJ-123 ») est REFUSÉE explicitement — addLot revalide en interne (défense
-    // en profondeur), mais le message ici est plus clair.
-    const jiraKey = flag('jira');
-    if (jiraKey && !backlog.JIRA_KEY_RE.test(jiraKey)) {
-      return out(`Refusé : --jira mal formée (« ${jiraKey} ») — attendu un format « PROJ-123 » (lettres majuscules, tiret, numéro).`);
-    }
-    const newLot = backlog.addLot(root, flag('title'), flag('scope'), model, flag('epic'), flag('verify'), effort, flagList('perimeter'), dep.ids, usPath, jiraKey);
+    const newLot = backlog.addLot(root, flag('title'), flag('scope'), model, flag('epic'), flag('verify'), effort, flagList('perimeter'), dep.ids, usPath);
     if (!newLot) {
       const b = backlog.loadBacklog(root);
       if (b.lots.filter((l) => l.status === 'todo' || l.status === 'in_progress').length >= backlog.MAX_LOTS_OPEN) {
@@ -558,8 +549,7 @@ function main() {
       }
       return out('Refusé : --title manquant ou vide.');
     }
-    const newJira = newLot.integrations && newLot.integrations.jira && newLot.integrations.jira.key;
-    let addMsg = `Lot #${newLot.id} « ${newLot.title} » ajouté (à faire)${backlog.modelEffortTag(newLot)}${newLot.epic ? ` [epic : ${newLot.epic}]` : ''}${newLot.verify ? ` [verify : ${newLot.verify}]` : ''}${newLot.us ? ` [US : ${newLot.us}]` : ''}${newJira ? ` [Jira : ${newJira}]` : ''}${newLot.perimeter.length ? ` [périmètre : ${newLot.perimeter.join(', ')}]` : ''}${newLot.depends_on.length ? ` [dépend de : ${newLot.depends_on.map((d) => '#' + d).join(', ')}]` : ''}.`;
+    let addMsg = `Lot #${newLot.id} « ${newLot.title} » ajouté (à faire)${backlog.modelEffortTag(newLot)}${newLot.epic ? ` [epic : ${newLot.epic}]` : ''}${newLot.verify ? ` [verify : ${newLot.verify}]` : ''}${newLot.us ? ` [US : ${newLot.us}]` : ''}${newLot.perimeter.length ? ` [périmètre : ${newLot.perimeter.join(', ')}]` : ''}${newLot.depends_on.length ? ` [dépend de : ${newLot.depends_on.map((d) => '#' + d).join(', ')}]` : ''}.`;
     addMsg += estimateSuffix(backlog.loadBacklog(root), newLot);
     return out(addMsg);
   }
@@ -574,22 +564,6 @@ function main() {
     if (truncGuard([{ name: '--set', value: set, max: backlog.MAX_VERIFY }])) return;
     const l = backlog.setVerify(root, id, set);
     return out(l ? `Verify du lot #${l.id} enregistrée : ${l.verify}` : `Lot #${id} introuvable ou commande vide.`);
-  }
-
-  if (cmd === 'jira') {
-    const set = flag('set');
-    if (!set) {
-      const b = backlog.loadBacklog(root);
-      const l = b.lots.find((x) => x.id === Number(id));
-      if (!l) return out(`Lot #${id} introuvable.`);
-      const key = l.integrations && l.integrations.jira && l.integrations.jira.key;
-      return out(`Jira du lot #${l.id} : ${key || '(aucune)'}`);
-    }
-    if (!backlog.JIRA_KEY_RE.test(set)) {
-      return out(`Refusé : --set mal formée (« ${set} ») — attendu un format « PROJ-123 » (lettres majuscules, tiret, numéro).`);
-    }
-    const l = backlog.setJira(root, id, set);
-    return out(l ? `Jira du lot #${l.id} enregistrée : ${l.integrations.jira.key}` : `Lot #${id} introuvable.`);
   }
 
   // FIA-24 (lot #98) : `setDepends` existait sans chemin CLI — corriger une dépendance après
@@ -724,7 +698,7 @@ function main() {
     return;
   }
 
-  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | reopen | depends | next | parallelize | fleet <join|ready|leave|show> | reintegrate | reconcile | epic | verify | jira | trigram | export.`);
+  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | reopen | depends | next | parallelize | fleet <join|ready|leave|show> | reintegrate | reconcile | epic | verify | trigram | export.`);
 }
 
 if (require.main === module) {

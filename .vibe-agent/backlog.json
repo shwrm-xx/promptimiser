@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "next_id": 105,
+  "next_id": 108,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-28T06:53:37.191Z",
+  "updated_at": "2026-07-28T07:06:19.934Z",
   "lots": [
     {
       "id": 1,
@@ -2471,6 +2471,87 @@
         101,
         102,
         103
+      ],
+      "session_owner": null
+    },
+    {
+      "id": 105,
+      "title": "Retrait du pointeur Jira",
+      "scope": "fait quand : plus aucune occurrence de jira dans lib/, scripts/, test/ ni dans README.md, hors la décision d'architecture réécrite en « écarté et pourquoi » dans ARCHITECTURE.md ; node test/run-tests.js vert ; integrations.command_optimizer (RTK) intact et testé",
+      "status": "in_progress",
+      "model_hint": "sonnet",
+      "effort_hint": "high",
+      "epic": "Formalisation US",
+      "verify": "node test/run-tests.js",
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "closed_verify": null,
+      "cost_tokens": 8851,
+      "started_at": "2026-07-28T07:06:02.979Z",
+      "lot_number": null,
+      "note": null,
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null,
+      "integrations": {
+        "command_optimizer": {
+          "snapshot_start": {
+            "commands": 1,
+            "delivered_tokens": 4
+          }
+        }
+      }
+    },
+    {
+      "id": 106,
+      "title": "Gabarit US enrichi + génération du fichier",
+      "scope": "fait quand : backlog.js us --id N --new crée le fichier US depuis un gabarit revu (sobre — coût de relecture assumé) et le rattache au lot ; refus doux si le fichier existe déjà ; node test/run-tests.js vert ; README/ARCHITECTURE à jour",
+      "status": "todo",
+      "model_hint": "opus",
+      "effort_hint": "medium",
+      "epic": "Formalisation US",
+      "verify": "node test/run-tests.js",
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "closed_verify": null,
+      "cost_tokens": 0,
+      "started_at": null,
+      "lot_number": null,
+      "note": null,
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [
+        105
+      ],
+      "session_owner": null
+    },
+    {
+      "id": 107,
+      "title": "Validation de structure de l'US",
+      "scope": "fait quand : une US aux sections obligatoires manquantes est refusée en refus doux (message actionnable, jamais fail-hard, jamais de blocage de session) ; node test/run-tests.js vert ; décision documentée dans ARCHITECTURE.md",
+      "status": "todo",
+      "model_hint": "sonnet",
+      "effort_hint": "high",
+      "epic": "Formalisation US",
+      "verify": "node test/run-tests.js",
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "closed_verify": null,
+      "cost_tokens": 0,
+      "started_at": null,
+      "lot_number": null,
+      "note": null,
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [
+        106
       ],
       "session_owner": null
     }

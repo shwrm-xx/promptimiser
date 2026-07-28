@@ -244,15 +244,12 @@ function ficheSkeleton(meta) {
   const commit = cell(m.commit);
   const verifyCmd = m.verifyCmd ? '`' + String(m.verifyCmd).replace(/`/g, "'") + '`' : 'aucune';
   const verify = VERIFY_VALUES.includes(m.verify) ? m.verify : 'inconnu';
-  // Pointeurs US/Jira (epic « US & Jira », lots #101/#102) : jamais de valeur inventée —
-  // un lot sans l'un ou l'autre ne produit ni segment d'en-tête, ni ligne « Liens ».
-  const jira = m.jira ? String(m.jira).trim() : '';
+  // Pointeur US (lot #101) : jamais de valeur inventée — un lot sans US ne produit ni
+  // segment d'en-tête, ni ligne « Liens ».
   const us = m.us ? String(m.us).trim() : '';
   let metaLine = `- epic : ${cell(m.epic)} · clos : ${date} · commit : ${commit} · session : ${cell(m.session, 'inconnue')}`;
-  if (jira) metaLine += ` · jira : ${jira}`;
   if (us) metaLine += ` · us : ${us}`;
   const liens = [`- commit ${commit} · entrée CHANGELOG du ${date} · brut : archive/raw/lot-${pad4(id)}.md (local)`];
-  if (jira) liens.push(`- Jira : ${jira}`);
   if (us) liens.push(`- US : ${us}`);
   return [
     ficheMarker(id),
