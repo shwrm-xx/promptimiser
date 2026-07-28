@@ -1005,8 +1005,12 @@ function reconcile(root) {
 // une ligne CSV. On exporte son cardinal — un lot rouvert 2 fois n'a pas coûté le même prix
 // qu'un lot passé du premier coup, et c'était invisible à l'export. Vide (pas `0`) quand le lot
 // n'a jamais été rouvert : même contrat que les colonnes RTK, aucune valeur inventée.
+// `cost_turns`/`closed_avg_cost_per_turn` (lot #111) suivent `closed_occupancy` et non
+// `cost_tokens` : ce sont des mesures FIGÉES À LA CLÔTURE, pas un cumul courant. Les omettre
+// ferait mentir l'export par omission — le lot #111 vient précisément de rendre l'accrétion
+// mesurable, et c'est elle qui dit si un lot s'est alourdi ou non à prix égal.
 const EXPORT_COLUMNS = ['id', 'title', 'status', 'epic', 'us', 'model_hint', 'effort_hint', 'verify', 'closed_verify', 'cost_tokens', 'closed_commit', 'closed_at',
-  'closed_session_id', 'closed_occupancy', 'reopened',
+  'closed_session_id', 'closed_occupancy', 'cost_turns', 'closed_avg_cost_per_turn', 'reopened',
   'command_optimizer_provider', 'command_tokens_saved', 'command_saving_ratio', 'command_evidence'];
 
 // Valeur d'une colonne d'export pour un lot : colonnes dérivées RTK d'abord, sinon champ brut.

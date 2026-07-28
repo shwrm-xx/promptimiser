@@ -56,7 +56,7 @@ claude plugin install pmz@pmz-local
 ```
 
 Vérification : `claude plugin details pmz` (doit afficher **6 hooks** et les
-**10 commandes** ; commandes namespacées `/pmz:*`, ex. `/pmz:about`, `/pmz:scope`). Le nom du
+**13 commandes** ; commandes namespacées `/pmz:*`, ex. `/pmz:about`, `/pmz:scope`). Le nom du
 plugin (identifiant technique, pilote le namespace des commandes) est `pmz` ; l'identité
 « Promptimizer » reste le nom du projet/produit (description, branding). **Distribution à un tiers**
 (entreprise, équipe, communauté) : partager le dossier `dist/marketplace/` (ou un dépôt git
@@ -235,7 +235,8 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
 ## Slash commands (secours)
 
 `/init` · `/scope` · `/parallelize` · `/reintegrate` · `/budget` · `/check-context` ·
-`/close-batch` · `/fresh-session` · `/archive` · `/rtk` · `/about` · `/help` · `/statusline`
+`/close-batch` · `/fresh-session` · `/archive` · `/dashboard` · `/rtk` · `/about` · `/help` ·
+`/statusline`
 
 `/about` affiche la version installée de PMZ (`promptimizer/VERSION`, historisée dans
 `CHANGELOG.md` à chaque évolution) ainsi que l'epic et le lot en cours du projet courant.
@@ -254,6 +255,14 @@ désinstallation. Un redémarrage de session peut être nécessaire pour l'affic
 (occupation courante du contexte + gaspillage de relecture), avec repli annoncé sur le comptage
 de relectures quand l'occupation token n'est pas encore connue. `/budget` affiche aussi le
 **hitRate cache** du dernier tour quand il est connu.
+
+`/dashboard` génère `.vibe-agent/dashboard.html`, un tableau de bord **autonome** de l'économie de
+contexte du projet : occupation (médiane / p90 / max) et préfixe, décomposition du coût (cache-read
+en 4 postes), accrétion tokens/tour, loi d'échelle `coût ∝ tours^k`, et **3 recommandations
+chiffrées** classées par argent récupérable. La page ne fait **aucune requête réseau** et suit le
+thème clair/sombre du système. Options : `--sessions N` (défaut 20), `--all`, `--out <chemin>`,
+`--stdout`, `--json`. Mesure **hors bande** (balayage complet des transcripts) : à la demande
+uniquement, jamais depuis un hook — d'où une commande et non un nudge.
 
 Chaque auto-clôture de lot émet **une seule carte** : lot clos, avancement du plan, coût réel du
 lot, durée, relectures évitées, lot suivant — et, à la clôture du **dernier lot d'une epic**, le

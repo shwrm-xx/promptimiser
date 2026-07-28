@@ -2,6 +2,68 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-28 — « Commande `/pmz:dashboard` » (epic « Économie de contexte », backlog #114)
+
+Second lot de l'epic, livré **en vague parallèle** avec #111 (worktrees isolés, périmètres
+disjoints). Le moteur #110 savait mesurer mais ne savait pas montrer : ses cinq indicateurs
+n'existaient qu'en texte de terminal, donc consultés une fois puis oubliés.
+
+- **`scripts/dashboard.js`** (nouveau) — rend les 5 indicateurs du moteur dans
+  `.vibe-agent/dashboard.html` : occupation (médiane / p90 / max) et préfixe, décomposition du coût
+  (4 lignes de facturation puis cache-read en 4 postes), accrétion tokens/tour, loi d'échelle
+  `coût ∝ tours^k`, palmarès des sessions les plus chères. **Aucun calcul ajouté** : unique source de
+  chiffres = `metrics.analyzeWindow()`.
+- **3 recommandations chiffrées**, classées par argent récupérable sur la fenêtre observée. Ce que
+  pèse un poste est **mesuré** ; les taux de réduction sont annoncés comme des objectifs, pas comme
+  des acquis. La reco de découpage n'apparaît que si `k > 1` — sinon elle serait inventée.
+- **Les réserves de mesure sont affichées, pas contournées** : aucun chiffre de décomposition sans
+  son ratio de contrôle, et au-delà de 1,15 les 4 postes sont déclassés en « plafonds » (le mot
+  change dans la légende) avec la cause expliquée ; le coût d'écriture de cache est présenté comme
+  un **plancher** (tarif 5 min, TTL 1 h non exposé par les transcripts).
+- **Page autonome** : aucune requête réseau possible (ni CDN, police distante, script, `url()`,
+  image) ; un favicon `data:,` neutralise jusqu'à `/favicon.ico`. Vérifié en navigateur : une seule
+  requête — le document —, 0 message console.
+- **Thémable** : `templates/dashboard.html`, toute couleur est un jeton `--pmz-*` consommé via
+  `var()`, sur 3 canaux (clair, sombre système, forçage `data-theme`), sans script. Gabarit de
+  secours embarqué dans le script : si le fichier manque, la page sort quand même.
+- `commands/dashboard.md` : enregistrement **automatique dans les deux canaux** de déploiement,
+  aucun fichier d'install à toucher — et `scripts/help.js` la découvre de lui-même (aucune liste
+  codée en dur à mettre à jour, contrairement à ce que le lot avait supposé).
+- Mesure **hors bande** comme `metrics.js` : aucun hook ne l'appelle, vérifié par test. Fail-open
+  partout (transcript absent, destination impossible, gabarit manquant, chemin projet hostile).
+- Doc : `README.md` annonçait **10 commandes** alors qu'il y en avait 12 avant ce lot — corrigé à 13
+  (canal plugin, `statusline` exclue du build).
+- Tests : 36 cas `D114`.
+
+## 2026-07-28 — « Télémétrie de clôture réparée » (epic « Économie de contexte », backlog #111)
+
+Livré **en vague parallèle** avec #114. Le lot #110 avait été trouvé marqué `done` avec
+`closed_verify:"timeout"` alors qu'**aucun de ses fichiers n'existait** : la clôture pouvait se
+prononcer sans preuve, et la télémétrie censée l'objectiver était vide.
+
+- **Garde anti-clôture-fantôme** : le verdict `verify` est désormais calculé **avant** `doneLot`
+  dans l'auto-clôture (`hooks/stop.js`). Sur `timeout`, `doneLot` n'est **jamais** appelé — le lot
+  reste `in_progress`, `closed_verify` reste `null`, et le tour suivant l'annonce (« NON clôturé »).
+  L'ordre inverse était délibéré (persister d'abord pour qu'un watchdog ne corrompe pas le backlog) ;
+  arbitrage revu, car un lot resté **ouvert** est récupérable et visible, un `done` fantôme non.
+  Un `failed` (échec net) reste **non bloquant** : seul le `timeout` empêche la clôture.
+- **Champs `cost_turns` / `closed_avg_cost_per_turn`** (`lib/backlog.js`) — nombre de tours comptés
+  dans `cost_tokens` et accrétion moyenne, figées à la clôture comme `closed_occupancy`. Sans ce
+  diviseur, `cost_tokens` seul ne distingue pas un lot cher **parce que long** d'un lot cher **par
+  tour**. Exposés en colonne d'export, après `closed_occupancy` (l'assertion d'en-tête CSV est un
+  préfixe ancré : toute colonne nouvelle se pose après lui).
+- **Estampille de version PMZ dans l'injection `SessionStart`** (`hooks/session-start.js`,
+  `withVersion()` sur les 3 injections de vrai démarrage) : jusqu'ici l'attribution de version d'une
+  analyse multiversion reposait sur les dates de release, faute de marqueur dans les transcripts.
+- La section de tests `T6` a dû être corrigée : elle **encodait littéralement l'ancien bug**
+  (`closed_verify === 'timeout'` sur un lot `done`). La laisser intacte imposait de choisir entre un
+  test rouge et ne pas corriger le bug.
+- Tests : 12 cas `R111` + 2 assertions dans `T6`.
+
+**Vague #111 + #114 réintégrée** : merge ordonné avec gate `verify` à chaque étape, un seul conflit
+(`test/run-tests.js`, les deux sections insérées avant le bloc `RÉSUMÉ`) résolu par concaténation.
+Suite complète : **1847 OK · 0 échec** (1797 + 14 + 36, additivité vérifiée).
+
 ## 2026-07-28 — « Moteur de mesure de session » (epic « Économie de contexte », backlog #110)
 
 Premier lot de l'epic, et son bloquant : l'analyse multiversion qui a fondé le plan #110→#114

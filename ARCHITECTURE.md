@@ -32,7 +32,7 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
 | `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd`, `transcript_path` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large (anti-spam 1×/session), nudge occupation ≥ 500k en 2 lignes (anti-spam 1×/palier, lot B5), vigie modèle réel vs préconisé du lot en cours (anti-spam 1×/session, lot #42) |
 | `pre-tool-use.js` | PreToolUse `Bash` (+ `Edit`/`Write`/`MultiEdit` en vague) | `tool_input.command` / `.file_path` | `permissionDecision` allow/ask/deny **ou** `updatedInput` (réécriture RTK, sans `permissionDecision`) | sûreté commandes + périmètre fleet-fille + **bridge RTK optionnel** (default OFF, lot #81) |
 | `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite\|Bash` | `tool_input.file_path`, `tool_input.todos`, `tool_input.command` + `tool_response` (Bash) | `additionalContext` (rare, advisory) **ou** `updatedToolOutput` (réduction sortie Bash, lot #84) + effet de bord ledgers | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite), signale une relecture complète redondante (lot B4), **réduit une sortie Bash volumineuse** hors RTK (lot #84) |
-| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), **détecteur de dérive de session** (coût↑ + hitRate↓ sur 6 tours → prescrit la clôture, lot #62), **vigie des tours en boucle** (commande Bash qui échoue ≥ 3 fois d'affilée → nudge « change d'approche », anti-spam par commande, `lib/loopwatch.js`, lot #69), **vigie de dette git non commitée** (diff significatif qui grossit sur ≥ 3 tours sans commit → nudge « commit/clôture », anti-spam par palier, `lib/gitdebt.js`, lot #73), **vigie de gouvernance du CLAUDE.md** (absent ou hypertrophié > 10 Ko → nudge créer / dégraisser, 1×/session, `lib/claudemd.js`, lot #74), **notification OS opt-in** sur zone rouge et clôture de lot (`PMZ_NOTIFY=1`, `lib/notify.js`, lot #75), hygiène de lecture, **nudge subagent** à haute occupation + lectures (lot #52), **palier de gaspillage auto-surfacé** avec top-3 coupables (`waste_bucket` persisté, lot #52), rappel de clôture nommant les skills **et embarquant un brouillon d'entrée CHANGELOG pré-mâché** (en-tête daté + lot/epic/titre, scope sans son préfixe « fait quand : », fichiers modifiés plafonnés à 6, verify — `closureWithDraftMessage`, soudé au rappel pour rester atomique sous l'arbitre, lot #68), incrémente le compteur de lot, agrège le coût réel du lot en cours (`cost_tokens`) et alerte à l'approche du budget ~300k avec proposition de redécoupage (lot #43), auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, exécute la `verify` du lot à l'auto-clôture (timeout court `VERIFY_AUTOCLOSE_MS`, résultat visible, jamais bloquant) + rappel doux si le commit de clôture ne touche pas `CHANGELOG.md` (lot #44), **plafonne les nudges du tour par sévérité** (`lib/arbiter.js`, ≤ 3, lot #57), écrit le handoff auto (écrasé à chaque tour) |
+| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), **détecteur de dérive de session** (coût↑ + hitRate↓ sur 6 tours → prescrit la clôture, lot #62), **vigie des tours en boucle** (commande Bash qui échoue ≥ 3 fois d'affilée → nudge « change d'approche », anti-spam par commande, `lib/loopwatch.js`, lot #69), **vigie de dette git non commitée** (diff significatif qui grossit sur ≥ 3 tours sans commit → nudge « commit/clôture », anti-spam par palier, `lib/gitdebt.js`, lot #73), **vigie de gouvernance du CLAUDE.md** (absent ou hypertrophié > 10 Ko → nudge créer / dégraisser, 1×/session, `lib/claudemd.js`, lot #74), **notification OS opt-in** sur zone rouge et clôture de lot (`PMZ_NOTIFY=1`, `lib/notify.js`, lot #75), hygiène de lecture, **nudge subagent** à haute occupation + lectures (lot #52), **palier de gaspillage auto-surfacé** avec top-3 coupables (`waste_bucket` persisté, lot #52), rappel de clôture nommant les skills **et embarquant un brouillon d'entrée CHANGELOG pré-mâché** (en-tête daté + lot/epic/titre, scope sans son préfixe « fait quand : », fichiers modifiés plafonnés à 6, verify — `closureWithDraftMessage`, soudé au rappel pour rester atomique sous l'arbitre, lot #68), incrémente le compteur de lot, agrège le coût réel du lot en cours (`cost_tokens`) et alerte à l'approche du budget ~300k avec proposition de redécoupage (lot #43), auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, exécute la `verify` du lot à l'auto-clôture (timeout court `VERIFY_AUTOCLOSE_MS`, résultat visible, verdict calculé **avant** `doneLot` depuis le lot #111 — un `timeout` empêche la clôture, un `failed` non) + rappel doux si le commit de clôture ne touche pas `CHANGELOG.md` (lot #44), **plafonne les nudges du tour par sévérité** (`lib/arbiter.js`, ≤ 3, lot #57), écrit le handoff auto (écrasé à chaque tour) |
 | `pre-compact.js` | PreCompact `manual\|auto` | `cwd`, `trigger`, `transcript_path` | `systemMessage` (manual) ou — (auto : effet de bord handoff seul) | sauve le handoff auto (plan de lots + todos compris) AVANT compaction ; la réinjection minimale se fait au SessionStart(compact). Sur `manual` (/compact), ajoute un rappel **chiffré** visible : compacter ≈ réécriture de l'occupation en cache-write (×1,25) + résumé lossy, vs clôture + handoff (~8k) — TTL prudent, aucun prix en dur (lot T1). `auto` reste silencieux (compaction subie) |
 
 ### Invariants NON négociables
@@ -171,6 +171,27 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   (`<claudeDir>/projects/<slug>/<sessionId>.jsonl`, donc sensible à `CLAUDE_CONFIG_DIR`).
   Fail-open sans exception : fichier absent / vide / sans usage / illisible → `{ok:false, reason}`,
   le CLI sort **toujours** en code 0 et exprime l'échec **en valeur** dans le JSON.
+- **Tableau de bord HTML** (`scripts/dashboard.js` + `templates/dashboard.html`, lot #114) : second
+  consommateur **hors bande** de `lib/metrics.js`, à côté de `scripts/metrics.js` (CLI texte/JSON).
+  Il n'ajoute **aucun calcul** — il appelle `analyzeWindow()` et met en forme. Frontière : le moteur
+  mesure, le script rend et recommande (3 recos classées par argent récupérable ; celle du découpage
+  ne sort que si `k > 1`, sinon elle serait une reco inventée). Rendu par substitution de jetons
+  `{{TITLE}}`/`{{SUBTITLE}}`/`{{BODY}}`/`{{FOOTER}}` — même mécanique que `templates/us-template.md`
+  dans `lib/backlog.js`, mais avec une **fonction** de remplacement et jamais une chaîne : les
+  valeurs contiennent des « $ » que `String.replace` interpréterait comme des références.
+  Trois contraintes portées par le rendu, pas par le moteur : **autonomie** (aucune requête réseau
+  possible — ni CDN, police distante, script, `url()`, image ; favicon `data:,` pour neutraliser
+  jusqu'à `/favicon.ico` : ouvrir une mesure locale ne doit pas pouvoir faire sortir une donnée de
+  session du poste) ; **thémabilité** (toute couleur est un jeton `--pmz-*` consommé via `var()`,
+  résolu sur 3 canaux — `:root`, `prefers-color-scheme: dark`, `:root[data-theme=…]` — sans script) ;
+  **honnêteté du chiffre** (les deux réserves du moteur remontent dans la page : ratio de contrôle
+  toujours adjacent à la décomposition, parts déclassées en « plafonds » au-delà de 1,15, coût
+  d'écriture de cache annoncé comme un plancher). Un gabarit de secours est embarqué dans le script :
+  si `templates/dashboard.html` manque (install partielle), la page sort quand même — réduite, mais
+  sans réseau et thémable. Enregistrement de la commande **automatique dans les deux canaux**
+  (`install.js` copie tout `commands/*.md`, `build-plugin.js` fait un `cpSync` récursif ;
+  `REQUIRED_COMMANDS` n'est qu'un garde-fou d'absence, non exhaustif) — aucun fichier d'install à
+  toucher pour ajouter une commande, et `scripts/help.js` la découvre de lui-même.
 - **Vigie de dette git non commitée** (`lib/gitdebt.js: evaluate`, lot #73) : signal de **tendance**
   distinct du rappel de clôture one-shot (#68, qui part au 1er tour sale puis se tait). Nudge **WARN**
   (`gitDebtMessage`) quand un **diff significatif grossit sur ≥ 3 tours SANS commit** — travail non
@@ -766,8 +787,15 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   branche timeout sans attendre 120 s). Refus doux **jamais bloquant** — même en échec la checklist reste
   exit 0, la décision de clore reste humaine/assistant. À
   l'**auto-clôture** (lot #44), `stop.js` l'exécute aussi mais avec un timeout **court**
-  (`VERIFY_AUTOCLOSE_MS` = 2500 ms, borné bien en deçà du watchdog Stop 4,5 s) : lancé **après** que
-  `doneLot` a persisté (un dépassement de watchdog ne peut donc pas corrompre le backlog), résultat
+  (`VERIFY_AUTOCLOSE_MS` = 2500 ms, borné bien en deçà du watchdog Stop 4,5 s), et depuis le
+  lot #111 le verdict est calculé **AVANT** `doneLot` : sur `timeout`, `doneLot` n'est **jamais**
+  appelé, le lot reste `in_progress` et le dit explicitement (« NON clôturé »). L'ordre inverse
+  était le choix d'origine — persister d'abord pour qu'un dépassement de watchdog ne corrompe pas
+  le backlog — mais il **fabriquait des clôtures fantômes** : le lot #110 s'est retrouvé `done`
+  avec `closed_verify:"timeout"` alors qu'aucun de ses fichiers n'existait. Arbitrage assumé : un
+  watchdog qui tue le verify laisse désormais le lot **ouvert**, état récupérable et visible,
+  là où un `done` fantôme ne l'est pas (il faut `reopenLot`, et rien ne signale qu'il le faut).
+  Un `failed` (échec net) reste **non bloquant** — seul le `timeout` empêche la clôture. Résultat
   rendu visible par `messages.js:closureProofMessage` — une non-terminaison dans le délai court est
   affichée « non terminée » (relancer via `/close-batch`), **pas** « ÉCHEC ». Le même message porte
   un **garde-fou CHANGELOG** : rappel doux si le commit de clôture (HEAD, tree propre ⇒
@@ -788,7 +816,13 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   aucune mesure disponible. Champ `cost_tokens` (lot #43) : coût réel cumulé du lot = tokens de sortie sommés par
   `stop.js` sur tous les tours où il était `in_progress` (`addCost`) — agrégat trans-session porté
   par le lot, figé de fait à la clôture, affiché par `show` ; cf. puce « Coût réel par lot » plus
-  haut. **Dépendances corrigeables après création** (`backlog.js depends --id N [--depends "2,3"]`,
+  haut. Champs `cost_turns` / `closed_avg_cost_per_turn` (lot #111) : nombre de tours comptés dans
+  `cost_tokens`, et accrétion moyenne (`cost_tokens / cost_turns`) **figée à la clôture** comme
+  `closed_occupancy`. Sans ce diviseur, `cost_tokens` seul ne distingue pas un lot cher **parce que
+  long** d'un lot cher **par tour** — et c'est la seconde famille que l'epic « Économie de contexte »
+  cherche à faire baisser. Exposés en colonne d'export juste après `closed_occupancy` (l'assertion
+  d'en-tête CSV est un préfixe ancré : toute colonne nouvelle se pose **après** lui, jamais avant).
+  **Dépendances corrigeables après création** (`backlog.js depends --id N [--depends "2,3"]`,
   FIA-24, lot #98) : sans `--depends`, lecture ; avec, remplacement intégral via le `setDepends`
   déjà existant (`normalizeDepends` : self exclu, dédoublonné, capé `MAX_DEPENDS`) ; `--depends ""`
   vide la liste. Refus explicites sur `--id` inconnu, lot clos/abandonné, ou valeur non numérique
