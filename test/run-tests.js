@@ -7691,6 +7691,157 @@ section('Télémétrie de clôture réparée : occupancy/cost/verify/accrétion 
   }
 }
 
+// ============ D114. TABLEAU DE BORD HTML D'ÉCONOMIE DE CONTEXTE (lot #114) ============
+section('Tableau de bord — HTML autonome, thémable, sans requête réseau');
+{
+  const metricsD = require(path.join(PKG, 'lib', 'metrics'));
+  const DASH = path.join(PKG, 'scripts', 'dashboard.js');
+  const DDIR = path.join(SANDBOX, 'd114');
+  const DCFG = path.join(DDIR, 'cfg');
+  const dEnv = { CLAUDE_CONFIG_DIR: DCFG };
+  fs.mkdirSync(DDIR, { recursive: true });
+
+  // Fixtures : sessions de T tours, prompt croissant de 100 tokens/tour (accrétion non nulle),
+  // plus un tool_result et un texte user par tour pour que les 4 postes de la décomposition
+  // soient tous non nuls. Volumes calibrés pour que le contrôle de validité reste SAIN (~1,03)
+  // dans le cas de référence — le cas dégradé est construit à part, avec 60k de sortie par tour.
+  const dSeed = (cwd, spec) => {
+    const dir = path.join(DCFG, 'projects', metricsD.projectSlug(cwd));
+    fs.mkdirSync(dir, { recursive: true });
+    spec.forEach(([T, out], si) => {
+      const lines = [];
+      for (let t = 0; t < T; t++) {
+        lines.push(JSON.stringify({
+          type: 'assistant',
+          message: { model: 'claude-opus-5', usage: { input_tokens: 0, cache_read_input_tokens: 20000 + t * 100, cache_creation_input_tokens: 0, output_tokens: out } },
+        }));
+        lines.push(JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: 'r'.repeat(200) }] } }));
+        lines.push(JSON.stringify({ type: 'user', message: { content: 'u'.repeat(36) } }));
+      }
+      fs.writeFileSync(path.join(dir, `d${si}.jsonl`), lines.join('\n') + '\n');
+    });
+  };
+  const dRead = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch (_) { return ''; } };
+  // Tout vecteur possible de requête sortante. La page doit être inerte : c'est une mesure
+  // locale, aucune donnée de session ne doit pouvoir quitter le poste par le simple fait
+  // d'ouvrir le fichier.
+  const NET = [/https?:/i, /<script/i, /\bsrc\s*=/i, /@import/, /url\(/, /fetch\(/, /XMLHttpRequest/, /WebSocket/, /<iframe/i, /<img/i, /@font-face/];
+
+  // --- D114-1. Génération sur une fenêtre saine (4 sessions de 20/40/80/160 tours) ---
+  const DCWD = '/fake/projet-dashboard';
+  dSeed(DCWD, [[20, 100], [40, 100], [80, 100], [160, 100]]);
+  const DOUT = path.join(DDIR, 'dashboard.html');
+  const dRun = runNode(DASH, ['--cwd', DCWD, '--sessions', '10', '--out', DOUT], dEnv);
+  const H = dRead(DOUT);
+  ok(dRun.code === 0, 'D114-1 : génération → exit 0');
+  ok(/^<!doctype html>/i.test(H) && /<\/html>/.test(H), 'D114-1 : document HTML complet écrit à l\'emplacement demandé');
+  ok(H.indexOf('{{') === -1, 'D114-1 : aucun jeton de gabarit laissé non substitué');
+  ok(/Page écrite/.test(dRun.out) && dRun.out.indexOf(DOUT) !== -1, 'D114-1 : le chemin de la page est annoncé sur la sortie standard');
+
+  // --- D114-2. Les 5 indicateurs du moteur #110 + les 3 recommandations sont dans la page ---
+  ok(/Occupation du contexte/.test(H) && /médiane/.test(H) && /p90/.test(H) && /préfixe \(médian\)/.test(H),
+    'D114-2 : occupation (médiane / p90 / max) et préfixe');
+  ok(/Décomposition du coût/.test(H) && /lecture de cache/.test(H) && /écriture de cache/.test(H),
+    'D114-2 : décomposition du coût par ligne de facturation');
+  ok(/préfixe rejoué à chaque tour/.test(H) && /sortie de l'IA relue/.test(H) &&
+     /résultats d'outils relus/.test(H) && /prompts et injections relus/.test(H),
+    'D114-2 : lecture de cache décomposée en 4 postes');
+  ok(/Accrétion \(tokens\/tour\)/.test(H) && /100 tokens\/tour/.test(H),
+    'D114-2 : accrétion en tokens/tour (100/tour dans la fixture)');
+  ok(/Loi d'échelle/.test(H) && /tours<sup>/.test(H) && /r²/.test(H),
+    'D114-2 : loi d\'échelle avec son exposant, son r² et son n');
+  const dRecos = /<ol class="pmz-recos">([\s\S]*?)<\/ol>/.exec(H);
+  ok(dRecos && (dRecos[1].match(/<li>/g) || []).length === 3, 'D114-2 : exactement 3 recommandations');
+  ok(dRecos && /\$\d/.test(dRecos[1]), 'D114-2 : recommandations chiffrées (montants en $)');
+  ok(/Sessions les plus chères/.test(H) && (H.match(/<tbody>[\s\S]*?<\/tbody>/) || [''])[0].split('<tr>').length === 5,
+    'D114-2 : palmarès des 4 sessions de la fenêtre');
+
+  // --- D114-3. Autonomie : aucune requête réseau possible ---
+  ok(NET.every((re) => !re.test(H)), 'D114-3 : aucun vecteur de requête réseau (CDN, script, police, image, fetch)');
+  ok(/<link rel="icon" href="data:,">/.test(H),
+    'D114-3 : favicon inerte — neutralise /favicon.ico, la seule requête que le navigateur ferait de lui-même');
+
+  // --- D114-4. Thémabilité : aucune couleur en dur, clair + sombre + forçage ---
+  const dHex = H.split('\n').filter((l) => /#[0-9a-fA-F]{3,8}\b/.test(l));
+  ok(dHex.length > 0 && dHex.every((l) => /--pmz-/.test(l)),
+    'D114-4 : toute couleur littérale est une déclaration de jeton --pmz-*, jamais dans le balisage');
+  ok(/@media \(prefers-color-scheme: dark\)/.test(H), 'D114-4 : thème sombre suivant le réglage système');
+  ok(/:root\[data-theme="dark"\]/.test(H) && /:root\[data-theme="light"\]/.test(H),
+    'D114-4 : forçage explicite du thème par data-theme, dans les deux sens');
+  ok((H.match(/var\(--pmz-/g) || []).length >= 30, 'D114-4 : les couleurs sont consommées via var()');
+
+  // --- D114-5. Les deux pièges de mesure sont AFFICHÉS, jamais contournés ---
+  ok(/contrôle \d,\d\d — viser ≈ 1,0/.test(H),
+    'D114-5 : le ratio de contrôle accompagne toujours la décomposition');
+  ok(/ · part \d/.test(H) && !/ · plafond \d/.test(H), 'D114-5 : contrôle sain → les 4 chiffres sont des parts');
+  ok(/écriture de cache est un plancher/.test(H) && /TTL 1 heure/.test(H),
+    'D114-5 : le coût d\'écriture de cache est annoncé comme un plancher (TTL 1 h non exposé)');
+
+  const DCWD2 = '/fake/projet-dashboard-degrade';
+  dSeed(DCWD2, [[20, 60000], [40, 60000], [80, 60000]]);
+  const dRun2 = runNode(DASH, ['--cwd', DCWD2, '--sessions', '10', '--out', path.join(DDIR, 'degrade.html')], dEnv);
+  const H2 = dRead(path.join(DDIR, 'degrade.html'));
+  ok(/ · plafond \d/.test(H2) && !/ · part \d/.test(H2),
+    'D114-5 : contrôle > 1,15 → les 4 postes sont déclassés en PLAFONDS, pas en parts');
+  ok(/la somme surestime le réel/.test(H2) && /thinking/.test(H2),
+    'D114-5 : la cause du déclassement est expliquée dans la page (compaction ou raisonnement étendu)');
+  ok(dRun2.code === 0 && /PLAFONDS/.test(dRun2.out), 'D114-5 : déclassement également annoncé sur la sortie standard');
+
+  // --- D114-6. Fail-open : pas de transcript, destination impossible, gabarit absent ---
+  const dKo = runNode(DASH, ['--cwd', '/fake/aucun-projet-dashboard', '--out', path.join(DDIR, 'ko.html')], dEnv);
+  const HKO = dRead(path.join(DDIR, 'ko.html'));
+  ok(dKo.code === 0 && /Mesure indisponible/.test(HKO) && /aucun transcript/.test(HKO),
+    'D114-6 : projet sans transcript → exit 0 et page produite quand même, avec son statut');
+  const dBlocker = path.join(DDIR, 'blocker');
+  fs.writeFileSync(dBlocker, 'x');
+  const dBad = runNode(DASH, ['--cwd', DCWD, '--json', '--out', path.join(dBlocker, 'x.html')], dEnv);
+  let dJb = null;
+  try { dJb = JSON.parse(dBad.out); } catch (_) {}
+  ok(dBad.code === 0 && dJb && dJb.written === false && dJb.ok === true,
+    'D114-6 : écriture impossible → exit 0, échec exprimé EN VALEUR (written:false), mesure conservée');
+  const FBPKG = path.join(DDIR, 'pkg-sans-gabarit');
+  ['lib', 'scripts', 'templates'].forEach((sub) => fs.cpSync(path.join(PKG, sub), path.join(FBPKG, sub), {
+    recursive: true, filter: (src) => path.basename(src) !== 'dashboard.html',
+  }));
+  fs.copyFileSync(path.join(PKG, 'VERSION'), path.join(FBPKG, 'VERSION'));
+  const dFb = runNode(path.join(FBPKG, 'scripts', 'dashboard.js'), ['--cwd', DCWD, '--stdout'], dEnv);
+  ok(dFb.code === 0 && /^<!doctype html>/i.test(dFb.out) && /Occupation du contexte/.test(dFb.out),
+    'D114-6 : gabarit absent → gabarit de secours, la page sort quand même');
+  ok(NET.every((re) => !re.test(dFb.out)) && /prefers-color-scheme/.test(dFb.out),
+    'D114-6 : le gabarit de secours est lui aussi sans réseau et thémable');
+
+  // --- D114-7. Un transcript est une DONNÉE, pas du balisage ---
+  const XCWD = '/fake/<script>alert(1)</script>';
+  dSeed(XCWD, [[20, 100]]);
+  const dX = runNode(DASH, ['--cwd', XCWD, '--out', path.join(DDIR, 'esc.html')], dEnv);
+  const HX = dRead(path.join(DDIR, 'esc.html'));
+  ok(dX.code === 0 && HX.indexOf('<script>alert(1)') === -1 && /&lt;script&gt;alert\(1\)/.test(HX),
+    'D114-7 : chemin projet hostile échappé dans la page (aucune injection de balisage)');
+
+  // --- D114-8. Sorties machine : --json et --stdout ---
+  const dJson = runNode(DASH, ['--cwd', DCWD, '--sessions', '10', '--json', '--out', path.join(DDIR, 'j.html')], dEnv);
+  let dJ = null;
+  try { dJ = JSON.parse(dJson.out); } catch (_) {}
+  ok(dJson.code === 0 && dJ && dJ.ok === true && dJ.written === true && dJ.count === 4 && dJ.scalingExponent != null,
+    'D114-8 : --json → résumé machine parsable (où est la page, ce qu\'elle dit)');
+  ok(dJ && Array.isArray(dJ.recommendations) && dJ.recommendations.length === 3 &&
+     dJ.breakdownDegraded === false && dJ.breakdownRatio != null,
+    'D114-8 : le résumé porte les 3 recommandations et l\'état du contrôle de validité');
+  const dStd = runNode(DASH, ['--cwd', DCWD, '--stdout'], dEnv);
+  ok(dStd.code === 0 && /^<!doctype html>/i.test(dStd.out) && /3 recommandations chiffrées/.test(dStd.out),
+    'D114-8 : --stdout rend la page sur la sortie standard');
+
+  // --- D114-9. Commande /pmz:dashboard et contrainte d'archi « hors bande » ---
+  const dCmd = dRead(path.join(PKG, 'commands', 'dashboard.md'));
+  ok(/^---\n/.test(dCmd) && /description:/.test(dCmd) && /allowed-tools:/.test(dCmd),
+    'D114-9 : commande au format attendu (frontmatter description + allowed-tools)');
+  ok(/scripts\/dashboard\.js/.test(dCmd) && /plafond/.test(dCmd) && /plancher/.test(dCmd),
+    'D114-9 : la commande impose de rendre compte des deux réserves de mesure');
+  const dHooks = fs.readdirSync(path.join(PKG, 'hooks')).filter((f) => f.endsWith('.js'));
+  ok(dHooks.length > 0 && dHooks.every((f) => !/dashboard/.test(fs.readFileSync(path.join(PKG, 'hooks', f), 'utf8'))),
+    'D114-9 : aucun hook n\'appelle le tableau de bord (mesure hors bande, comme metrics.js)');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

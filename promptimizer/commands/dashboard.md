@@ -1,0 +1,32 @@
+---
+description: Génère le tableau de bord HTML d'économie de contexte du projet (mesure hors bande)
+allowed-tools: Bash(node *)
+---
+
+Génère le tableau de bord d'économie de contexte du projet courant, en HTML autonome.
+
+Exécute :
+`node ~/.claude/promptimizer/scripts/dashboard.js`
+
+La page est écrite dans `.vibe-agent/dashboard.html` (options : `--sessions N` pour la largeur
+de la fenêtre, `--all` pour tout le projet, `--out <chemin>` pour une autre destination).
+Le script balaye des transcripts entiers : c'est une mesure **hors bande**, à la demande —
+ne l'appelle jamais depuis un hook.
+
+Le script mesure tout lui-même (occupation, décomposition du coût, accrétion, loi d'échelle,
+recommandations). **Ne fabrique aucun chiffre toi-même** : reprends ceux de sa sortie.
+
+Rends compte en 4 points, sans relire la page produite :
+1. le chemin du fichier écrit ;
+2. les indicateurs tels que chiffrés par le script (occupation, accrétion, exposant de la loi
+   d'échelle, coût de la fenêtre) ;
+3. les 3 recommandations chiffrées, dans l'ordre où le script les classe (par montant
+   récupérable) ;
+4. les deux réserves de mesure, si elles s'appliquent — **jamais silencieusement** :
+   - contrôle de décomposition **> 1,15** → les 4 postes sont des **plafonds**, pas des parts
+     (compaction, ou raisonnement étendu compté en sortie mais non rejoué) ;
+   - le coût d'**écriture de cache est un plancher** (tarif 5 minutes ; le TTL 1 heure n'est
+     pas exposé par les transcripts).
+
+Si le script annonce un statut d'indisponibilité (aucun transcript pour ce projet), dis-le tel
+quel : la page est produite quand même, avec ce statut affiché. N'invente pas de mesure de repli.
