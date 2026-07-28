@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 110,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-28T08:54:25.234Z",
+  "updated_at": "2026-07-28T08:54:42.147Z",
   "lots": [
     {
       "id": 1,
@@ -2687,20 +2687,20 @@
       "id": 109,
       "title": "Verdict chiffré de session fraîche dans close-batch",
       "scope": "fait quand : la checklist ne dit plus « oui si le sujet change » mais un verdict fondé sur l'occupation (palier lu dans l'état local, zéro coût de contexte) + la raison chiffrée ; seuil calibré sur les ledgers, pas codé au jugé ; l'étape 7 de close-batch.md renvoie au verdict au lieu de le contredire ; tests verts",
-      "status": "in_progress",
+      "status": "done",
       "model_hint": "sonnet",
       "effort_hint": "medium",
       "epic": "Reco de session fraîche",
       "verify": "node test/run-tests.js",
       "us": null,
-      "closed_commit": null,
-      "closed_at": null,
-      "closed_session_id": null,
-      "closed_occupancy": null,
+      "closed_commit": "643f473",
+      "closed_at": "2026-07-28T08:54:42.143Z",
+      "closed_session_id": "6b5af642-7bce-4700-8fb8-d275613e0846",
+      "closed_occupancy": 64854,
       "closed_verify": null,
       "cost_tokens": 0,
       "started_at": "2026-07-28T08:54:25.233Z",
-      "lot_number": null,
+      "lot_number": 76,
       "note": null,
       "session_touches": 0,
       "perimeter": [
@@ -2712,14 +2712,6 @@
         108
       ],
       "session_owner": null,
-      "integrations": {
-        "command_optimizer": {
-          "snapshot_start": {
-            "commands": 1,
-            "delivered_tokens": 4
-          }
-        }
-      },
       "reopened": [
         {
           "at": "2026-07-28T08:54:22.952Z",
