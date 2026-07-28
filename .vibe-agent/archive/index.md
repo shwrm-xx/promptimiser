@@ -104,4 +104,4 @@
 #0099 | 2026-07-27 | 1e0433e | epic:Archive à tiroirs | verify:inconnu | fiche:oui | Fiabilité vague : handoff par lot, purge fleet, écriture outillée
 #0100 | 2026-07-27 | ffe257e | epic:Archive à tiroirs | verify:inconnu | fiche:non | Dette #98/#99 : export reopened, reset au reopen, --depends strict, fleet leave
 #0101 | 2026-07-27 | bfbaf9c | epic:US & Jira | verify:inconnu | fiche:oui | Pointeur US vérifié (champ us + gabarit + garde scope)
-#0102 | 2026-07-27 | 416201f | epic:US & Jira | verify:inconnu | fiche:non | Champ integrations.jira + CLI et export
+#0102 | 2026-07-28 | c0edff9 | epic:US & Jira | verify:inconnu | fiche:oui | Champ integrations.jira + CLI et export
