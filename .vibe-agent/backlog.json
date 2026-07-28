@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 120,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-28T15:36:32.742Z",
+  "updated_at": "2026-07-28T15:39:03.290Z",
   "lots": [
     {
       "id": 1,
@@ -3008,7 +3008,7 @@
       "cost_tokens": 0,
       "started_at": null,
       "lot_number": null,
-      "note": "Vu à la réintégration #111+#114 : les 2 lots sortis avec cost_turns=0 / closed_avg=null. Vrais coûts hors bande : ~251k (#111), ~144k (#114). Les 84053 imputés en bloc à #111.",
+      "note": "Vu à la clôture de #112 : un lot resté todo (jamais in_progress) sort aussi avec cost_tokens=0 — stop.js n'impute qu'au lot EN COURS. Cf. fiche lot-0112.md.",
       "session_touches": 0,
       "perimeter": [
         "promptimizer/hooks/stop.js",
