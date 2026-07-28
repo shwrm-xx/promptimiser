@@ -108,3 +108,4 @@
 #0103 | 2026-07-28 | 53e1d31 | epic:US & Jira | verify:inconnu | fiche:oui | Trailer PMZ-Jira + pointeurs dans la fiche d'archive
 #0104 | 2026-07-28 | c306f1f | epic:US & Jira | verify:inconnu | fiche:oui | Doc : champ US, champ Jira, frontière pointeur-seul
 #0105 | 2026-07-28 | 9444709 | epic:Formalisation US | verify:inconnu | fiche:oui | Retrait du pointeur Jira
+#0106 | 2026-07-28 | 06fba38 | epic:Formalisation US | verify:inconnu | fiche:oui | Gabarit US enrichi + génération du fichier
