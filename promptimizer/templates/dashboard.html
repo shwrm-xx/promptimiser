@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<!-- Favicon inerte : sans ce lien le navigateur va chercher /favicon.ico, ce qui serait la
+     SEULE requête sortante de la page. `data:,` est un document vide, aucun réseau. -->
+<link rel="icon" href="data:,">
+<style>
+/* ============================ JETONS DE THÈME ============================
+   Toutes les couleurs de la page passent par une variable. Le seul endroit où une valeur
+   littérale apparaît est ce bloc de jetons : c'est ce qui rend la page thémable sans
+   toucher au balisage. Trois canaux, du plus faible au plus fort :
+     1. :root                                   → thème clair par défaut
+     2. @media (prefers-color-scheme: dark)     → suit le réglage système
+     3. :root[data-theme="dark"|"light"]        → forçage explicite par un hôte
+   Aucun script : le thème est entièrement résolu par CSS. */
+:root {
+  --pmz-bg: #f6f5f2;
+  --pmz-surface: #ffffff;
+  --pmz-surface-alt: #efeee9;
+  --pmz-border: #dedcd5;
+  --pmz-text: #1a1a18;
+  --pmz-muted: #6a6862;
+  --pmz-accent: #2f5d8a;
+  --pmz-warn-bg: #fdf3e0;
+  --pmz-warn-text: #7a4c00;
+  --pmz-warn-border: #e6c88a;
+  --pmz-ok-bg: #eaf2ea;
+  --pmz-ok-text: #2f5d3a;
+  --pmz-ok-border: #bcd5bf;
+  /* Quatre séries = les quatre postes de la décomposition du cache-read. */
+  --pmz-s1: #3b6ea5;
+  --pmz-s2: #a8563d;
+  --pmz-s3: #4f7a5a;
+  --pmz-s4: #7a6099;
+  --pmz-track: #e4e2db;
+  --pmz-radius: 10px;
+  --pmz-gap: 18px;
+  --pmz-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --pmz-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --pmz-bg: #16171a;
+    --pmz-surface: #1e2024;
+    --pmz-surface-alt: #26282d;
+    --pmz-border: #34373d;
+    --pmz-text: #ecebe7;
+    --pmz-muted: #9c9a94;
+    --pmz-accent: #7fb0e0;
+    --pmz-warn-bg: #2e2413;
+    --pmz-warn-text: #f0c579;
+    --pmz-warn-border: #57431d;
+    --pmz-ok-bg: #17251b;
+    --pmz-ok-text: #9ccfa8;
+    --pmz-ok-border: #2d4634;
+    --pmz-s1: #7fa8d8;
+    --pmz-s2: #d99a7f;
+    --pmz-s3: #86bd97;
+    --pmz-s4: #b09ad6;
+    --pmz-track: #2c2f34;
+  }
+}
+:root[data-theme="light"] {
+  --pmz-bg: #f6f5f2; --pmz-surface: #ffffff; --pmz-surface-alt: #efeee9; --pmz-border: #dedcd5;
+  --pmz-text: #1a1a18; --pmz-muted: #6a6862; --pmz-accent: #2f5d8a;
+  --pmz-warn-bg: #fdf3e0; --pmz-warn-text: #7a4c00; --pmz-warn-border: #e6c88a;
+  --pmz-ok-bg: #eaf2ea; --pmz-ok-text: #2f5d3a; --pmz-ok-border: #bcd5bf;
+  --pmz-s1: #3b6ea5; --pmz-s2: #a8563d; --pmz-s3: #4f7a5a; --pmz-s4: #7a6099; --pmz-track: #e4e2db;
+}
+:root[data-theme="dark"] {
+  --pmz-bg: #16171a; --pmz-surface: #1e2024; --pmz-surface-alt: #26282d; --pmz-border: #34373d;
+  --pmz-text: #ecebe7; --pmz-muted: #9c9a94; --pmz-accent: #7fb0e0;
+  --pmz-warn-bg: #2e2413; --pmz-warn-text: #f0c579; --pmz-warn-border: #57431d;
+  --pmz-ok-bg: #17251b; --pmz-ok-text: #9ccfa8; --pmz-ok-border: #2d4634;
+  --pmz-s1: #7fa8d8; --pmz-s2: #d99a7f; --pmz-s3: #86bd97; --pmz-s4: #b09ad6; --pmz-track: #2c2f34;
+}
+
+/* ============================ MISE EN PAGE ============================ */
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 28px 20px 56px;
+  background: var(--pmz-bg); color: var(--pmz-text);
+  font: 15px/1.55 var(--pmz-font);
+  -webkit-text-size-adjust: 100%;
+}
+.pmz-wrap { max-width: 980px; margin: 0 auto; }
+header.pmz-head { margin-bottom: var(--pmz-gap); }
+h1 { font-size: 1.55rem; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.01em; }
+h2 { font-size: 1.05rem; margin: 0 0 12px; letter-spacing: -0.005em; }
+h3 { font-size: 0.9rem; margin: 18px 0 8px; color: var(--pmz-muted); font-weight: 600; }
+p { margin: 0 0 10px; }
+.pmz-sub { color: var(--pmz-muted); font-size: 0.88rem; margin: 0; }
+.pmz-sub code, code { font-family: var(--pmz-mono); font-size: 0.85em; }
+section.pmz-card {
+  background: var(--pmz-surface); border: 1px solid var(--pmz-border);
+  border-radius: var(--pmz-radius); padding: 18px 20px; margin-bottom: var(--pmz-gap);
+}
+.pmz-note { color: var(--pmz-muted); font-size: 0.82rem; margin: 10px 0 0; }
+
+/* Tuiles d'en-tête */
+.pmz-kpis { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: var(--pmz-gap); }
+.pmz-kpi {
+  flex: 1 1 190px; background: var(--pmz-surface); border: 1px solid var(--pmz-border);
+  border-radius: var(--pmz-radius); padding: 14px 16px;
+}
+.pmz-kpi .k-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--pmz-muted); }
+.pmz-kpi .k-value { font-size: 1.5rem; font-weight: 600; line-height: 1.25; margin-top: 2px; }
+.pmz-kpi .k-hint { font-size: 0.78rem; color: var(--pmz-muted); }
+
+/* Lignes « libellé — barre — valeur » */
+.pmz-rows { display: grid; grid-template-columns: minmax(120px, auto) 1fr minmax(90px, auto); gap: 8px 12px; align-items: center; }
+.pmz-rows .r-label { font-size: 0.88rem; color: var(--pmz-muted); }
+.pmz-rows .r-value { font-variant-numeric: tabular-nums; text-align: right; font-size: 0.9rem; }
+.pmz-track { background: var(--pmz-track); border-radius: 5px; height: 10px; overflow: hidden; }
+.pmz-fill { height: 100%; background: var(--pmz-accent); border-radius: 5px; }
+.pmz-fill.s1 { background: var(--pmz-s1); }
+.pmz-fill.s2 { background: var(--pmz-s2); }
+.pmz-fill.s3 { background: var(--pmz-s3); }
+.pmz-fill.s4 { background: var(--pmz-s4); }
+
+/* Barre empilée de la décomposition */
+.pmz-stack { display: flex; height: 22px; border-radius: 6px; overflow: hidden; background: var(--pmz-track); margin-bottom: 12px; }
+.pmz-stack > span { display: block; height: 100%; }
+.pmz-stack > span.s1 { background: var(--pmz-s1); }
+.pmz-stack > span.s2 { background: var(--pmz-s2); }
+.pmz-stack > span.s3 { background: var(--pmz-s3); }
+.pmz-stack > span.s4 { background: var(--pmz-s4); }
+.pmz-legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.pmz-legend li { display: flex; align-items: baseline; gap: 8px; font-size: 0.9rem; }
+.pmz-swatch { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; margin-top: 5px; }
+.pmz-swatch.s1 { background: var(--pmz-s1); }
+.pmz-swatch.s2 { background: var(--pmz-s2); }
+.pmz-swatch.s3 { background: var(--pmz-s3); }
+.pmz-swatch.s4 { background: var(--pmz-s4); }
+.pmz-legend .l-name { flex: 1 1 auto; }
+.pmz-legend .l-val { font-variant-numeric: tabular-nums; color: var(--pmz-muted); }
+
+/* Badges de statut (contrôle de validité, plancher/plafond) */
+.pmz-badge {
+  display: inline-block; font-size: 0.78rem; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--pmz-ok-border); background: var(--pmz-ok-bg); color: var(--pmz-ok-text);
+}
+.pmz-badge.warn { border-color: var(--pmz-warn-border); background: var(--pmz-warn-bg); color: var(--pmz-warn-text); }
+.pmz-caveat {
+  border-left: 3px solid var(--pmz-warn-border); background: var(--pmz-warn-bg); color: var(--pmz-warn-text);
+  padding: 10px 12px; border-radius: 0 6px 6px 0; font-size: 0.85rem; margin: 12px 0 0;
+}
+
+/* Recommandations */
+ol.pmz-recos { margin: 0; padding-left: 1.3em; display: grid; gap: 12px; }
+ol.pmz-recos li { padding-left: 2px; }
+ol.pmz-recos .reco-title { font-weight: 600; }
+ol.pmz-recos .reco-gain { color: var(--pmz-accent); font-variant-numeric: tabular-nums; }
+ol.pmz-recos .reco-detail { color: var(--pmz-muted); font-size: 0.88rem; }
+
+/* Tableau des sessions : défile seul, le corps de page ne défile jamais en largeur */
+.pmz-scroll { overflow-x: auto; }
+table.pmz-table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+table.pmz-table th, table.pmz-table td { text-align: right; padding: 7px 10px; border-bottom: 1px solid var(--pmz-border); white-space: nowrap; }
+table.pmz-table th { color: var(--pmz-muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+table.pmz-table th:first-child, table.pmz-table td:first-child { text-align: left; font-family: var(--pmz-mono); }
+table.pmz-table tbody tr:nth-child(even) { background: var(--pmz-surface-alt); }
+table.pmz-table td { font-variant-numeric: tabular-nums; }
+
+footer.pmz-foot { color: var(--pmz-muted); font-size: 0.8rem; border-top: 1px solid var(--pmz-border); padding-top: 14px; }
+footer.pmz-foot ul { margin: 8px 0 0; padding-left: 1.2em; }
+footer.pmz-foot li { margin-bottom: 5px; }
+</style>
+</head>
+<body>
+<div class="pmz-wrap">
+<header class="pmz-head">
+  <h1>{{TITLE}}</h1>
+  <p class="pmz-sub">{{SUBTITLE}}</p>
+</header>
+{{BODY}}
+<footer class="pmz-foot">
+{{FOOTER}}
+</footer>
+</div>
+</body>
+</html>
