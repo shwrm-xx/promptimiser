@@ -420,6 +420,16 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   4 colonnes dérivées ajoutées — `command_optimizer_provider`, `command_tokens_saved`
   (mesuré seulement), `command_saving_ratio` (mesuré seulement), `command_evidence` — vides pour
   un lot sans métrologie.
+- **`integrations.jira`** (lot #102, epic « US & Jira ») : partage le même champ `integrations`
+  que la métrologie RTK ci-dessus, sous un sous-clé distincte `{ key }` — un **pointeur borné et
+  validé en format** (`JIRA_KEY_RE`, ex. `PROJ-123`), jamais une synchronisation ni un contenu
+  dupliqué depuis Jira (même philosophie que le pointeur `us`, lot #101). CLI : `add --jira
+  PROJ-123` (création), `jira --id N [--set KEY]` (lecture/correction après coup). Une clé mal
+  formée est refusée explicitement, côté CLI et côté lib (défense en profondeur). **Piège
+  partagé avec la métrologie RTK** : `startLot`/`doneLot` réécrivaient tout `lot.integrations`
+  au lieu du seul sous-champ `command_optimizer` — un `integrations.jira` déjà posé aurait
+  disparu en silence au (re)démarrage ou à la clôture du lot. Corrigé (les deux préservent
+  désormais l'autre sous-champ). Export : colonne `jira_key` ajoutée, vide pour un lot sans clé.
 - **RTK visible dans le verbe PMZ** (lot #86, epic « Verbe & Vagues ») : avant ce lot, seul
   `/pmz:rtk` montrait l'état du bridge — invisible du reste du verbe. `lib/messages.js` expose
   deux primitives pures, réutilisant les 5 états de `rtk-status.computeStatus()` :

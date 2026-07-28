@@ -1944,7 +1944,7 @@ section('backlog — verify + closed_occupancy (lot #29)');
 
   // V14. backlog.js export --format csv|md : en-tête + lignes, refus doux hors énum
   const rExportCsv = runNode(BKLG, ['export', '--cwd', repo, '--format', 'csv']);
-  ok(/^id,title,status,epic,us,model_hint,effort_hint,verify,closed_verify,cost_tokens,closed_commit,closed_at,closed_session_id,closed_occupancy/.test(rExportCsv.out),
+  ok(/^id,title,status,epic,us,jira_key,model_hint,effort_hint,verify,closed_verify,cost_tokens,closed_commit,closed_at,closed_session_id,closed_occupancy/.test(rExportCsv.out),
     'export --format csv : en-tête de colonnes');
   ok(rExportCsv.out.split('\n').length >= backlogLib.loadBacklog(repo).lots.length + 1,
     'export --format csv : une ligne par lot (+ en-tête)');
@@ -7036,6 +7036,66 @@ section('backlog — champ us : garde d\'existence, show, export (epic « US & J
   // un pointeur mort.
   const direct = backlogLib.addLot(repo, 'Lot direct', null, 'sonnet', null, null, null, [], [], 'chemin/mort.md');
   ok(direct === null, 'U6 : lib.addLot() refuse aussi directement un chemin --us inexistant (garde doublée)');
+}
+
+section('backlog — champ integrations.jira : garde de format, show, export, préservation RTK (lot #102)');
+{
+  const repo = path.join(SANDBOX, 'repo-jira');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const lotOf = (id) => backlogLib.loadBacklog(repo).lots.find((l) => l.id === id);
+
+  // J1. --jira mal formée (pas PROJ-123) -> refus explicite, rien de persisté.
+  const rBad = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot Jira A', '--model', 'sonnet', '--jira', 'pas-une-cle']);
+  ok(/Refusé/.test(rBad.out) && /--jira/.test(rBad.out) && /pas-une-cle/.test(rBad.out),
+    'J1 : add --jira <mal formée> -> refus explicite (message nomme la clé)');
+  ok(!backlogLib.loadBacklog(repo).lots.length, 'J1 : aucun lot persisté (refus AVANT toute écriture)');
+
+  // J2. --jira bien formée -> persistée, réaffichée par add et show.
+  const rOk = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot Jira A', '--model', 'sonnet', '--jira', 'PROJ-123']);
+  ok(/\[Jira : PROJ-123\]/.test(rOk.out), 'J2 : add --jira <clé valide> -> accepté, tag [Jira : …] dans la sortie');
+  ok(lotOf(1).integrations && lotOf(1).integrations.jira.key === 'PROJ-123', 'J2 : clé Jira persistée sur le lot');
+  const rShow = runNode(BKLG, ['show', '--cwd', repo]);
+  ok(/\[Jira : PROJ-123\]/.test(rShow.out), 'J2 : show réaffiche la clé Jira');
+
+  // J3. lot posé SANS --jira : champ absent, aucune ligne [Jira : …] (pas de valeur inventée).
+  const rNoJira = runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot Jira B', '--model', 'sonnet']);
+  ok(!/\[Jira :/.test(rNoJira.out), 'J3 : add sans --jira -> aucun tag [Jira : …]');
+  ok(!lotOf(2).integrations, 'J3 : integrations absent (clé droppée) sur un lot sans Jira');
+
+  // J4. `jira --id N --set` corrige après coup ; sans --set, lecture seule.
+  const rRead = runNode(BKLG, ['jira', '--cwd', repo, '--id', '2']);
+  ok(/\(aucune\)/.test(rRead.out), 'J4 : jira --id sans --set -> lecture, "(aucune)" pour un lot sans clé');
+  const rSet = runNode(BKLG, ['jira', '--cwd', repo, '--id', '2', '--set', 'PROJ-9']);
+  ok(/PROJ-9/.test(rSet.out), 'J4 : jira --id --set <valide> -> accepté');
+  ok(lotOf(2).integrations.jira.key === 'PROJ-9', 'J4 : clé Jira enregistrée par --set');
+  const rSetBad = runNode(BKLG, ['jira', '--cwd', repo, '--id', '2', '--set', 'nope']);
+  ok(/Refusé/.test(rSetBad.out), 'J4 : jira --id --set <mal formée> -> refus explicite');
+  ok(lotOf(2).integrations.jira.key === 'PROJ-9', 'J4 : refus --set n\'écrase pas la clé déjà posée');
+
+  // J5. export CSV/Markdown expose la colonne jira_key — vide pour le lot sans clé.
+  const csv = backlogLib.exportCsv(backlogLib.loadBacklog(repo));
+  const header = csv.split('\n')[0].split(',');
+  ok(header.includes('jira_key'), 'J5 : colonne jira_key présente dans l\'export CSV');
+  const rows = csv.split('\n').slice(1);
+  const jiraCol = header.indexOf('jira_key');
+  ok(rows[0].split(',')[jiraCol] === 'PROJ-123', 'J5 : export CSV — lot #1 porte sa clé Jira');
+  ok(rows[1].split(',')[jiraCol] === 'PROJ-9', 'J5 : export CSV — lot #2 porte sa clé Jira corrigée par --set');
+
+  // J6. défense en profondeur côté lib : addLot() direct refuse aussi une clé mal formée.
+  const direct = backlogLib.addLot(repo, 'Lot direct', null, 'sonnet', null, null, null, [], [], null, 'mal-formee');
+  ok(direct === null, 'J6 : lib.addLot() refuse aussi directement une clé --jira mal formée (garde doublée)');
+
+  // J7. piège historique : start puis done (avec activité RTK simulée) ne doit PAS détruire
+  // integrations.jira — startLot/doneLot écrivaient integrations.command_optimizer en
+  // remplaçant tout l'objet, ce qui effaçait la clé Jira en silence.
+  backlogLib.startLot(repo, 1);
+  ok(lotOf(1).integrations.jira.key === 'PROJ-123', 'J7 : start -> integrations.jira survit à l\'écriture du snapshot RTK');
+  backlogLib.doneLot(repo, 1, 'deadbee', 1, null, null);
+  ok(lotOf(1).integrations.jira.key === 'PROJ-123', 'J7 : done -> integrations.jira survit au calcul du gain RTK (ou son absence)');
 }
 
 // ============================ RÉSUMÉ ============================

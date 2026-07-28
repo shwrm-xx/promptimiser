@@ -2,7 +2,9 @@
 // Plan de lots persistant du projet : .vibe-agent/backlog.json.
 // Un lot = une unité de livraison (1 commit), trans-session — à ne pas confondre avec
 // les todos de Claude Code (étapes d'exécution volatiles, capturées à part).
-// Le fichier doit rester lisible d'un coup d'œil : caps stricts, pas de champs Jira.
+// Le fichier doit rester lisible d'un coup d'œil : caps stricts. Un pointeur Jira existe
+// (integrations.jira, epic « US & Jira », lot #102) mais reste un identifiant borné, jamais
+// une synchronisation ou un contenu dupliqué depuis Jira.
 // Fail-silent partout (même philosophie que lot.js) : au pire, backlog vide valide.
 const fs = require('fs');
 const path = require('path');
@@ -44,10 +46,25 @@ function normalizeCmdOptimizer(co) {
   }
   return Object.keys(out).length ? out : undefined;
 }
+// --- integrations.jira (pointeur de clé, epic « US & Jira », lot #102) ---
+// Comme `us` : un IDENTIFIANT borné et vérifié en FORMAT, jamais une synchronisation ni un
+// contenu dupliqué depuis Jira. Clé mal formée -> undefined (droppée), jamais stockée à moitié.
+const JIRA_KEY_RE = /^[A-Z][A-Z0-9]*-\d+$/;
+const MAX_JIRA = 20;
+function normalizeJira(x) {
+  if (!x || typeof x !== 'object') return undefined;
+  const key = trunc(x.key, MAX_JIRA);
+  return key && JIRA_KEY_RE.test(key) ? { key } : undefined;
+}
 function normalizeIntegrations(x) {
   if (!x || typeof x !== 'object') return undefined;
   const co = normalizeCmdOptimizer(x.command_optimizer);
-  return co ? { command_optimizer: co } : undefined;
+  const jira = normalizeJira(x.jira);
+  if (!co && !jira) return undefined;
+  const out = {};
+  if (co) out.command_optimizer = co;
+  if (jira) out.jira = jira;
+  return out;
 }
 
 const MAX_LOTS_OPEN = 20; // lots todo+in_progress ; au-delà c'est un Jira, refus doux
@@ -104,7 +121,7 @@ const CLOSED_VERIFY_VALUES = ['ok', 'failed', 'timeout', 'none'];
 // On les repère ici pour permettre au CLI de REJETER explicitement plutôt que tronquer.
 // Flags qui consomment une valeur (mono ou liste répétable — cf. flag()/flagList()) :
 const VALUE_FLAGS = ['cwd', 'id', 'epic', 'set', 'model', 'effort', 'title', 'scope',
-  'verify', 'us', 'owner', 'commit', 'note', 'into', 'format', 'depends', 'perimeter', 'session', 'occupancy',
+  'verify', 'us', 'jira', 'owner', 'commit', 'note', 'into', 'format', 'depends', 'perimeter', 'session', 'occupancy',
   'gate', 'final-gate', 'branch', 'state'];
 // Flags booléens (ne consomment aucune valeur) — listés pour documentation ;
 // tout flag hors VALUE_FLAGS est traité comme booléen (ne consomme rien).
@@ -294,12 +311,15 @@ function openCount(b) {
 // (optionnels, trailing) : parallélisation gouvernée (D3) — vides par défaut, donc lot
 // séquentiel classique. us (optionnel, trailing) : chemin relatif au dépôt vers une US
 // détaillée — VÉRIFIÉ ici (garde défensive, doublée du refus explicite côté CLI) : un
-// pointeur mort serait pire qu'aucune US, jamais accepté en silence.
-function addLot(root, title, scope, modelHint, epic, verify, effortHint, perimeter, dependsOn, us) {
+// pointeur mort serait pire qu'aucune US, jamais accepté en silence. jira (optionnel,
+// trailing) : clé Jira (ex. « PROJ-123 ») — VALIDÉE EN FORMAT ici (garde défensive, doublée
+// côté CLI) ; une clé mal formée est refusée, jamais tronquée en silence.
+function addLot(root, title, scope, modelHint, epic, verify, effortHint, perimeter, dependsOn, us, jira) {
   const t = trunc(title, MAX_TITLE);
   if (!t) return null;
   if (effortHint && !EFFORT_LEVELS.includes(effortHint)) return null;
   if (us && !fs.existsSync(path.join(root, us))) return null;
+  if (jira && !JIRA_KEY_RE.test(trunc(jira, MAX_JIRA) || '')) return null;
   const b = loadBacklog(root);
   if (openCount(b) >= MAX_LOTS_OPEN) return null;
   const lot = {
@@ -312,6 +332,7 @@ function addLot(root, title, scope, modelHint, epic, verify, effortHint, perimet
     epic: epic ? trunc(epic, MAX_EPIC) : null,
     verify: verify ? trunc(verify, MAX_VERIFY) : null,
     us: us ? trunc(us, MAX_US) : null,
+    integrations: jira ? { jira: { key: trunc(jira, MAX_JIRA) } } : undefined,
     closed_commit: null,
     closed_at: null,
     closed_session_id: null,
@@ -360,6 +381,19 @@ function setVerify(root, id, verify) {
   const lot = findLot(b, id);
   if (!lot) return null;
   lot.verify = v;
+  return saveBacklog(root, b) ? lot : null;
+}
+
+// Édite la clé Jira pointée par un lot existant (correction après coup, `jira --set`).
+// null si lot introuvable ou clé mal formée (jamais tronquée en silence). Préserve
+// integrations.command_optimizer déjà posé — remplacement du SEUL sous-champ jira.
+function setJira(root, id, key) {
+  const k = trunc(key, MAX_JIRA);
+  if (!k || !JIRA_KEY_RE.test(k)) return null;
+  const b = loadBacklog(root);
+  const lot = findLot(b, id);
+  if (!lot) return null;
+  lot.integrations = { ...(lot.integrations || {}), jira: { key: k } };
   return saveBacklog(root, b) ? lot : null;
 }
 
@@ -416,7 +450,9 @@ function startLot(root, id, sessionOwner) {
   // de snapshot → niveau de preuve « rien » à la clôture (jamais de valeur inventée).
   try {
     const snap = require('./rtk-metrics').snapshot();
-    lot.integrations = { command_optimizer: { snapshot_start: snap } };
+    // Ne remplace QUE command_optimizer — un integrations.jira déjà posé (lot #102) ne doit
+    // jamais être détruit par un (re)démarrage RTK, sans quoi la clé disparaîtrait en silence.
+    lot.integrations = { ...(lot.integrations || {}), command_optimizer: { snapshot_start: snap } };
   } catch (_) { /* fail-open : lot sans métrologie */ }
   return saveBacklog(root, b) ? lot : null;
 }
@@ -484,9 +520,19 @@ function doneLot(root, id, commitSha, lotNumber, sessionId, occupancy) {
     const start = lot.integrations && lot.integrations.command_optimizer
       && lot.integrations.command_optimizer.snapshot_start;
     const gain = rtkMetrics.computeLotGain({ start: start || null });
-    if (gain) lot.integrations = { command_optimizer: gain };
+    // Piège historique : ce bloc REMPLAÇAIT tout `integrations` (voire le supprimait), ce qui
+    // détruisait silencieusement un integrations.jira posé par ailleurs (lot #102). On préserve
+    // désormais le sous-champ jira existant, quel que soit le verdict RTK.
+    const jira = lot.integrations && lot.integrations.jira;
+    const next = {};
+    if (gain) next.command_optimizer = gain;
+    if (jira) next.jira = jira;
+    if (Object.keys(next).length) lot.integrations = next;
     else delete lot.integrations;
-  } catch (_) { delete lot.integrations; }
+  } catch (_) {
+    if (lot.integrations && lot.integrations.jira) lot.integrations = { jira: lot.integrations.jira };
+    else delete lot.integrations;
+  }
   const saved = saveBacklog(root, b);
   // Filet machine tier 0 (archive à tiroirs) : une ligne d'index par lot clos, MÊME quand
   // aucune fiche narrative n'est écrite (auto-clôture au Stop, clôture CLI). Le `fiche:non`
@@ -897,14 +943,15 @@ function reconcile(root) {
 // une ligne CSV. On exporte son cardinal — un lot rouvert 2 fois n'a pas coûté le même prix
 // qu'un lot passé du premier coup, et c'était invisible à l'export. Vide (pas `0`) quand le lot
 // n'a jamais été rouvert : même contrat que les colonnes RTK, aucune valeur inventée.
-const EXPORT_COLUMNS = ['id', 'title', 'status', 'epic', 'us', 'model_hint', 'effort_hint', 'verify', 'closed_verify', 'cost_tokens', 'closed_commit', 'closed_at',
+const EXPORT_COLUMNS = ['id', 'title', 'status', 'epic', 'us', 'jira_key', 'model_hint', 'effort_hint', 'verify', 'closed_verify', 'cost_tokens', 'closed_commit', 'closed_at',
   'closed_session_id', 'closed_occupancy', 'reopened',
   'command_optimizer_provider', 'command_tokens_saved', 'command_saving_ratio', 'command_evidence'];
 
-// Valeur d'une colonne d'export pour un lot : colonnes dérivées RTK d'abord, sinon champ brut.
+// Valeur d'une colonne d'export pour un lot : colonnes dérivées RTK/Jira d'abord, sinon champ brut.
 function exportCell(l, col) {
   const co = l.integrations && l.integrations.command_optimizer;
   switch (col) {
+    case 'jira_key': return (l.integrations && l.integrations.jira && l.integrations.jira.key) || '';
     case 'reopened': return Array.isArray(l.reopened) && l.reopened.length ? l.reopened.length : '';
     case 'command_optimizer_provider': return co && co.evidence ? (co.provider || '') : '';
     case 'command_tokens_saved': return co && co.evidence === 'measured' ? co.tokens_saved_estimated : '';
@@ -936,11 +983,11 @@ function exportMarkdown(b) {
 }
 
 module.exports = {
-  backlogFile, loadBacklog, saveBacklog, addLot, setVerify, setClosedVerify, setPerimeter, setDepends, startLot, doneLot, dropLot, noteLot, reopenLot,
+  backlogFile, loadBacklog, saveBacklog, addLot, setVerify, setJira, setClosedVerify, setPerimeter, setDepends, startLot, doneLot, dropLot, noteLot, reopenLot,
   touchLot, addCost, currentLot, nextLot, blockedByOf, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
   epicBilan, estimateCost, canCoexist, pairwiseCoexist, planWaves, waveBranch,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot, modelEffortTag,
   exportCsv, exportMarkdown, orphanArgs, overflowFields, isTruncated, VALUE_FLAGS, BOOL_FLAGS,
-  MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_US, MAX_OWNER, MAX_DEPENDS, MAX_NOTE, MAX_REOPEN, MAX_TODOS, EFFORT_LEVELS,
+  MAX_LOTS_OPEN, MAX_TITLE, MAX_SCOPE, MAX_MODEL_HINT, MAX_EPIC, MAX_VERIFY, MAX_US, MAX_JIRA, JIRA_KEY_RE, MAX_OWNER, MAX_DEPENDS, MAX_NOTE, MAX_REOPEN, MAX_TODOS, EFFORT_LEVELS,
   COST_BUDGET_TOKENS, COST_WARN_TOKENS, CLOSED_VERIFY_VALUES,
 };

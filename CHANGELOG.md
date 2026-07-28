@@ -2,6 +2,33 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-28 — « Champ integrations.jira + CLI et export » (epic « US & Jira », backlog #102)
+
+Deuxième lot de l'epic « US & Jira », même philosophie que le pointeur `us` (#101) : un
+**identifiant borné et vérifié en format**, jamais une synchronisation ni un contenu dupliqué
+depuis Jira.
+
+- **Anomalie corrigée avant démarrage** — le lot #102 avait été marqué `done` (staged, non
+  commité) sans code écrit et avec `closed_verify: "timeout"` pointant vers le commit de
+  clôture du lot #101. Rouvert explicitement (`backlog.js reopen --id 102 --note "…"`) avant
+  tout travail réel — « fait » = prouvé, jamais déclaré en silence.
+- **`integrations.jira`** (`lib/backlog.js`) — sous-champ `{ key }` validé par
+  `JIRA_KEY_RE` (`^[A-Z][A-Z0-9]*-\d+$`, ex. `PROJ-123`), plafond `MAX_JIRA = 20`. Une clé mal
+  formée est **refusée explicitement**, côté CLI et côté lib (`addLot`/`setJira`), jamais
+  tronquée ni acceptée à moitié.
+- **CLI `add --jira PROJ-123`** et **`jira --id N [--set KEY]`** (lecture sans `--set`,
+  correction après coup avec) — même patron que `verify`/`us`.
+- **`show`/`export` réaffichent la clé** (`[Jira : …]`, colonne `jira_key` en CSV/Markdown) —
+  vide, jamais inventée, pour un lot sans Jira.
+- **Piège RTK corrigé** — `startLot` et `doneLot` réécrivaient tout `lot.integrations` en
+  posant/retirant `command_optimizer`, ce qui aurait détruit en silence une clé Jira déjà
+  posée. Les deux préservent désormais le sous-champ `jira` existant.
+- **Commentaire d'en-tête de `lib/backlog.js` mis à jour** — l'ancien « pas de champs Jira »
+  datait d'avant l'epic « US & Jira » et contredisait ce lot ; remplacé par une clarification
+  du contrat (pointeur borné, jamais de sync).
+- Tests : +23 assertions (garde de format, show, export, préservation start/done), en-tête CSV
+  mis à jour (colonne `jira_key`).
+
 ## 2026-07-27 — « Pointeur US vérifié » (epic « US & Jira », backlog #101)
 
 Premier lot de l'epic « US & Jira » (option A du lien Jira scopée par `/pmz:scope` — pointeur
