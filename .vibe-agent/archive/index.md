@@ -109,4 +109,4 @@
 #0104 | 2026-07-28 | c306f1f | epic:US & Jira | verify:inconnu | fiche:oui | Doc : champ US, champ Jira, frontière pointeur-seul
 #0105 | 2026-07-28 | 9444709 | epic:Formalisation US | verify:inconnu | fiche:oui | Retrait du pointeur Jira
 #0106 | 2026-07-28 | 06fba38 | epic:Formalisation US | verify:inconnu | fiche:oui | Gabarit US enrichi + génération du fichier
-#0107 | 2026-07-28 | dbeb65c | epic:Formalisation US | verify:inconnu | fiche:non | Validation de structure de l'US
+#0107 | 2026-07-28 | 633a91e | epic:Formalisation US | verify:inconnu | fiche:oui | Validation de structure de l'US

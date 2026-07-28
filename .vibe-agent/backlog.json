@@ -2638,7 +2638,7 @@
       "epic": "Formalisation US",
       "verify": "node test/run-tests.js",
       "us": null,
-      "closed_commit": "dbeb65c",
+      "closed_commit": "633a91e",
       "closed_at": "2026-07-28T07:58:01.732Z",
       "closed_session_id": null,
       "closed_occupancy": null,
