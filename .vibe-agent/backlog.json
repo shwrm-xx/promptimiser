@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "next_id": 119,
+  "next_id": 120,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-28T14:57:23.861Z",
+  "updated_at": "2026-07-28T15:07:12.409Z",
   "lots": [
     {
       "id": 1,
@@ -3222,6 +3222,37 @@
         "promptimizer/lib/rtk-status.js",
         "promptimizer/scripts/rtk.js",
         "test/**"
+      ],
+      "depends_on": [],
+      "session_owner": null
+    },
+    {
+      "id": 119,
+      "title": "Coût par lot en mode vague (imputation aveugle)",
+      "scope": "fait quand : le coût d'un lot délégué à un sous-agent lui est imputé (invisible aujourd'hui : ces tours ne passent pas par le Stop de la session) ; deux lots in_progress simultanés ne se volent plus leur coût ; la clôture CLI sait écrire closed_verify ; test/** dans un périmètre ne sérialise plus toute la vague ; tests verts",
+      "status": "todo",
+      "model_hint": "opus",
+      "effort_hint": "high",
+      "epic": "Économie de contexte",
+      "verify": "node test/run-tests.js",
+      "us": null,
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "closed_verify": null,
+      "cost_tokens": 0,
+      "cost_turns": 0,
+      "closed_avg_cost_per_turn": null,
+      "started_at": null,
+      "lot_number": null,
+      "note": "Vu à la réintégration #111+#114 : les 2 lots sortis avec cost_turns=0 / closed_avg=null. Vrais coûts hors bande : ~251k (#111), ~144k (#114). Les 84053 imputés en bloc à #111.",
+      "session_touches": 0,
+      "perimeter": [
+        "promptimizer/hooks/stop.js",
+        "promptimizer/lib/backlog.js",
+        "promptimizer/scripts/backlog.js",
+        "promptimizer/lib/reintegrate.js"
       ],
       "depends_on": [],
       "session_owner": null
