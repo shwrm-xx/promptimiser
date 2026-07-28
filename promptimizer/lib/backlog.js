@@ -227,6 +227,15 @@ function loadBacklog(root) {
       // en cours (cf. addCost, appelé par stop.js). Agrégé trans-session (porté par le lot,
       // pas par l'état de session), figé de fait à la clôture. Négatif/NaN -> 0.
       cost_tokens: Number.isFinite(l.cost_tokens) && l.cost_tokens > 0 ? l.cost_tokens : 0,
+      // Accrétion tokens/tour (lot #111) : nombre de tours ayant RÉELLEMENT accru cost_tokens
+      // (même filtre qu'addCost — tokens<=0 ignoré) : numérateur et dénominateur portent sur
+      // exactement les mêmes tours, donc cost_tokens/cost_turns reste une moyenne cohérente.
+      cost_turns: Number.isFinite(l.cost_turns) && l.cost_turns > 0 ? l.cost_turns : 0,
+      // Moyenne cost_tokens/cost_turns FIGÉE à la clôture (lot #111) — même contrat que
+      // closed_occupancy : calculée une fois par doneLot, jamais recalculée après (le lot ne
+      // « travaille » plus une fois done). null si aucun tour n'a compté de coût.
+      closed_avg_cost_per_turn: Number.isFinite(l.closed_avg_cost_per_turn) && l.closed_avg_cost_per_turn >= 0
+        ? l.closed_avg_cost_per_turn : null,
       started_at: l.started_at || null,
       lot_number: Number.isFinite(l.lot_number) ? l.lot_number : null,
       note: l.note ? trunc(l.note, MAX_NOTE) : null,
@@ -320,6 +329,8 @@ function addLot(root, title, scope, modelHint, epic, verify, effortHint, perimet
     closed_occupancy: null,
     closed_verify: null,
     cost_tokens: 0,
+    cost_turns: 0,
+    closed_avg_cost_per_turn: null,
     started_at: null,
     lot_number: null,
     note: null,
@@ -532,6 +543,9 @@ function addCost(root, id, tokens) {
   if (!lot || lot.status !== 'in_progress') return null;
   if (!Number.isFinite(n) || n <= 0) return lot;
   lot.cost_tokens = (Number.isFinite(lot.cost_tokens) ? lot.cost_tokens : 0) + Math.round(n);
+  // Accrétion tokens/tour (lot #111) : un tour compté ici est un tour qui a RÉELLEMENT
+  // accru cost_tokens (même garde ci-dessus) — jamais un tour à vide.
+  lot.cost_turns = (Number.isFinite(lot.cost_turns) ? lot.cost_turns : 0) + 1;
   return saveBacklog(root, b) ? lot : null;
 }
 
@@ -561,6 +575,11 @@ function doneLot(root, id, commitSha, lotNumber, sessionId, occupancy) {
   lot.closed_at = now();
   lot.closed_session_id = sessionId || null;
   lot.closed_occupancy = Number.isFinite(occupancy) ? occupancy : null;
+  // Accrétion tokens/tour (lot #111) : figée ici comme closed_occupancy, jamais recalculée
+  // après (cf. normalizeLots). null si le lot n'a jamais accru de coût (clos sans qu'aucun
+  // Stop n'ait tourné pendant qu'il était in_progress — clôture manuelle immédiate).
+  lot.closed_avg_cost_per_turn = (Number.isFinite(lot.cost_turns) && lot.cost_turns > 0)
+    ? Math.round(lot.cost_tokens / lot.cost_turns) : null;
   lot.lot_number = Number.isFinite(lotNumber) ? lotNumber : incrementLot(root);
   // Métrologie RTK (lot #83) : fige le gain = delta(compteur) depuis le snapshot de démarrage.
   // Le snapshot transitoire est remplacé par l'objet gain FINAL, ou retiré si aucune preuve
@@ -692,6 +711,7 @@ function reopenLot(root, id, note) {
   lot.closed_session_id = null;
   lot.closed_occupancy = null;
   lot.closed_verify = null;
+  lot.closed_avg_cost_per_turn = null; // dérivée de closed_*, même sort (recalculée au prochain doneLot)
   // Dette #98 soldée (lot #100) : `session_owner` et `lot_number` sont eux aussi des reliquats du
   // cycle clos. Laissés en place, ils mentaient jusqu'au prochain `startLot`/`doneLot` : la
   // statusline et `show` affichaient « Lot 7 » pour un lot redevenu à faire, et une session

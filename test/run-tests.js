@@ -4251,7 +4251,9 @@ section('Clôture prouvée : verify à l\'auto-clôture + garde-fou CHANGELOG (l
     ok(backlogLib.loadBacklog(repo).lots[0].closed_verify === 'none', 'e2e : lot sans verify -> closed_verify = none (lot #96)');
   }
 
-  // T6. e2e : verify qui expire (timeout) -> closed_verify = 'timeout', pas 'failed'.
+  // T6. e2e : verify qui expire (timeout) -> JAMAIS de `done` fantôme (lot #111, cf. bug #110 :
+  // un lot marqué done + closed_verify:"timeout" alors qu'aucun fichier du lot n'existait). Le
+  // lot reste in_progress, annoncé explicitement — pas de carte de clôture, pas de coda.
   {
     const repo = bootRepo('repo-proof-timeout');
     const slow = process.platform === 'win32'
@@ -4266,8 +4268,11 @@ section('Clôture prouvée : verify à l\'auto-clôture + garde-fou CHANGELOG (l
     execFileSync('git', ['-C', repo, 'add', '.']);
     execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'lot fini (timeout)']);
     const r = runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empT });
-    ok(/non terminée dans le délai court/.test(sysMsg(r)), 'e2e : verify non terminée dans le délai court -> visible');
-    ok(backlogLib.loadBacklog(repo).lots[0].closed_verify === 'timeout', 'e2e : closed_verify persisté = timeout, pas failed (lot #96)');
+    const m = sysMsg(r);
+    ok(/NON clôturé.*n'a pas terminé dans le délai court/s.test(m), 'e2e : timeout -> message explicite de non-clôture');
+    ok(!/Carte de clôture/.test(m) && !/pmz:fresh-session/.test(m), 'e2e : timeout -> ni carte ni coda (rien n\'est clos)');
+    ok(backlogLib.loadBacklog(repo).lots[0].status === 'in_progress', 'e2e : timeout -> lot RESTE en cours (lot #111, fix bug #110)');
+    ok(backlogLib.loadBacklog(repo).lots[0].closed_verify === null, 'e2e : timeout -> closed_verify jamais posé (pas de done fantôme)');
   }
 }
 
@@ -7602,6 +7607,87 @@ section('Moteur de mesure — préfixe, occupation, accrétion, décomposition, 
   } finally {
     if (prevCfg === undefined) delete process.env.CLAUDE_CONFIG_DIR;
     else process.env.CLAUDE_CONFIG_DIR = prevCfg;
+  }
+}
+
+// ============================ R111. TÉLÉMÉTRIE DE CLÔTURE RÉPARÉE (lot #111) ============================
+section('Télémétrie de clôture réparée : occupancy/cost/verify/accrétion non nuls + version SessionStart + garde anti-clôture-fantôme (lot #111)');
+{
+  function bootRepo111(name) {
+    const repo = path.join(SANDBOX, name);
+    fs.mkdirSync(path.join(repo, '.vibe-agent'), { recursive: true });
+    execFileSync('git', ['init', '-q', repo]);
+    fs.writeFileSync(path.join(repo, '.vibe-agent', '.gitignore'), '*\n!.gitignore\n!backlog.json\n!rules.yaml\n');
+    fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+    return repo;
+  }
+  const sysMsg111 = (r) => { try { return JSON.parse(r.out).systemMessage || ''; } catch (_) { return ''; } };
+  const ctx111 = (r) => { try { return JSON.parse(r.out).hookSpecificOutput.additionalContext || ''; } catch (_) { return ''; } };
+
+  // R1. e2e /close-batch -> commit -> Stop : le lot clos porte closed_occupancy, cost_tokens,
+  // closed_verify ET l'accrétion tokens/tour (closed_avg_cost_per_turn), TOUS non nuls
+  // (fait quand n°1 — avant #111 : cost_tokens=0, closed_occupancy=null, closed_verify=null).
+  {
+    const repo = bootRepo111('repo-r111-telemetry');
+    const l = backlogLib.addLot(repo, 'Lot télémétrie', 'fait quand : vert', 'sonnet', null, 'node -e "process.exit(0)"');
+    backlogLib.startLot(repo, l.id);
+    const sid = 's-r111-a';
+    const tr = path.join(SANDBOX, 'r111-a.jsonl');
+    fs.writeFileSync(tr, usageLine(1000, 5000, 0, 1500) + '\n'); // 1er tour : établit seulement la baseline (out ignoré)
+    fs.writeFileSync(path.join(repo, 'w.txt'), 'x');
+    runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: tr }); // arme closure_reminded_for_batch
+    fs.appendFileSync(tr, usageLine(1200, 5200, 0, 2000) + '\n'); // 2e tour : coût RÉEL n°1 (tree encore sale)
+    runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: tr });
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'lot télémétrie fini']);
+    fs.appendFileSync(tr, usageLine(1400, 5400, 0, 3000) + '\n'); // 3e tour : coût RÉEL n°2 + tree propre -> auto-clôture
+    runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: tr });
+    const closed = backlogLib.loadBacklog(repo).lots.find((x) => x.id === l.id);
+    ok(closed.status === 'done', 'R111 : lot auto-clôturé');
+    ok(Number.isFinite(closed.closed_occupancy) && closed.closed_occupancy > 0, 'R111 : closed_occupancy non nul');
+    ok(closed.cost_tokens === 5000, 'R111 : cost_tokens non nul (2000 + 3000, le 1er tour sans baseline ne compte pas)');
+    ok(closed.closed_verify === 'ok', 'R111 : closed_verify non nul (verify OK)');
+    ok(closed.cost_turns === 2, 'R111 : accrétion — 2 tours à coût réel comptés');
+    ok(Number.isFinite(closed.closed_avg_cost_per_turn) && closed.closed_avg_cost_per_turn > 0,
+      'R111 : accrétion tokens/tour figée à la clôture, non nulle');
+    ok(closed.closed_avg_cost_per_turn === Math.round(closed.cost_tokens / closed.cost_turns),
+      'R111 : accrétion = cost_tokens / cost_turns (moyenne cohérente, ici 2500)');
+  }
+
+  // R2. Version PMZ estampillée dans l'injection SessionStart (fait quand n°2) — l'attribution
+  // de version d'une session à une epic ne dépend plus seulement des dates de release.
+  {
+    const repo = bootRepo111('repo-r111-version');
+    const r = runHook('session-start.js', { source: 'startup', cwd: repo, session_id: 's-r111-version' });
+    const version = require(path.join(PKG, 'lib', 'version')).readVersion();
+    ok(!!version, 'R111 : VERSION lisible (prérequis du test)');
+    ok(new RegExp('Promptimizer v' + version.replace(/\./g, '\\.') + '\\.').test(ctx111(r)),
+      'R111 : injection SessionStart porte le numéro de version PMZ');
+  }
+
+  // R3. Garde anti-clôture-fantôme (fait quand n°3, bug #110 : lot marqué done avec
+  // closed_verify:"timeout" alors qu'aucun fichier du lot n'existait) : un verify en TIMEOUT ne
+  // produit JAMAIS un `done` — couverture e2e complète déjà en section T (T6) ; ici, redite
+  // compacte et autonome de la section R111.
+  {
+    const repo = bootRepo111('repo-r111-timeout');
+    const slow = process.platform === 'win32' ? 'node -e "setTimeout(()=>{},5000)"' : 'sleep 5';
+    const l = backlogLib.addLot(repo, 'Lot r111 timeout', 'fait quand : vert', 'sonnet', null, slow);
+    backlogLib.startLot(repo, l.id);
+    const sid = 's-r111-to';
+    const empR = path.join(SANDBOX, 'r111-empty.jsonl');
+    fs.writeFileSync(empR, '');
+    fs.writeFileSync(path.join(repo, 'w.txt'), 'x');
+    runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empR }); // arme closure_reminded
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'lot r111 fini (timeout)']);
+    const r = runHook('stop.js', { session_id: sid, cwd: repo, transcript_path: empR });
+    const still = backlogLib.loadBacklog(repo).lots.find((x) => x.id === l.id);
+    ok(/NON clôturé/.test(sysMsg111(r)), 'R111 : timeout -> message explicite (jamais de silence)');
+    ok(still.status === 'in_progress', 'R111 : timeout -> lot jamais clos (aucun done fantôme possible)');
+    ok(still.closed_verify === null, 'R111 : timeout -> closed_verify jamais posé');
   }
 }
 

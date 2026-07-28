@@ -28,6 +28,7 @@ const gitdebt = require('../lib/gitdebt');
 const claudemd = require('../lib/claudemd');
 const notify = require('../lib/notify');
 const { arbitrate } = require('../lib/arbiter');
+const { SEV, withSeverity } = require('../lib/severity');
 const {
   MSG_CLOTURE, occupancyMessage, redZonePrescriptionMessage,
   costlyTurnMessage, driftMessage, loopingCommandMessage, gitDebtMessage, claudeMdMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
@@ -214,43 +215,61 @@ function main() {
       if (wasReminded || armed) {
         const closedNumber = incrementLot(root); // lot fermé -> le prochain sera proposé au SessionStart suivant
         if (armed) {
-          const done = doneLot(root, inProg[0].id, null, closedNumber, sid, turn && turn.occ);
-          if (done) {
-            notify.notifyLotClosed(done); // opt-in (#75) ; événement one-shot, pas d'anti-spam dédié nécessaire
-            const after = loadBacklog(root);
-            const nxt = nextLot(after);
-            // Carte de clôture UNIQUE (lot #108) : lot clos + suivant (#97) + bilan d'epic (#58,
-            // seulement au DERNIER lot de son epic) + chiffres du lot (#59) en UN nudge, donc UNE
-            // place d'arbitre — jadis 3 (voire 4 avec la preuve) pour un plafond de 3, la carte
-            // chiffrée était systématiquement évincée. try/catch dédié sur le ledger de lecture :
-            // une erreur y perdrait le compte de relectures, jamais la carte ni la clôture acquise.
-            let rereadsAvoided = 0;
-            try { rereadsAvoided = loadReadLedger(root).avoid_reread_notes.length; } catch (_) { /* chiffre absent, carte quand même */ }
-            parts.push(closureCardMessage(done, nxt, progress(after), blockedByOf(after, nxt), {
-              rereadsAvoided,
-              bilan: epicBilan(after, done),
-            }));
-            // Reco de session fraîche : PRESCRIPTION, émise en coda hors arbitre (cf. plus bas).
-            coda = freshSessionCodaMessage(nxt);
-            // (b2) Preuve de clôture (lot #44) — APRÈS que doneLot a persisté l'état (un dépassement
-            // du watchdog pendant le verify ne peut donc plus corrompre le backlog). Jamais bloquant :
-            // le lot est déjà marqué fait quoi qu'il arrive ici. try/catch dédié -> fail-open local.
-            try {
-              const verify = done.verify
-                ? Object.assign({ cmd: done.verify }, runVerify(root, done.verify, VERIFY_AUTOCLOSE_MS))
-                : null;
-              // Verdict persisté (lot #96) : distinct de l'affichage éphémère ci-dessous, qui peut
-              // être évincé par le plafond de nudges de l'arbitre — sans cette écriture, un lot clos
-              // sur verify ROUGE serait indiscernable a posteriori d'un lot prouvé. setClosedVerify
-              // est idempotent (n'écrase jamais un verdict déjà posé) : fail-open local, la clôture
-              // déjà persistée par doneLot n'est jamais remise en cause par un souci d'écriture ici.
-              const verdict = !done.verify ? 'none' : (verify.ok ? 'ok' : (verify.timedOut ? 'timeout' : 'failed'));
-              setClosedVerify(root, done.id, verdict);
-              // tree propre ici -> changelogTouched se réduit au dernier commit (celui de clôture).
-              const changelogMissing = !changelogTouched(root);
-              const proof = closureProofMessage(verify, changelogMissing, !done.verify);
-              if (proof) parts.push(proof);
-            } catch (_) { /* fail-open : la clôture reste acquise, pas de preuve ce tour */ }
+          const lotToClose = inProg[0];
+          // Preuve de clôture calculée AVANT doneLot (lot #111) — répare la clôture fantôme du
+          // lot #110 (marqué `done` avec closed_verify:"timeout" alors qu'aucun fichier du lot
+          // n'existait) : le verdict était jadis calculé APRÈS que doneLot ait déjà persisté le
+          // lot en `done`, si bien qu'un timeout ne pouvait plus rien empêcher — juste être
+          // constaté a posteriori. Un verify qui n'a pas eu le temps de conclure n'est NI une
+          // preuve de réussite NI une preuve d'échec : il ne doit donc jamais pouvoir produire
+          // un `done`. Calculer le verdict ICI, avant toute écriture, permet de REFUSER la
+          // clôture plutôt que de la défaire après coup. `failed` (échec net, pas un timeout)
+          // reste non bloquant, comportement historique inchangé (lot #44/#96, cf. T4).
+          let verify = null;
+          let verdict = 'none';
+          if (lotToClose.verify) {
+            verify = Object.assign({ cmd: lotToClose.verify }, runVerify(root, lotToClose.verify, VERIFY_AUTOCLOSE_MS));
+            verdict = verify.ok ? 'ok' : (verify.timedOut ? 'timeout' : 'failed');
+          }
+          if (verdict === 'timeout') {
+            // Clôture fantôme évitée : le lot reste `in_progress`, annoncé EXPLICITEMENT (jamais
+            // de silence) — /close-batch relance la même preuve avec un délai large (VERIFY_CLOSE_MS).
+            parts.push(withSeverity(SEV.WARN, [
+              `Lot « ${lotToClose.title} » NON clôturé : verify (\`${lotToClose.verify}\`) n'a pas terminé dans le délai court de l'auto-clôture (${Math.round(VERIFY_AUTOCLOSE_MS / 1000)} s).`,
+              'Le lot reste en cours (aucune clôture fantôme) — relance la preuve via /close-batch (délai plus large) avant de clore.',
+            ]));
+          } else {
+            const done = doneLot(root, lotToClose.id, null, closedNumber, sid, turn && turn.occ);
+            if (done) {
+              notify.notifyLotClosed(done); // opt-in (#75) ; événement one-shot, pas d'anti-spam dédié nécessaire
+              const after = loadBacklog(root);
+              const nxt = nextLot(after);
+              // Carte de clôture UNIQUE (lot #108) : lot clos + suivant (#97) + bilan d'epic (#58,
+              // seulement au DERNIER lot de son epic) + chiffres du lot (#59) en UN nudge, donc UNE
+              // place d'arbitre — jadis 3 (voire 4 avec la preuve) pour un plafond de 3, la carte
+              // chiffrée était systématiquement évincée. try/catch dédié sur le ledger de lecture :
+              // une erreur y perdrait le compte de relectures, jamais la carte ni la clôture acquise.
+              let rereadsAvoided = 0;
+              try { rereadsAvoided = loadReadLedger(root).avoid_reread_notes.length; } catch (_) { /* chiffre absent, carte quand même */ }
+              parts.push(closureCardMessage(done, nxt, progress(after), blockedByOf(after, nxt), {
+                rereadsAvoided,
+                bilan: epicBilan(after, done),
+              }));
+              // Reco de session fraîche : PRESCRIPTION, émise en coda hors arbitre (cf. plus bas).
+              coda = freshSessionCodaMessage(nxt);
+              // (b2) Verdict persisté (lot #96) + rappel CHANGELOG — APRÈS que doneLot a persisté
+              // l'état. Jamais bloquant : le lot est déjà marqué fait quoi qu'il arrive ici.
+              // try/catch dédié -> fail-open local (la clôture déjà acquise n'est jamais remise
+              // en cause par un souci d'écriture ici). setClosedVerify reste idempotent (n'écrase
+              // jamais un verdict déjà posé) — inerte en pratique ici (verdict jamais posé avant).
+              try {
+                setClosedVerify(root, done.id, verdict);
+                // tree propre ici -> changelogTouched se réduit au dernier commit (celui de clôture).
+                const changelogMissing = !changelogTouched(root);
+                const proof = closureProofMessage(verify, changelogMissing, !done.verify);
+                if (proof) parts.push(proof);
+              } catch (_) { /* fail-open : la clôture reste acquise, pas de preuve ce tour */ }
+            }
           }
         }
       }
