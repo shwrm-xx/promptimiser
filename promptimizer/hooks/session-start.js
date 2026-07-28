@@ -26,6 +26,7 @@ const { loadBacklog, currentLot, nextLot, blockedByOf, progress, readTodoSnapsho
 const { fleetLines } = require('../lib/fleet');
 const occupancy = require('../lib/occupancy');
 const rtkStatus = require('../lib/rtk-status');
+const { readVersion } = require('../lib/version');
 const {
   MSG_ACTIF, MSG_ACTIF_SLIM, MSG_NON_INIT, MSG_HANDOFF, sessionTitleMessage, autoInitMessage,
   compactResumeMessage, backlogResumeMessage, occupancyMessage, rtkStartupLine,
@@ -37,6 +38,21 @@ function withRtk(root, msg) {
   try {
     const line = rtkStartupLine(rtkStatus.computeStatus({ root }));
     return line ? msg + '\n\n' + line : msg;
+  } catch (_) {
+    return msg;
+  }
+}
+
+// Estampille de version PMZ (lot #111) : l'attribution de version d'une session à une epic,
+// pour l'analyse de bilan, reposait jusqu'ici sur les dates de release (comparaison approximative,
+// des sessions peuvent chevaucher une release) faute de marqueur direct dans les transcripts.
+// Une ligne courte ajoutée à l'injection SessionStart (grep-able : `Promptimizer vX.Y.Z.`).
+// readVersion() est déjà fail-open (renvoie null si VERSION illisible) ; try/catch en plus par
+// prudence (jamais de crash de session-start.js pour une ligne cosmétique).
+function withVersion(msg) {
+  try {
+    const v = readVersion();
+    return v ? msg + '\n\n' + `Promptimizer v${v}.` : msg;
   } catch (_) {
     return msg;
   }
@@ -154,6 +170,7 @@ function main() {
     // redite des règles déjà chargées). Sinon, rappel plein.
     let msg = carriesRules(root) ? MSG_ACTIF_SLIM : MSG_ACTIF;
     msg = withRtk(root, msg);
+    msg = withVersion(msg);
     try {
       // suggestedTitle (via previousSessionId) doit lire session-state.json AVANT le
       // saveSessionState ci-dessous, qui l'écrase avec le session_id de CETTE session.
@@ -182,7 +199,7 @@ function main() {
       const result = runBootstrap(root);
       if (result.ok) {
         const committed = commitScaffold(root, result.created);
-        return injectContext('SessionStart', autoInitMessage({ gitInitDone: false, committed }));
+        return injectContext('SessionStart', withVersion(autoInitMessage({ gitInitDone: false, committed })));
       }
     } catch (_) {
       /* fail-open : on retombe sur la proposition normale ci-dessous */
@@ -190,7 +207,7 @@ function main() {
   }
   // Sinon : on PROPOSE seulement (l'init réelle se fait après confirmation).
   // Le handoff éventuel (ledger auto-créé sans socle visible) est injecté aussi.
-  return injectContext('SessionStart', withHandoff(root, MSG_NON_INIT, input.session_id || null));
+  return injectContext('SessionStart', withVersion(withHandoff(root, MSG_NON_INIT, input.session_id || null)));
 }
 
 main();
