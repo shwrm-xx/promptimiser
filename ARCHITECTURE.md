@@ -1485,3 +1485,16 @@ plusieurs sessions réelles (capture fournie par l'utilisateur, 2026-07-12).
      `started_at` (legacy) → pas d'armement backlog ; résolution de `%cI` à la seconde → un lot démarré
      ET commité dans la même seconde n'est pas détecté (sans objet en pratique, un lot dure des
      minutes). Non porté côté OpenCode (`closureAndHandoff` garde le flag seul) : périmètre du lot.
+
+- **Verdict chiffré de session fraîche dans `/close-batch`** (lot #109, epic « Reco de session
+  fraîche »). La checklist de clôture (`scripts/close-batch.js`) disait « oui si le sujet
+  change » — un jugement à l'œil, jamais vérifiable, contredit par l'étape 7 de `close-batch.md`
+  qui recommandait une session fraîche inconditionnellement. Remplacé par `freshSessionVerdict` :
+  booléen + raison chiffrée fondés sur le **palier d'occupation déjà persisté** par le hook Stop
+  (`occupancy.stateFileFor(sessionId)`, un seul chiffre) — zéro relecture du transcript (`/close-batch`
+  n'est de toute façon pas un hook, il n'a pas `transcript_path`). Seuil = `BUCKETS[1]` (300k) :
+  repris tel quel du nudge subagent (`occupancy.evaluateSubagentNudge`, lot #52), pas inventé au
+  jugé pour ce lot — même seuil déjà calibré et éprouvé en usage. La priorité « après clôture »
+  (lot ouvert, modifs non commitées) reste inchangée et passe **avant** le verdict : tant que la
+  clôture n'est pas faite, la question de la fraîcheur ne se pose pas. `close-batch.md` étape 7
+  renvoie désormais explicitement à ce verdict au lieu de le contredire par une reco fixe.

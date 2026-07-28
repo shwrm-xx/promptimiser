@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 // Checklist de clôture (format spec). Pré-rempli via audit-batch quand détectable.
+const fs = require('fs');
 const path = require('path');
 const { compute } = require('./audit-batch');
 const handoff = require('../lib/handoff');
@@ -12,6 +13,7 @@ const { VERIFY_CLOSE_MS } = require('../lib/timeouts');
 const { parseCwd } = require('../lib/cli');
 const { fmtK } = require('../lib/messages');
 const rtkMetrics = require('../lib/rtk-metrics');
+const occupancy = require('../lib/occupancy');
 
 // Bloc « Gain RTK » du bilan de clôture (lot #83). Le lot n'est pas encore clos ici → on calcule
 // le gain EN DIRECT depuis le snapshot de démarrage figé sur le lot + l'état courant du compteur.
@@ -30,6 +32,31 @@ function rtkGainBlock(cur) {
 }
 
 function yn(v) { return v ? 'oui' : 'non'; }
+
+// Verdict « session fraîche » (lot #109) : plus de « oui si le sujet change » (jugement
+// laissé à l'assistant, jamais vérifiable) mais un booléen fondé sur le palier d'occupation
+// PERSISTÉ par le hook Stop (fichier d'état occupancy, un seul chiffre) — zéro relecture du
+// transcript ici, close-batch.js n'a de toute façon pas transcript_path (ce n'est pas un hook).
+// Seuil = BUCKETS[1] (300k), déjà calibré et en usage pour le nudge subagent
+// (occupancy.evaluateSubagentNudge) — repris tel quel plutôt qu'inventé au jugé pour ce lot.
+function freshSessionVerdict(root) {
+  const threshold = occupancy.BUCKETS[1];
+  try {
+    const sid = previousSessionId(root);
+    if (!sid) return { fresh: false, reason: 'aucune session identifiée — pas de palier connu' };
+    const sf = occupancy.stateFileFor(sid);
+    const raw = fs.readFileSync(sf, 'utf8').trim();
+    const bucket = parseInt(raw || '0', 10);
+    if (!Number.isFinite(bucket)) return { fresh: false, reason: 'palier illisible — pas de mesure exploitable' };
+    const fresh = bucket >= 2; // bucket 2 == occ >= BUCKETS[1] (300k)
+    const reason = fresh
+      ? `occupation ≥ ${fmtK(threshold)} (palier ${bucket})`
+      : `occupation < ${fmtK(threshold)} (palier ${bucket})`;
+    return { fresh, reason };
+  } catch (_) {
+    return { fresh: false, reason: `aucune mesure d'occupation disponible pour cette session (seuil : ${fmtK(threshold)})` };
+  }
+}
 
 // Bloc « Fiche d'archive » (lot #95) : squelette tier 1 pré-rempli + la ligne de commande
 // qui l'écrit. C'est ICI, et nulle part ailleurs, que le résultat de la vérification existe
@@ -103,6 +130,7 @@ function main() {
   const changelog = yn(d.changelog_touched);
   const commit = yn(d.has_commit && !d.needs_closure);
   const closable = d.is_git_repo && !d.needs_closure;
+  const fresh = freshSessionVerdict(d.root);
 
   const bl = d.backlog;
   let verifyLine = '';
@@ -144,8 +172,8 @@ ${backlogBlock}${ficheBlock(d.root, bl && bl.current, verifyVerdict)}${rtkGainBl
 - lectures évitées : voir .vibe-agent/read-ledger.json
 - relectures faites : voir .vibe-agent/context-ledger.json (repeated_reads)
 - contexte redondant probable : voir alertes de palier (occupancy)
-- session fraîche recommandée : ${d.needs_closure ? 'après clôture' : 'oui si le sujet change'}
-- raison : ${d.needs_closure ? 'lot ouvert (modifs non commitées)' : 'lot propre'}
+- session fraîche recommandée : ${d.needs_closure ? 'après clôture' : yn(fresh.fresh)}
+- raison : ${d.needs_closure ? 'lot ouvert (modifs non commitées)' : fresh.reason}
 
 Décision :
 - ${closable ? 'clôturable' : 'non clôturable (modifs non commitées ou hors git)'}

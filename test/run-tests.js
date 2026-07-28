@@ -1147,7 +1147,47 @@ section('Archive tier 1/2 — fiches, CLI à tiroirs, commande, pare-feu canari 
   backlog.dropLot(cb, lcbU.id);
   const cbMd = fs.readFileSync(path.join(PKG, 'commands', 'close-batch.md'), 'utf8');
   ok(/^6bis\./m.test(cbMd) && /^6ter\./m.test(cbMd), 'close-batch.md : étapes 6bis (fiche) et 6ter (handoff archivé) posées avant le 7');
-  ok(cbMd.indexOf('6bis.') < cbMd.indexOf('7. Recommander'), 'close-batch.md : la fiche est rédigée avant la recommandation de session fraîche');
+  ok(cbMd.indexOf('6bis.') < cbMd.indexOf('7. Suivre'), 'close-batch.md : la fiche est rédigée avant la recommandation de session fraîche');
+  ok(/renvoie au verdict/.test(cbMd) || /Suivre le verdict/.test(cbMd), 'close-batch.md : étape 7 renvoie au verdict au lieu de le contredire');
+
+  // --- /close-batch (lot #109) : verdict « session fraîche » chiffré, fondé sur le palier
+  // d'occupation PERSISTÉ (fichier d'état occupancy, zéro relecture du transcript) — plus de
+  // jugement « oui si le sujet change ».
+  const cbFresh = mkRepo95('repo-close-batch-fresh');
+  const lFresh = backlog.addLot(cbFresh, 'Lot fresh-verdict', 'fait quand : …', 'sonnet');
+  backlog.startLot(cbFresh, lFresh.id);
+  // Arbre propre requis : sans ceci needs_closure reste vrai (scaffold du bootstrap non commité)
+  // et la priorité « après clôture » masquerait le verdict qu'on veut isoler ici.
+  execFileSync('git', ['-C', cbFresh, 'add', '.']);
+  execFileSync('git', ['-C', cbFresh, 'commit', '-q', '-m', 'scaffold']);
+  const stFresh = require(path.join(PKG, 'lib', 'state'));
+  const occFresh = require(path.join(PKG, 'lib', 'occupancy'));
+
+  // Aucun session_id connu -> pas de palier exploitable -> verdict non, raison explicite.
+  const cbNoSid = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', cbFresh]).out;
+  ok(/session fraîche recommandée : non/.test(cbNoSid), 'close-batch : sans session_id connu -> non');
+  ok(/raison : aucune session identifiée/.test(cbNoSid), 'close-batch : raison explicite si session_id inconnu');
+
+  // Palier bas (bucket 1, < 300k) persisté -> non, raison chiffrée sur le seuil.
+  stFresh.saveSessionState(cbFresh, Object.assign({}, stFresh.DEFAULT_STATE, { session_id: 'sess-fresh-low' }));
+  fs.writeFileSync(occFresh.stateFileFor('sess-fresh-low'), '1');
+  const cbLow = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', cbFresh]).out;
+  ok(/session fraîche recommandée : non/.test(cbLow), 'close-batch : palier 1 (< 300k) -> verdict non');
+  ok(new RegExp(`raison : occupation < ${occFresh.BUCKETS[1] / 1000}k \\(palier 1\\)`).test(cbLow), 'close-batch : raison chiffrée (seuil + palier) quand non');
+
+  // Palier haut (bucket 2, >= 300k) persisté -> oui, même raison chiffrée.
+  stFresh.saveSessionState(cbFresh, Object.assign({}, stFresh.DEFAULT_STATE, { session_id: 'sess-fresh-high' }));
+  fs.writeFileSync(occFresh.stateFileFor('sess-fresh-high'), '2');
+  const cbHigh = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', cbFresh]).out;
+  ok(/session fraîche recommandée : oui/.test(cbHigh), 'close-batch : palier 2 (>= 300k) -> verdict oui');
+  ok(new RegExp(`raison : occupation ≥ ${occFresh.BUCKETS[1] / 1000}k \\(palier 2\\)`).test(cbHigh), 'close-batch : raison chiffrée (seuil + palier) quand oui');
+
+  // Lot ouvert (modifs non commitées) : l'ancienne priorité « après clôture » l'emporte
+  // toujours sur le verdict chiffré (pas encore le moment de juger).
+  fs.writeFileSync(path.join(cbFresh, 'dirty.txt'), 'x');
+  const cbDirty = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', cbFresh]).out;
+  ok(/session fraîche recommandée : après clôture/.test(cbDirty), 'close-batch : lot ouvert -> "après clôture" prime sur le verdict chiffré');
+  fs.rmSync(path.join(cbFresh, 'dirty.txt'));
 
   // --- PARE-FEU : l'archive empoisonnée ne fuit dans AUCUN canal d'injection automatique.
   const pf = mkRepo95('repo-archive95-firewall');

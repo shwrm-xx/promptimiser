@@ -2,6 +2,21 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-28 — « Verdict chiffré de session fraîche dans close-batch » (epic « Reco de session fraîche », backlog #109)
+
+La checklist de `/close-batch` recommandait une session fraîche avec « oui si le sujet change » —
+un jugement à l'œil, jamais vérifiable, contredit par l'étape 7 de `close-batch.md` qui la
+recommandait de toute façon inconditionnellement.
+
+- **`scripts/close-batch.js`** — `freshSessionVerdict(root)` : verdict oui/non + raison chiffrée
+  fondés sur le palier d'occupation déjà persisté par le hook Stop (zéro relecture du transcript).
+  Seuil = `BUCKETS[1]` (300k), repris du nudge subagent existant (déjà calibré) plutôt qu'inventé.
+  La priorité « après clôture » (lot ouvert) reste inchangée et passe avant le verdict.
+- **`commands/close-batch.md`** — étape 7 renvoie explicitement au verdict de la checklist au lieu
+  de le contredire par une reco fixe.
+- Tests : verdict non (session inconnue), non (palier < 300k), oui (palier ≥ 300k), priorité
+  « après clôture » sur lot ouvert.
+
 ## 2026-07-28 — « Carte de clôture unique + reco session fraîche hors arbitre » (epic « Reco de session fraîche », backlog #108)
 
 Premier lot de l'epic. Le tour de clôture d'un lot poussait **trois** nudges ℹ (lot clos + suivant,

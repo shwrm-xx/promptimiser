@@ -42,6 +42,9 @@ Point de départ : `node ~/.claude/promptimizer/scripts/close-batch.js`
    Le handoff manuel a une vie unique — injecté au démarrage suivant, il est aussitôt
    rebasculé en auto puis écrasé par le premier Stop. Cette copie tier 2 (locale, non
    versionnée) garde son texte intégral ; la fiche du 6bis en garde le stable.
-7. Recommander une session fraîche : le handoff y sera injecté automatiquement au démarrage.
+7. Suivre le verdict « session fraîche recommandée » du bloc « Économie de contexte » de la
+   checklist (oui/non + raison chiffrée sur le palier d'occupation) — ne pas le contredire par
+   un jugement à l'œil. Si oui : le recommander, le handoff y sera injecté automatiquement au
+   démarrage.
 
 Ne pas déclarer « fini » sans preuve.
