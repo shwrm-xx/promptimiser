@@ -212,6 +212,25 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   Consultation : `/pmz:archive` (index), `/pmz:archive 57` (la fiche du lot #57), le brut seulement
   sur confirmation explicite. Rétro-remplir un projet existant :
   `node ~/.claude/promptimizer/scripts/archive.js backfill --dry-run` puis sans `--dry-run`.
+- **Moteur de mesure de session** (manuel, aucun hook ne l'appelle) : les nudges de session
+  raisonnent sur le *dernier* tour ; ce moteur mesure une session **entière**, ou une fenêtre de
+  sessions, pour savoir où part réellement l'argent. Cinq indicateurs : **préfixe** (le plancher
+  payé à chaque tour avant toute conversation), **occupation** (médiane / p90 / max),
+  **accrétion** (tokens/tour — à quelle vitesse la session s'alourdit), **décomposition du
+  cache-read** en 4 postes (préfixe rejoué · sortie de l'IA relue · résultats d'outils · prompts et
+  injections), et **loi d'échelle** `coût ∝ tours^k`. Le contre-intuitif que ça sort : la sortie de
+  l'IA elle-même pèse plus lourd que les fichiers lus, et `k > 1` — scinder une session en deux
+  coûte moins cher que la laisser courir. La décomposition affiche son propre contrôle de validité
+  et **avertit** quand ses parts ne sont plus que des plafonds (compaction, raisonnement étendu).
+
+  ```bash
+  node ~/.claude/promptimizer/scripts/metrics.js --sessions 20
+  ```
+
+  Sans argument : la session la plus récente. `--json` pour une sortie machine, `--transcript <p>`
+  pour un transcript précis, `--cwd <p>` pour un autre projet, `--all` pour tout l'historique.
+  Sort toujours en code 0 : sans transcript, l'échec est une valeur (`{"ok":false,…}`), jamais une
+  erreur qui casse l'appelant.
 
 ## Slash commands (secours)
 

@@ -7392,6 +7392,219 @@ section('Carte de clôture unique + coda de session fraîche hors arbitre (epic 
   ok(/session fraîche/.test(messages.MSG_ACTIF_SLIM), 'P10 : MSG_ACTIF_SLIM aussi (projet déjà augmenté)');
 }
 
+// ============ M110. MOTEUR DE MESURE DE SESSION (lot #110) ============
+section('Moteur de mesure — préfixe, occupation, accrétion, décomposition, loi d\'échelle');
+{
+  const metrics = require(path.join(PKG, 'lib', 'metrics'));
+  const METRICS_CLI = path.join(PKG, 'scripts', 'metrics.js');
+  const MDIR = path.join(SANDBOX, 'm110');
+  fs.mkdirSync(MDIR, { recursive: true });
+  const mFile = (name, lines) => {
+    const p = path.join(MDIR, name);
+    fs.writeFileSync(p, lines.join('\n') + '\n');
+    return p;
+  };
+  // Ligne assistant facturée : `size` = input + cache_creation + cache_read.
+  const aLine = (input, cr, out, model) => JSON.stringify({
+    type: 'assistant',
+    message: { model: model || 'claude-opus-5', usage: { input_tokens: input, cache_read_input_tokens: cr, cache_creation_input_tokens: 0, output_tokens: out } },
+  });
+
+  // --- M110-1. Localisation : slug du cwd, dossier absent ---
+  ok(metrics.projectSlug('/Users/x.y/Documents/GitHub/p') === '-Users-x-y-Documents-GitHub-p',
+    'M110-1 : projectSlug remplace tout non-alphanumérique par « - »');
+  ok(metrics.listTranscripts('/dossier/qui/nexiste/pas/du/tout').length === 0,
+    'M110-1 : listTranscripts sur projet inconnu → tableau vide (fail-open)');
+
+  // --- M110-2. Fail-open de analyzeSession sur les 3 entrées dégradées ---
+  ok(metrics.analyzeSession(path.join(MDIR, 'absent.jsonl')).reason === 'no-transcript',
+    'M110-2 : fichier absent → reason no-transcript');
+  const mEmpty = path.join(MDIR, 'empty.jsonl');
+  fs.writeFileSync(mEmpty, '');
+  ok(metrics.analyzeSession(mEmpty).reason === 'empty-transcript',
+    'M110-2 : fichier vide → reason empty-transcript');
+  ok(metrics.analyzeSession(mFile('nousage.jsonl', ['{"type":"user","message":{"content":"bonjour"}}'])).reason === 'no-usage',
+    'M110-2 : transcript sans ligne usage → reason no-usage');
+
+  // --- M110-3. Session de référence, arithmétique entièrement vérifiable ---
+  // 5 tours de tailles 10k/12k/14k/16k/18k, sorties 100/200/300/400/500,
+  // 360 chars de tool_result, 36 chars de texte user, 72 chars d'attachement.
+  const ref = mFile('ref.jsonl', [
+    aLine(10000, 0, 100),
+    JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: 'r'.repeat(360) }] } }),
+    aLine(0, 12000, 200),
+    JSON.stringify({ type: 'user', message: { content: 'u'.repeat(36) } }),
+    aLine(0, 14000, 300),
+    JSON.stringify({ type: 'attachment', content: 'a'.repeat(72) }),
+    aLine(0, 16000, 400),
+    '{"type":"assistant","message":{"usa',                                    // ligne tronquée
+    JSON.stringify({ type: 'assistant', isSidechain: true, message: { model: 'claude-opus-5', usage: { input_tokens: 99999, output_tokens: 9999 } } }),
+    aLine(0, 18000, 500),
+  ]);
+  const r = metrics.analyzeSession(ref);
+  ok(r.ok === true, 'M110-3 : session de référence analysée');
+  ok(r.turns === 5, 'M110-3 : 5 tours facturés (ligne tronquée ignorée, sidechain exclu)');
+  ok(r.sidechainTurns === 1, 'M110-3 : le tour de sous-agent est compté à part, pas dans les stats');
+  ok(r.prefix === 10000, 'M110-3 : préfixe = plus petite taille de prompt observée');
+  ok(r.occupancy.median === 14000, 'M110-3 : occupation médiane = 14000');
+  ok(r.occupancy.p90 === 18000, 'M110-3 : p90 par rang le plus proche = 18000');
+  ok(r.occupancy.max === 18000 && r.occupancy.min === 10000, 'M110-3 : max/min de l\'occupation');
+  ok(r.accretion === 2000, 'M110-3 : accrétion = 2000 tokens/tour (pas constant → pente exacte)');
+  ok(r.totals.output === 1500 && r.totals.cacheRead === 60000, 'M110-3 : totaux output/cache-read');
+  ok(r.chars.toolResults === 360 && r.chars.userText === 36 && r.chars.attachments === 72,
+    'M110-3 : caractères ventilés en tool_result / texte user / attachement');
+
+  // Décomposition : k = (5−1)/2 = 2. préfixe×T = 50000 ; output×k = 3000 ;
+  // 360/3,6×2 = 200 ; (36+72)/3,6×2 = 60. Somme 53260, réel 60000 → contrôle 0,8877.
+  const b = r.cacheReadBreakdown;
+  ok(b.prefix === 50000, 'M110-3 : poste préfixe = préfixe × T (relu à CHAQUE tour, pas k fois)');
+  ok(b.output === 3000, 'M110-3 : poste sortie IA = output total × k');
+  ok(Math.abs(b.toolResults - 200) < 1e-9, 'M110-3 : poste tool_results = chars / 3,6 × k');
+  ok(Math.abs(b.prompts - 60) < 1e-9, 'M110-3 : poste prompts = (texte user + attachements) / 3,6 × k');
+  ok(Math.abs(b.sum - 53260) < 1e-9, 'M110-3 : somme des 4 postes');
+  ok(Math.abs(b.ratio - 53260 / 60000) < 1e-9, 'M110-3 : contrôle de validité = somme / cache-read réel');
+  ok(Math.abs(b.shares.prefix + b.shares.output + b.shares.toolResults + b.shares.prompts - 1) < 1e-9,
+    'M110-3 : les 4 parts somment à 1');
+
+  // Coût : input 10000 @15 = 0,15 ; cache-read 60000 @1,5 = 0,09 ; sortie 1500 @75 = 0,1125.
+  ok(Math.abs(r.cost.total - 0.3525) < 1e-9, 'M110-3 : coût total au tarif opus');
+  ok(Math.abs(r.costPerTurn - 0.3525 / 5) < 1e-9, 'M110-3 : coût par tour');
+  ok(r.cacheHitRate === 1, 'M110-3 : cache hit = read / (read + write)');
+  ok(r.tier === 'opus' && r.models['claude-opus-5'] === 5, 'M110-3 : palier dominant et décompte des modèles');
+
+  // --- M110-4. Table de tarifs et détection de palier ---
+  ok(metrics.tierForModel('claude-opus-5') === 'opus', 'M110-4 : opus détecté');
+  ok(metrics.tierForModel('claude-sonnet-5') === 'sonnet', 'M110-4 : sonnet détecté');
+  ok(metrics.tierForModel('claude-haiku-4-5-20251001') === 'haiku', 'M110-4 : haiku détecté');
+  ok(metrics.tierForModel('claude-fable-5') === 'sonnet', 'M110-4 : fable tarifé comme sonnet');
+  ok(metrics.tierForModel(null) === metrics.DEFAULT_TIER && metrics.DEFAULT_TIER === 'sonnet',
+    'M110-4 : modèle absent/inconnu → repli sonnet (jamais opus, sinon vieilles sessions gonflées)');
+  ok(metrics.PRICES.opus.output === 75 && metrics.PRICES.opus.cacheRead === 1.5 &&
+     metrics.PRICES.sonnet.input === 3 && metrics.PRICES.haiku.cacheWrite === 1.25,
+    'M110-4 : tarifs $/M conformes à la table de référence');
+  const haikuR = metrics.analyzeSession(mFile('haiku.jsonl', [
+    aLine(1000000, 0, 0, 'claude-haiku-4-5-20251001'), aLine(1000000, 0, 0, 'claude-haiku-4-5-20251001'), aLine(1000000, 0, 0, 'claude-haiku-4-5-20251001'),
+  ]));
+  ok(Math.abs(haikuR.cost.input - 3) < 1e-9, 'M110-4 : 3 M tokens d\'entrée haiku = $3 (tarif appliqué par requête)');
+
+  // --- M110-5. Primitives statistiques ---
+  ok(metrics.median([1, 2, 3, 4]) === 2.5 && metrics.median([1, 2, 3]) === 2, 'M110-5 : médiane paire/impaire');
+  ok(metrics.median([]) === null, 'M110-5 : médiane d\'un vide → null');
+  ok(metrics.percentile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 0.9) === 9, 'M110-5 : p90 sur 10 valeurs = 9e rang');
+  ok(metrics.slopeByIndex([5, 5]) === null, 'M110-5 : pente sous 3 points → null (pas une tendance)');
+  ok(metrics.slopeByIndex([1000, 1000, 1000]) === 0, 'M110-5 : série plate → pente 0');
+  ok(metrics.slopeByIndex([0, -10, -20, -30]) === -10, 'M110-5 : pente négative (session qui s\'allège)');
+  const fit = metrics.logLogFit([[10, 2 * Math.pow(10, 1.5)], [20, 2 * Math.pow(20, 1.5)], [40, 2 * Math.pow(40, 1.5)], [80, 2 * Math.pow(80, 1.5)]]);
+  ok(fit && Math.abs(fit.exponent - 1.5) < 1e-9, 'M110-5 : logLogFit retrouve l\'exposant 1,5 d\'une loi de puissance exacte');
+  ok(fit && Math.abs(fit.intercept - 2) < 1e-6 && Math.abs(fit.r2 - 1) < 1e-9 && fit.n === 4,
+    'M110-5 : logLogFit retrouve le coefficient, r² = 1, n = 4');
+  ok(metrics.logLogFit([[0, 5], [-1, 5], [10, 0], [20, 3]]) === null,
+    'M110-5 : points à x ou y non positifs écartés → moins de 3 points exploitables → null');
+
+  // --- M110-6. Lecture par blocs : une ligne plus longue que le chunk de 1 Mo ---
+  const bigLine = JSON.stringify({ type: 'user', message: { content: 'z'.repeat(1500000) } });
+  const bigR = metrics.analyzeSession(mFile('big.jsonl', [bigLine, aLine(5000, 0, 10)]));
+  ok(bigR.ok && bigR.turns === 1 && bigR.chars.userText === 1500000,
+    'M110-6 : ligne de 1,5 Mo recollée entre deux blocs de lecture (aucune perte)');
+
+  // --- M110-7. Fenêtre de sessions + loi d'échelle, via CLAUDE_CONFIG_DIR ---
+  const CFG = path.join(SANDBOX, 'm110-cfg');
+  const FAKE_CWD = '/fake/projet-mesure';
+  const PDIR = path.join(CFG, 'projects', metrics.projectSlug(FAKE_CWD));
+  fs.mkdirSync(PDIR, { recursive: true });
+  const prevCfg = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = CFG;
+  try {
+    // 4 sessions de 20/40/80/160 tours, TOUS les tours strictement identiques : le coût est
+    // alors exactement proportionnel au nombre de tours, donc l'exposant attendu vaut 1.
+    // (Facturer le 1er tour en entrée plutôt qu'en cache-read introduirait un terme constant
+    // qui écraserait la pente log-log — c'est précisément l'effet que l'exposant doit détecter.)
+    [20, 40, 80, 160].forEach((T, si) => {
+      const lines = [];
+      for (let i = 0; i < T; i++) lines.push(aLine(0, 20000, 100));
+      fs.writeFileSync(path.join(PDIR, `s${si}.jsonl`), lines.join('\n') + '\n');
+    });
+    fs.writeFileSync(path.join(PDIR, 'vide.jsonl'), '');            // écarté : vide
+    fs.writeFileSync(path.join(PDIR, 'sansusage.jsonl'), '{"type":"user"}\n'); // écarté : no-usage
+    fs.writeFileSync(path.join(PDIR, 'notes.txt'), 'pas un transcript');       // ignoré : mauvaise extension
+
+    const w = metrics.analyzeWindow(FAKE_CWD, { limit: 20 });
+    ok(w.ok === true && w.count === 4, 'M110-7 : 4 sessions exploitables retenues');
+    ok(w.skipped.length === 1 && w.skipped[0].reason === 'no-usage',
+      'M110-7 : transcript sans usage écarté et reporté (le vide est filtré en amont, le .txt ignoré)');
+    ok(w.turns === 300, 'M110-7 : total des tours = 20+40+80+160');
+    ok(w.prefix.median === 20000 && w.occupancy.median === 20000,
+      'M110-7 : préfixe et occupation agrégés (médiane des médianes, pas des tours bruts)');
+    ok(w.scaling && w.scaling.n === 4 && Math.abs(w.scaling.exponent - 1) < 1e-9 && Math.abs(w.scaling.r2 - 1) < 1e-9,
+      'M110-7 : loi d\'échelle du coût = tours^1 exactement sur des tours identiques');
+    ok(w.scaling.minTurns === metrics.MIN_TURNS_FOR_SCALING && w.scaling.metric === 'cost',
+      'M110-7 : le seuil et la métrique de la régression sont reportés (un exposant sur 3 sessions ne vaut pas un exposant sur 117)');
+    ok(w.scalingCacheRead && w.scalingCacheRead.metric === 'cacheRead',
+      'M110-7 : seconde régression sur le cache-read');
+    ok(w.cacheReadBreakdown.sum > 0 && Math.abs(
+      w.cacheReadBreakdown.shares.prefix + w.cacheReadBreakdown.shares.output +
+      w.cacheReadBreakdown.shares.toolResults + w.cacheReadBreakdown.shares.prompts - 1) < 1e-9,
+      'M110-7 : décomposition agrégée, parts sommant à 1');
+    ok(w.accretion.n === 4 && w.accretion.median != null, 'M110-7 : accrétion médiane sur les 4 sessions');
+
+    // Seuil de régression : à 200 tours minimum, aucune session ne qualifie → null, pas de crash.
+    const wHigh = metrics.analyzeWindow(FAKE_CWD, { limit: 20, minTurns: 200 });
+    ok(wHigh.ok === true && wHigh.scaling === null,
+      'M110-7 : aucune session au-dessus du seuil → scaling null (jamais un exposant inventé)');
+    // Limite de fenêtre honorée : elle borne les TRANSCRIPTS lus, pas les sessions retenues —
+    // un transcript écarté (no-usage) consomme une place, sinon la borne ne borne plus la lecture.
+    const w2 = metrics.analyzeWindow(FAKE_CWD, { limit: 2 });
+    ok(w2.count + w2.skipped.length === 2, 'M110-7 : --sessions borne la fenêtre de transcripts lus');
+    ok(metrics.analyzeWindow('/fake/aucun-projet', {}).ok === false, 'M110-7 : projet sans transcript → ok false');
+
+    // --- M110-8. CLI : JSON parsable, texte non vide, exit 0 même en échec ---
+    const cliJson = runNode(METRICS_CLI, ['--json', '--cwd', FAKE_CWD, '--sessions', '10'], { CLAUDE_CONFIG_DIR: CFG });
+    ok(cliJson.code === 0, 'M110-8 : CLI --sessions --json sort en code 0');
+    let jw = null;
+    try { jw = JSON.parse(cliJson.out); } catch (_) {}
+    ok(jw && jw.ok === true && jw.count === 4 && jw.scaling && jw.scaling.exponent != null,
+      'M110-8 : JSON de fenêtre parsable et complet (5e indicateur présent)');
+    ok(jw && Array.isArray(jw.sessions) && jw.sessions.length === 4 && typeof jw.sessions[0].cost === 'number',
+      'M110-8 : sessions résumées en une ligne chacune dans le JSON de fenêtre (pas l\'analyse complète)');
+    ok(jw && jw.prefix && jw.occupancy && jw.accretion && jw.cacheReadBreakdown,
+      'M110-8 : les 5 indicateurs sont tous dans le JSON');
+
+    const cliOne = runNode(METRICS_CLI, ['--json', '--transcript', ref], { CLAUDE_CONFIG_DIR: CFG });
+    let j1 = null;
+    try { j1 = JSON.parse(cliOne.out); } catch (_) {}
+    ok(cliOne.code === 0 && j1 && j1.turns === 5 && j1.prefix === 10000,
+      'M110-8 : --transcript analyse un transcript précis');
+
+    const cliText = runNode(METRICS_CLI, ['--cwd', FAKE_CWD, '--sessions', '10'], { CLAUDE_CONFIG_DIR: CFG });
+    ok(cliText.code === 0 && /Décomposition du cache-read/.test(cliText.out) && /loi d'échelle/.test(cliText.out),
+      'M110-8 : sortie texte lisible (décomposition + loi d\'échelle)');
+
+    const cliKo = runNode(METRICS_CLI, ['--json', '--cwd', '/fake/aucun-projet'], { CLAUDE_CONFIG_DIR: CFG });
+    let jk = null;
+    try { jk = JSON.parse(cliKo.out); } catch (_) {}
+    ok(cliKo.code === 0 && jk && jk.ok === false && jk.reason === 'no-transcript',
+      'M110-8 : transcript absent → exit 0 et échec exprimé EN VALEUR dans le JSON (jamais sur stderr)');
+    const cliKoText = runNode(METRICS_CLI, ['--cwd', '/fake/aucun-projet'], { CLAUDE_CONFIG_DIR: CFG });
+    ok(cliKoText.code === 0 && /Statut/.test(cliKoText.out), 'M110-8 : même échec en texte → exit 0 + statut lisible');
+
+    // --- M110-9. Avertissement de contrôle : le ratio n'est pas silencieusement présenté comme fiable ---
+    // Session dont tout l'output est du raisonnement non rejoué : la somme surestime largement.
+    const inflated = mFile('inflated.jsonl', [
+      aLine(10000, 0, 60000), aLine(0, 10500, 60000), aLine(0, 11000, 60000), aLine(0, 11500, 60000), aLine(0, 12000, 60000),
+    ]);
+    const ri = metrics.analyzeSession(inflated);
+    ok(ri.cacheReadBreakdown.ratio > 1.15, 'M110-9 : cas de surestimation construit (contrôle > 1,15)');
+    const cliWarn = runNode(METRICS_CLI, ['--transcript', inflated], { CLAUDE_CONFIG_DIR: CFG });
+    ok(/contrôle > 1,15/.test(cliWarn.out) && /plafonds/.test(cliWarn.out),
+      'M110-9 : contrôle dégradé → avertissement explicite, parts annoncées comme plafonds');
+    const cliNoWarn = runNode(METRICS_CLI, ['--transcript', ref], { CLAUDE_CONFIG_DIR: CFG });
+    ok(!/contrôle > 1,15/.test(cliNoWarn.out), 'M110-9 : contrôle sain → pas d\'avertissement parasite');
+  } finally {
+    if (prevCfg === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = prevCfg;
+  }
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

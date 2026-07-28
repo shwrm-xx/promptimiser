@@ -143,6 +143,34 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   `{lastDriftTurn}`) : au plus 1 nudge par fenêtre de 6 tours. Fail-open (aucun état → `null`).
   Appelé par `stop.js` **après** `computeTurn` (lit l'historique qu'il vient d'écrire), indépendant
   du projet (transcript + état seuls → marche hors repo).
+- **Moteur de mesure de session** (`lib/metrics.js` + `scripts/metrics.js`, lot #110) : le seul
+  composant **hors bande** de la famille. `occupancy.js` et `turnstats.js` sont des capteurs temps
+  réel appelés dans des hooks — queue du transcript, plafond de lecture, état incrémental ; le
+  moteur fait l'inverse : **balayage complet** d'un ou N transcripts (`forEachLine`, blocs de 1 Mo,
+  synchrone, O(1) mémoire) pour produire des statistiques agrégées. Aucun hook ne l'appelle et
+  aucun ne doit l'appeler (coût de lecture) ; il est invoqué à la main ou par une commande.
+  Cinq indicateurs, avec ce que chacun décide :
+  **préfixe** = plus petite taille de prompt de la session (socle système + outils + CLAUDE.md +
+  skills + injections de hook — le plancher payé avant toute conversation) ;
+  **occupation** = médiane / p90 / max des tailles de prompt (`input + cache_creation + cache_read`
+  sur les entrées `type:"assistant"` non-sidechain) ; **accrétion** = pente de la régression de
+  `prompt(t)` sur l'index de tour, en tokens/tour ; **décomposition du cache-read** en 4 postes
+  (`préfixe×T`, `output×k`, `tool_results/3,6×k`, `(texte user + attachements)/3,6×k`, avec
+  `k = (T−1)/2` relectures moyennes d'un token émis) ; **loi d'échelle** = exposant de la régression
+  log-log du coût sur le nombre de tours. Le dernier est celui qui commande la doctrine : mesuré
+  **> 1** (≈ 1,2 sur le coût, ≈ 1,5 sur le cache-read), il dit que scinder une session en deux
+  coûte moins cher que la laisser courir — d'où la prescription de session fraîche.
+  La décomposition embarque son propre **contrôle de validité** (`ratio = somme / cache-read réel`,
+  viser ≈ 1,0) : au-delà de 1,15 le CLI **avertit et déclasse les parts en plafonds**, parce que le
+  modèle suppose que tout ce qui est émis reste relu — deux faits le violent, la compaction et le
+  raisonnement étendu (`output_tokens` compte le thinking, qui n'est PAS rejoué). Un chiffre de
+  décomposition ne doit jamais être lu sans son ratio. Le coût cache-write est un **plancher**
+  (tarif 5 min ; le TTL 1 h, non exposé de façon fiable par les transcripts, facturerait ×2) ;
+  les 3 autres postes de coût sont exacts. Localisation des transcripts par
+  `projectSlug(cwd)` = chemin absolu dont tout caractère non alphanumérique devient `-`
+  (`<claudeDir>/projects/<slug>/<sessionId>.jsonl`, donc sensible à `CLAUDE_CONFIG_DIR`).
+  Fail-open sans exception : fichier absent / vide / sans usage / illisible → `{ok:false, reason}`,
+  le CLI sort **toujours** en code 0 et exprime l'échec **en valeur** dans le JSON.
 - **Vigie de dette git non commitée** (`lib/gitdebt.js: evaluate`, lot #73) : signal de **tendance**
   distinct du rappel de clôture one-shot (#68, qui part au 1er tour sale puis se tait). Nudge **WARN**
   (`gitDebtMessage`) quand un **diff significatif grossit sur ≥ 3 tours SANS commit** — travail non

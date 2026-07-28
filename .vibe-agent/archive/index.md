@@ -112,3 +112,4 @@
 #0107 | 2026-07-28 | 633a91e | epic:Formalisation US | verify:inconnu | fiche:oui | Validation de structure de l'US
 #0108 | 2026-07-28 | d2bb827 | epic:Reco de session fraîche | verify:inconnu | fiche:non | Carte de clôture unique + reco session fraîche hors arbitre
 #0109 | 2026-07-28 | 643f473 | epic:Reco de session fraîche | verify:inconnu | fiche:oui | Verdict chiffré de session fraîche dans close-batch
+#0110 | 2026-07-28 | d9333f3 | epic:Économie de contexte | verify:inconnu | fiche:non | Moteur de mesure de session

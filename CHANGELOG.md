@@ -2,6 +2,48 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-28 — « Moteur de mesure de session » (epic « Économie de contexte », backlog #110)
+
+Premier lot de l'epic, et son bloquant : l'analyse multiversion qui a fondé le plan #110→#114
+tournait sur des scripts jetables perdus avec leur scratchpad. Aucune de ses conclusions n'était
+reproductible. Ce lot les réécrit en composant versionné du package.
+
+- **`lib/metrics.js`** (nouveau) — moteur **hors bande**, seul de sa famille : `occupancy.js` et
+  `turnstats.js` sont des capteurs temps réel appelés dans des hooks (queue du transcript, plafond
+  de lecture) ; celui-ci balaie un transcript **entier** (`forEachLine`, blocs de 1 Mo, synchrone,
+  O(1) mémoire) et n'est appelé par aucun hook. Cinq indicateurs : préfixe (plancher payé à chaque
+  tour), occupation (médiane/p90/max), accrétion (pente en tokens/tour), décomposition du cache-read
+  en 4 postes (`préfixe×T`, `output×k`, `tool_results/3,6×k`, `prompts/3,6×k` avec `k=(T−1)/2`), et
+  loi d'échelle `coût ∝ tours^k` par régression log-log. Table de tarifs $/M par palier, palier
+  détecté par regex sur `message.model` (fable tarifé comme sonnet, inconnu → sonnet et non opus,
+  sinon les vieilles sessions seraient gonflées). Tours de sous-agent (`isSidechain`) comptés à part :
+  leur contexte est le leur, il ne pèse pas sur l'occupation principale.
+- **`scripts/metrics.js`** (nouveau) — CLI : session courante par défaut, `--sessions N` /`--all`
+  pour une fenêtre, `--transcript`, `--cwd`, `--min-turns`, `--json`. Sortie texte ou JSON, **exit 0
+  systématique** — sans transcript l'échec est une valeur (`{"ok":false,"reason":…}`), jamais un
+  code d'erreur ni un message sur stderr.
+- **Honnêteté du chiffre**, plutôt qu'un chiffre lisse : la décomposition publie son contrôle de
+  validité (`somme / cache-read réel`, viser ≈ 1,0) et au-delà de 1,15 le CLI **avertit et déclasse
+  ses parts en plafonds** — le modèle suppose que tout ce qui est émis reste relu, ce que violent la
+  compaction et le raisonnement étendu (`output_tokens` compte le thinking, non rejoué). Même
+  discipline sur la régression, qui reporte son seuil et son `n` (un exposant sur 3 sessions ne vaut
+  pas un exposant sur 117) et vaut `null` plutôt qu'inventé sous 3 sessions qualifiées. Le coût
+  cache-write est documenté comme un **plancher** (tarif 5 min ; le TTL 1 h facturerait ×2).
+- **Contrôle de non-régression de l'analyse** : sur les 19 sessions de ce dépôt, le moteur retrouve
+  l'ordre de grandeur de la mesure de référence faite à la main sur le projet SDD — parts ≈ 40 / 39 /
+  17 / 4 % contre 31 / 47 / 17 / 5, et `cache-read ∝ tours^1,6` contre 1,48. Chiffres **glissants**
+  (la session courante fait partie de la fenêtre et grossit à chaque tour) : c'est la reproduction du
+  résultat qui est acquise, pas la décimale. La conclusion de doctrine tient donc sur du code
+  versionné : la sortie de l'IA pèse plus que les fichiers lus, et `k > 1`.
+- Tests : 66 cas (`M110-*`), dont une session de référence à l'arithmétique entièrement vérifiable
+  (préfixe, médiane, p90, pente exacte, les 4 postes au token près, coût au tarif opus), les
+  primitives statistiques (loi de puissance exacte retrouvée à 1e-9), le recollage d'une ligne de
+  1,5 Mo entre deux blocs de lecture, les 4 modes de fail-open, et le CLI de bout en bout via
+  `CLAUDE_CONFIG_DIR` en bac à sable. Suite complète : 1797 OK / 0 échec.
+- **Correction de télémétrie au passage** : le lot #110 était marqué `done` dans le backlog sur le
+  commit du plan (`d9333f3`, `closed_verify: "timeout"`) alors qu'aucun fichier n'existait — clôture
+  fantôme, rouverte via `reopenLot`. La cause est l'objet du lot #111.
+
 ## 2026-07-28 — « Verdict chiffré de session fraîche dans close-batch » (epic « Reco de session fraîche », backlog #109)
 
 La checklist de `/close-batch` recommandait une session fraîche avec « oui si le sujet change » —
