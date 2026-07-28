@@ -2,6 +2,24 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-28 — « Trailer PMZ-Jira + pointeurs dans la fiche d'archive » (epic « US & Jira », backlog #103)
+
+Troisième lot de l'epic « US & Jira » : fait remonter les pointeurs `us`/`integrations.jira`
+posés par #101/#102 jusqu'aux deux surfaces de clôture qui les ignoraient encore.
+
+- **Trailer `PMZ-Jira`** (`scripts/close-batch.js`) — ajouté au bloc « Trailers du commit »
+  (même patron que `PMZ-Lot`/`PMZ-Cost`/`PMZ-Model`, lot #60) **uniquement** si le lot en cours
+  porte une clé `integrations.jira.key` — aucune ligne pour un lot sans clé.
+- **`ficheSkeleton`** (`lib/archive.js`) — porte désormais `jira`/`us` dans la ligne méta
+  d'en-tête et en lignes dédiées de la section « Liens », toujours conditionnel — un lot sans
+  l'un ou l'autre ne produit aucune ligne (pas de `null`, pas de valeur inventée).
+- **Bug corrigé en passant** (`scripts/audit-batch.js`) — `backlogSummary().current` ne
+  portait ni `epic` ni `us` du lot réel : la ligne méta de la fiche affichait `epic : —` pour
+  *tout* lot en cours depuis le lot #95 (bug pré-existant, jamais remarqué faute de test dédié
+  sur ce champ). Corrigé en même temps que l'ajout de `us`, périmètre déjà touché.
+- Tests : +7 assertions (`ficheSkeleton` avec/sans jira+us, trailer avec/sans clé, intégration
+  `close-batch` de bout en bout).
+
 ## 2026-07-28 — « Champ integrations.jira + CLI et export » (epic « US & Jira », backlog #102)
 
 Deuxième lot de l'epic « US & Jira », même philosophie que le pointeur `us` (#101) : un

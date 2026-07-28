@@ -60,6 +60,8 @@ function ficheBlock(root, cur, verifyVerdict) {
       commit: (git(['rev-parse', '--short', 'HEAD'], root) || '').trim(),
       verifyCmd: cur.verify,
       verify: verifyVerdict,
+      jira: (cur.integrations && cur.integrations.jira && cur.integrations.jira.key) || undefined,
+      us: cur.us || undefined,
     });
     return `
 ## Fiche d'archive (tier 1)
@@ -85,7 +87,11 @@ function trailerBlock(l) {
   if (!l) return '';
   const model = l.model_hint ? `${l.model_hint}${l.effort_hint ? `/${l.effort_hint}` : ''}` : 'non posé';
   const cost = l.cost_tokens > 0 ? `~${fmtK(l.cost_tokens)} tokens` : 'non mesuré';
-  return `\n\n## Trailers du commit\n\nÀ coller en pied du message de commit :\n\`\`\`\nPMZ-Lot: ${l.id}\nPMZ-Cost: ${cost}\nPMZ-Model: ${model}\n\`\`\`\n`;
+  // PMZ-Jira (epic « US & Jira », lot #103) : trailer optionnel, uniquement si le lot porte
+  // une clé Jira posée (integrations.jira.key, lot #102) — jamais de ligne pour un lot sans clé.
+  const jira = l.integrations && l.integrations.jira && l.integrations.jira.key;
+  const jiraLine = jira ? `\nPMZ-Jira: ${jira}` : '';
+  return `\n\n## Trailers du commit\n\nÀ coller en pied du message de commit :\n\`\`\`\nPMZ-Lot: ${l.id}\nPMZ-Cost: ${cost}\nPMZ-Model: ${model}${jiraLine}\n\`\`\`\n`;
 }
 // Base des chemins d'aide affichés : racine du plugin en mode plugin, sinon install manuelle.
 const PMZ_BASE = (process.env.CLAUDE_PLUGIN_ROOT || '').trim() || '~/.claude/promptimizer';

@@ -1036,6 +1036,16 @@ section('Archive tier 1/2 — fiches, CLI à tiroirs, commande, pare-feu canari 
   ok(/archive\/raw\/lot-0012\.md/.test(sk), 'ficheSkeleton : lien vers le brut tier 2 (id zero-paddé 4 chiffres)');
   ok(archive.ficheSkeleton({ id: 3 }).includes('verify : aucune → inconnu'), 'ficheSkeleton : lot sans verify → « aucune → inconnu », jamais de valeur inventée');
 
+  // --- Pointeurs US/Jira (lot #103) : portés en-tête + section Liens quand présents, jamais inventés.
+  const skJiraUs = archive.ficheSkeleton({ id: 13, title: 'Titre', epic: 'US & Jira', date: '2026-07-28', commit: 'def5678', jira: 'PROJ-42', us: 'docs/us/us-42.md' });
+  ok(/- epic : US & Jira · clos : 2026-07-28 · commit : def5678 · session : inconnue · jira : PROJ-42 · us : docs\/us\/us-42\.md/.test(skJiraUs),
+    'ficheSkeleton : en-tête porte jira et us quand présents');
+  ok(/- Jira : PROJ-42/.test(skJiraUs) && /- US : docs\/us\/us-42\.md/.test(skJiraUs),
+    'ficheSkeleton : section Liens porte les lignes Jira et US');
+  const skNoJiraUs = archive.ficheSkeleton({ id: 14, title: 'Titre', date: '2026-07-28', commit: 'def5678' });
+  ok(!/jira :/.test(skNoJiraUs) && !/us :/.test(skNoJiraUs) && !/- Jira :/.test(skNoJiraUs) && !/- US :/.test(skNoJiraUs),
+    'ficheSkeleton : lot sans jira ni us → AUCUNE ligne (pas de null, pas de valeur inventée)');
+
   // --- Écriture de la fiche : versionnée, stagée, index enrichi en fiche:oui.
   const l1 = backlog.addLot(repo, 'Lot avec fiche', 'fait quand : …', null, 'Archive à tiroirs');
   backlog.startLot(repo, l1.id);
@@ -1125,6 +1135,17 @@ section('Archive tier 1/2 — fiches, CLI à tiroirs, commande, pare-feu canari 
   ok(new RegExp(`<!-- pmz:archive:lot ${lcb.id} -->`).test(cbOut) && /## Décisions \(et pourquoi\)/.test(cbOut), 'close-batch : squelette pré-rempli (marqueur + sections)');
   ok(/verify : `node -e "process\.exit\(0\)"` → OK/.test(cbOut), 'close-batch : résultat verify RÉEL injecté dans le squelette');
   ok(/archive\.js raw --id \d+ --file \.vibe-agent\/handoff\.md/.test(cbOut), 'close-batch : archivage du handoff manuel AVANT sa destruction');
+
+  // --- /close-batch : le squelette de fiche porte jira/us du lot en cours (lot #103), jamais inventés.
+  fs.mkdirSync(path.join(cb, 'docs', 'us'), { recursive: true });
+  fs.writeFileSync(path.join(cb, 'docs', 'us', 'us-99.md'), '# US 99\n');
+  const lcbJU = backlog.addLot(cb, 'Lot Jira US', 'fait quand : …', 'opus', 'US & Jira', null, null,
+    null, null, 'docs/us/us-99.md', 'PROJ-99');
+  backlog.startLot(cb, lcbJU.id);
+  const cbOutJU = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', cb]).out;
+  ok(/- Jira : PROJ-99/.test(cbOutJU) && /- US : docs\/us\/us-99\.md/.test(cbOutJU),
+    'close-batch : squelette de fiche porte jira et us du lot en cours');
+  backlog.dropLot(cb, lcbJU.id);
   const cbMd = fs.readFileSync(path.join(PKG, 'commands', 'close-batch.md'), 'utf8');
   ok(/^6bis\./m.test(cbMd) && /^6ter\./m.test(cbMd), 'close-batch.md : étapes 6bis (fiche) et 6ter (handoff archivé) posées avant le 7');
   ok(cbMd.indexOf('6bis.') < cbMd.indexOf('7. Recommander'), 'close-batch.md : la fiche est rédigée avant la recommandation de session fraîche');
@@ -1941,6 +1962,22 @@ section('backlog — verify + closed_occupancy (lot #29)');
   // V13. close-batch : aucun lot en cours → pas de bloc trailers
   const rCloseNoLot = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', repo]);
   ok(!/Trailers du commit/.test(rCloseNoLot.out), 'close-batch : sans lot en cours, aucun bloc trailers');
+
+  // V13b. close-batch : trailer PMZ-Jira quand le lot en cours porte une clé Jira (lot #103)
+  const lotTrailJira = backlogLib.addLot(repo, 'Lot trailers Jira', null, 'sonnet', null, null, 'medium',
+    null, null, null, 'PROJ-42');
+  backlogLib.startLot(repo, lotTrailJira.id);
+  const rCloseTrailJira = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', repo]);
+  ok(new RegExp(`PMZ-Jira: PROJ-42\\b`).test(rCloseTrailJira.out), 'close-batch : trailer PMZ-Jira = clé Jira du lot en cours');
+  backlogLib.dropLot(repo, lotTrailJira.id);
+
+  // V13c. close-batch : lot en cours SANS clé Jira → aucun trailer PMZ-Jira (jamais de valeur inventée)
+  const lotTrailNoJira = backlogLib.addLot(repo, 'Lot trailers sans Jira', null, 'sonnet');
+  backlogLib.startLot(repo, lotTrailNoJira.id);
+  const rCloseTrailNoJira = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', repo]);
+  ok(new RegExp(`PMZ-Lot: ${lotTrailNoJira.id}\\b`).test(rCloseTrailNoJira.out), 'close-batch : trailer PMZ-Lot toujours présent');
+  ok(!/PMZ-Jira:/.test(rCloseTrailNoJira.out), 'close-batch : sans clé Jira sur le lot, aucun trailer PMZ-Jira');
+  backlogLib.dropLot(repo, lotTrailNoJira.id);
 
   // V14. backlog.js export --format csv|md : en-tête + lignes, refus doux hors énum
   const rExportCsv = runNode(BKLG, ['export', '--cwd', repo, '--format', 'csv']);

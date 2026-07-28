@@ -430,6 +430,15 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   au lieu du seul sous-champ `command_optimizer` — un `integrations.jira` déjà posé aurait
   disparu en silence au (re)démarrage ou à la clôture du lot. Corrigé (les deux préservent
   désormais l'autre sous-champ). Export : colonne `jira_key` ajoutée, vide pour un lot sans clé.
+- **Pointeurs US/Jira dans le trailer et la fiche d'archive** (lot #103, epic « US & Jira ») :
+  fait remonter `us` (#101) et `integrations.jira.key` (#102) jusqu'aux deux surfaces de
+  clôture qui les ignoraient — un trailer `PMZ-Jira` (`scripts/close-batch.js`, même bloc que
+  `PMZ-Lot`/`PMZ-Cost`/`PMZ-Model`, lot #60) et deux lignes (en-tête + section « Liens ») dans
+  `ficheSkeleton` (`lib/archive.js`, tier 1, lot #95). Toujours **conditionnel** : un lot sans
+  clé ni US ne produit aucune ligne. En corrigeant ce lot, un bug pré-existant a été trouvé et
+  réparé : `audit-batch.js#backlogSummary().current` ne portait ni `epic` ni `us` du lot réel
+  (projection partielle depuis le lot #95) — la fiche affichait `epic : —` pour *tout* lot en
+  cours, jamais remarqué faute de test dédié sur ce champ.
 - **RTK visible dans le verbe PMZ** (lot #86, epic « Verbe & Vagues ») : avant ce lot, seul
   `/pmz:rtk` montrait l'état du bridge — invisible du reste du verbe. `lib/messages.js` expose
   deux primitives pures, réutilisant les 5 états de `rtk-status.computeStatus()` :
