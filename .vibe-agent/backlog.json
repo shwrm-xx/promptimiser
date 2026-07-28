@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "next_id": 115,
+  "next_id": 118,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-28T13:58:10.567Z",
+  "updated_at": "2026-07-28T14:38:53.607Z",
   "lots": [
     {
       "id": 1,
@@ -2763,7 +2763,7 @@
       "id": 111,
       "title": "Télémétrie de clôture réparée",
       "scope": "fait quand : après un /close-batch, le lot porte closed_occupancy, cost_tokens, closed_verify et l'accrétion non nuls dans .vibe-agent/backlog.json ; l'injection SessionStart porte le numéro de version PMZ ; tests verts",
-      "status": "todo",
+      "status": "in_progress",
       "model_hint": "sonnet",
       "effort_hint": "medium",
       "epic": "Économie de contexte",
@@ -2774,8 +2774,8 @@
       "closed_session_id": null,
       "closed_occupancy": null,
       "closed_verify": null,
-      "cost_tokens": 0,
-      "started_at": null,
+      "cost_tokens": 84053,
+      "started_at": "2026-07-28T14:08:31.261Z",
       "lot_number": null,
       "note": null,
       "session_touches": 0,
@@ -2788,7 +2788,15 @@
       "depends_on": [
         110
       ],
-      "session_owner": null
+      "session_owner": "wave-111",
+      "integrations": {
+        "command_optimizer": {
+          "snapshot_start": {
+            "commands": 1,
+            "delivered_tokens": 4
+          }
+        }
+      }
     },
     {
       "id": 112,
@@ -2846,10 +2854,48 @@
       "id": 114,
       "title": "Commande /pmz:dashboard",
       "scope": "fait quand : /pmz:dashboard génère dans .vibe-agent/ un HTML autonome et thémable pour le projet courant — occupation, décomposition du coût, accrétion, loi d'échelle, 3 recommandations chiffrées — depuis le moteur du lot #110, zéro dépendance et sans requête réseau ; tests verts",
-      "status": "todo",
+      "status": "in_progress",
       "model_hint": "opus",
       "effort_hint": "high",
       "epic": "Économie de contexte",
+      "verify": "node test/run-tests.js",
+      "us": null,
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "closed_verify": null,
+      "cost_tokens": 0,
+      "started_at": "2026-07-28T14:08:31.380Z",
+      "lot_number": null,
+      "note": null,
+      "session_touches": 0,
+      "perimeter": [
+        "promptimizer/scripts/dashboard.js",
+        "promptimizer/templates/dashboard*",
+        "promptimizer/commands/dashboard.md"
+      ],
+      "depends_on": [
+        110
+      ],
+      "session_owner": "wave-114",
+      "integrations": {
+        "command_optimizer": {
+          "snapshot_start": {
+            "commands": 1,
+            "delivered_tokens": 4
+          }
+        }
+      }
+    },
+    {
+      "id": 115,
+      "title": "Délégation RTK éprouvée (deux hooks sur PreToolUse)",
+      "scope": "fait quand : un bac à sable tranche si le hook natif RTK (rtk init -g) et le gate de sûreté PMZ coexistent sur PreToolUse Bash — verdict PMZ toujours rendu, pas de double préfixe, pas de decision concurrente, fail-open intact. Verdict OUI (recommander rtk init -g, PMZ se neutralise par design) ou NON (garder le bridge, dire pourquoi). Aucune reco sans cette preuve ; tests verts",
+      "status": "todo",
+      "model_hint": "opus",
+      "effort_hint": "medium",
+      "epic": "Bridge RTK",
       "verify": "node test/run-tests.js",
       "us": null,
       "closed_commit": null,
@@ -2863,12 +2909,73 @@
       "note": null,
       "session_touches": 0,
       "perimeter": [
-        "promptimizer/scripts/dashboard.js",
-        "promptimizer/templates/dashboard*",
-        "promptimizer/commands/dashboard.md"
+        "test/**",
+        "promptimizer/lib/rtk-status.js"
       ],
       "depends_on": [
-        110
+        111
+      ],
+      "session_owner": null
+    },
+    {
+      "id": 116,
+      "title": "Prescription RTK dans la consigne injectée",
+      "scope": "fait quand : quand RTK est détecté, la consigne injectée par PMZ prescrit les équivalents rtk (grep, read, git, ls, find) au lieu des commandes nues, en réutilisant le texte de rtk init plutôt qu'un texte inventé ; silence total si RTK absent (tiers sans RTK inchangés) ; extension de rtkStartupLine (#86), pas de brique neuve ; rtk discover montre la couverture qui monte ; tests verts",
+      "status": "todo",
+      "model_hint": "sonnet",
+      "effort_hint": "medium",
+      "epic": "Bridge RTK",
+      "verify": "node test/run-tests.js",
+      "us": null,
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "closed_verify": null,
+      "cost_tokens": 0,
+      "started_at": null,
+      "lot_number": null,
+      "note": null,
+      "session_touches": 0,
+      "perimeter": [
+        "promptimizer/lib/messages.js",
+        "promptimizer/hooks/session-start.js",
+        "test/**"
+      ],
+      "depends_on": [
+        115
+      ],
+      "session_owner": null
+    },
+    {
+      "id": 117,
+      "title": "Gain RTK de niveau measured",
+      "scope": "fait quand : la métrologie RTK passe du niveau local au niveau measured en s'appuyant sur le contrat CLI qui existe déjà (rtk gain, rtk cc-economics) — la prémisse « contrat RTK non défini » du lot #83 est levée et documentée comme périmée ; le bilan de close-batch et le dashboard #114 publient le gain par lot avec son niveau de preuve ; aucune valeur inventée ; tests verts",
+      "status": "todo",
+      "model_hint": "sonnet",
+      "effort_hint": "medium",
+      "epic": "Bridge RTK",
+      "verify": "node test/run-tests.js",
+      "us": null,
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "closed_verify": null,
+      "cost_tokens": 0,
+      "started_at": null,
+      "lot_number": null,
+      "note": null,
+      "session_touches": 0,
+      "perimeter": [
+        "promptimizer/lib/rtk-metrics.js",
+        "promptimizer/scripts/close-batch.js",
+        "promptimizer/scripts/dashboard.js",
+        "test/**"
+      ],
+      "depends_on": [
+        115,
+        114
       ],
       "session_owner": null
     }
