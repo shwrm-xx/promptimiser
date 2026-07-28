@@ -450,6 +450,19 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   substitués au rendu, sections Récit / Critères d'acceptation / Hors périmètre / Preuve de
   clôture / Notes, et une borne explicite (**< 60 lignes** — au-delà, ce n'est pas une US mal
   rédigée, c'est un lot à redécouper).
+- **Validation de structure de l'US à la clôture** (lot #107, epic « Formalisation US ») : la
+  commande `us` (lot #106) pose un pointeur mais ne garantit rien sur ce qui est écrit derrière —
+  une US pouvait être rattachée puis vidée à la main sans que rien ne le remarque avant la
+  clôture du lot. `lib/backlog.js#checkUsStructure` vérifie la présence des **titres** des 5
+  sections obligatoires du gabarit (Récit, Critères d'acceptation, Hors périmètre, Preuve de
+  clôture, Notes) dans le fichier pointé — jamais le **contenu** d'un critère (un « ... » resté
+  en l'état reste un problème de rédaction humaine, hors de portée d'une garde syntaxique).
+  `done` refuse en **refus doux** (message actionnable listant les sections manquantes, aucun
+  fail-hard, aucun blocage de session) si le lot pointe vers une US incomplète ;
+  `--allow-incomplete-us` débloque une clôture assumée malgré tout, sur le modèle exact
+  d'`--allow-no-gate`. Un lot sans pointeur `us` n'est pas concerné (aucune régression sur le cas
+  majoritaire) ; un fichier illisible est traité comme « pas de vérification possible », pas
+  comme un refus (`checkUsStructure` retourne `null`, fail-silent).
 - **Pointeur `us` dans la fiche d'archive** (lot #103, epic « US & Jira ») : fait remonter `us`
   (#101) jusqu'à la seule surface de clôture qui l'ignorait — deux lignes (en-tête + section
   « Liens ») dans `ficheSkeleton` (`lib/archive.js`, tier 1, lot #95), toujours **conditionnel** :

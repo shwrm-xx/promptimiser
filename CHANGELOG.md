@@ -2,6 +2,29 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-28 — « Validation de structure de l'US » (epic « Formalisation US », backlog #107)
+
+Troisième lot de l'epic. La commande `us` (lot #106) posait un pointeur sans jamais vérifier ce
+qu'il y avait derrière : une US rattachée puis vidée à la main passait inaperçue jusqu'à ce que
+quelqu'un l'ouvre. Ce lot ajoute une garde à la clôture : `done` refuse en refus doux si l'US
+pointée par le lot n'a pas ses 5 sections obligatoires (titres, pas contenu).
+
+- **`lib/backlog.js`** — `checkUsStructure(root, us)` : lit le fichier US pointé, retourne les
+  titres de section manquants parmi Récit / Critères d'acceptation / Hors périmètre / Preuve de
+  clôture / Notes. `null` si pas de pointeur ou fichier illisible (fail-silent, l'appelant
+  décide). Ne juge jamais le **contenu** d'un critère — un « ... » resté en l'état est hors
+  portée d'une garde de structure.
+- **`scripts/backlog.js`** — `done` : si le lot pointe vers une US et que sa structure est
+  incomplète, refus doux (message listant les sections manquantes) sauf `--allow-incomplete-us`
+  (clôture assumée quand même, sur le modèle exact d'`--allow-no-gate`). Lot sans pointeur `us` :
+  comportement inchangé.
+- Décision : vérification sur les **titres** de section uniquement, jamais sur le contenu des
+  critères (« ... » restés en l'état) — portée littérale du lot, documentée dans
+  [ARCHITECTURE.md](ARCHITECTURE.md) comme alternative non retenue.
+- Vérification : `node test/run-tests.js` — 1697 OK, 0 échec (7 nouveaux cas : lib défense en
+  profondeur, US complète accepte, US tronquée refuse avec liste exacte, `--allow-incomplete-us`
+  débloque, lot sans US inchangé, critères vides non détectés par design, flag booléen déclaré).
+
 ## 2026-07-28 — « Gabarit US enrichi + génération du fichier » (epic « Formalisation US », backlog #106)
 
 Deuxième lot de l'epic. Le champ `us` (lot #101) n'avait qu'une porte d'entrée, `add --us`, et

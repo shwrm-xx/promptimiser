@@ -670,6 +670,17 @@ function main() {
   }
 
   if (cmd === 'done') {
+    // Structure de l'US (lot #107) : une US aux sections obligatoires manquantes n'a pas la
+    // valeur de contrat qu'elle prétend avoir. Refus DOUX (message actionnable, pas de fail-hard
+    // ni de blocage de session) — --allow-incomplete-us débloque un lot clos malgré tout.
+    const preUs = backlog.loadBacklog(root).lots.find((x) => x.id === Number(id));
+    if (preUs && preUs.us && !process.argv.includes('--allow-incomplete-us')) {
+      const struct = backlog.checkUsStructure(root, preUs.us);
+      if (struct && struct.missing.length) {
+        return out(`Refusé : l'US du lot #${preUs.id} (${preUs.us}) n'a pas toutes ses sections obligatoires — `
+          + `manque : ${struct.missing.join(', ')}. Complète le fichier, ou clos quand même avec --allow-incomplete-us.`);
+      }
+    }
     // Auto-remplissage session/occupancy (lot #96, DEP-6) : la clôture CLI est le chemin
     // RECOMMANDÉ (/close-batch) mais laissait ces deux champs à null faute de --session/
     // --occupancy jamais tapés. On lit l'état déjà posé PAR LA SESSION COURANTE plutôt que de

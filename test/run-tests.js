@@ -7143,6 +7143,70 @@ section('backlog — commande `us` : lecture, --new (gabarit), --set (epic « Fo
   ok(/\| us \|/.test(runNode(BKLG, ['zzz', '--cwd', repo]).out), 'N7 : `us` listée dans les commandes de l\'aide');
 }
 
+section('backlog — validation de structure de l\'US à la clôture (epic « Formalisation US », backlog #107)');
+{
+  const repo = path.join(SANDBOX, 'repo-us-structure');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const lotOf = (id) => backlogLib.loadBacklog(repo).lots.find((l) => l.id === id);
+
+  // O1. lib.checkUsStructure : défense en profondeur — null si pas de pointeur / fichier illisible.
+  ok(backlogLib.checkUsStructure(repo, null) === null, 'O1 : checkUsStructure(null) -> null (pas de pointeur)');
+  ok(backlogLib.checkUsStructure(repo, 'docs/us/inexistant.md') === null, 'O1 : checkUsStructure(chemin mort) -> null');
+
+  // O2. US complète (gabarit tel que posé par `us --new`) : aucune section manquante.
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot US complète', '--model', 'sonnet']);
+  runNode(BKLG, ['us', '--cwd', repo, '--id', '1', '--new']);
+  ok(backlogLib.checkUsStructure(repo, 'docs/us/US-1.md').missing.length === 0,
+    'O2 : gabarit frais -> aucune section obligatoire manquante');
+  backlogLib.startLot(repo, 1);
+  const rDoneOk = runNode(BKLG, ['done', '--cwd', repo, '--id', '1', '--no-session', '--no-occupancy']);
+  ok(/clos/.test(rDoneOk.out) && !/Refusé/.test(rDoneOk.out), 'O2 : `done` sur une US complète -> clôture normale');
+  ok(lotOf(1).status === 'done', 'O2 : lot bien clos');
+
+  // O3. US aux sections manquantes (fichier tronqué à la main) : `done` refuse en refus doux.
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot US tronquée', '--model', 'sonnet']);
+  runNode(BKLG, ['us', '--cwd', repo, '--id', '2', '--new']);
+  const usAbs2 = path.join(repo, 'docs', 'us', 'US-2.md');
+  fs.writeFileSync(usAbs2, '# US 2\n\n## Récit\n\nEn tant que designer, je veux X, afin de Y.\n');
+  ok(backlogLib.checkUsStructure(repo, 'docs/us/US-2.md').missing.join(', ')
+    === 'Critères d\'acceptation, Hors périmètre, Preuve de clôture, Notes',
+    'O3 : checkUsStructure -> liste exacte des 4 sections manquantes');
+  backlogLib.startLot(repo, 2);
+  const rDoneRefused = runNode(BKLG, ['done', '--cwd', repo, '--id', '2', '--no-session', '--no-occupancy']);
+  ok(/Refusé/.test(rDoneRefused.out) && /sections obligatoires/.test(rDoneRefused.out),
+    'O3 : `done` sur une US aux sections manquantes -> refus doux (message actionnable)');
+  ok(/Critères d'acceptation, Hors périmètre, Preuve de clôture, Notes/.test(rDoneRefused.out),
+    'O3 : le refus liste les sections manquantes');
+  ok(/--allow-incomplete-us/.test(rDoneRefused.out), 'O3 : le refus mentionne l\'issue --allow-incomplete-us');
+  ok(lotOf(2).status === 'in_progress', 'O3 : lot NON clos — le refus doux n\'a rien changé au backlog');
+
+  // O4. --allow-incomplete-us : débloque la clôture malgré la structure incomplète.
+  const rDoneForced = runNode(BKLG, ['done', '--cwd', repo, '--id', '2', '--no-session', '--no-occupancy', '--allow-incomplete-us']);
+  ok(/clos/.test(rDoneForced.out) && !/Refusé/.test(rDoneForced.out),
+    'O4 : `done --allow-incomplete-us` -> clôture forcée malgré la structure incomplète');
+  ok(lotOf(2).status === 'done', 'O4 : lot bien clos après override');
+
+  // O5. lot sans pointeur US : `done` ne vérifie rien (pas de régression sur le cas majoritaire).
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot sans US', '--model', 'sonnet']);
+  backlogLib.startLot(repo, 3);
+  const rDoneNoUs = runNode(BKLG, ['done', '--cwd', repo, '--id', '3', '--no-session', '--no-occupancy']);
+  ok(/clos/.test(rDoneNoUs.out) && !/Refusé/.test(rDoneNoUs.out), 'O5 : `done` sans pointeur US -> inchangé, clôture normale');
+
+  // O6. le contenu d'un critère (« ... » resté en l'état) n'est PAS du ressort de cette garde —
+  // seule la présence des TITRES de section est vérifiée (portée littérale du lot #107).
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot critères vides', '--model', 'sonnet']);
+  runNode(BKLG, ['us', '--cwd', repo, '--id', '4', '--new']);
+  ok(backlogLib.checkUsStructure(repo, 'docs/us/US-4.md').missing.length === 0,
+    'O6 : gabarit avec critères encore « ... » -> structure jugée complète (portée = titres de section)');
+
+  ok(backlogLib.BOOL_FLAGS.includes('allow-incomplete-us'),
+    'O7 : --allow-incomplete-us déclaré booléen (sinon avalé comme valeur par la garde d\'orphelins)');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

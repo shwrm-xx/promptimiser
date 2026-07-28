@@ -109,7 +109,8 @@ const VALUE_FLAGS = ['cwd', 'id', 'epic', 'set', 'model', 'effort', 'title', 'sc
   'gate', 'final-gate', 'branch', 'state'];
 // Flags booléens (ne consomment aucune valeur) — listés pour documentation ;
 // tout flag hors VALUE_FLAGS est traité comme booléen (ne consomme rien).
-const BOOL_FLAGS = ['json', 'suggest', 'execute', 'allow-trunc', 'no-session', 'no-occupancy', 'allow-no-gate', 'new'];
+const BOOL_FLAGS = ['json', 'suggest', 'execute', 'allow-trunc', 'no-session', 'no-occupancy', 'allow-no-gate', 'new',
+  'allow-incomplete-us'];
 
 // Garde anti-troncature de champ (lot #90), 2e vecteur après les orphelins argv (#88) :
 // une valeur QUOTÉE mais au-delà de son plafond MAX_* serait stockée coupée par trunc()
@@ -427,6 +428,25 @@ function createUsFile(root, id) {
   const linked = setUs(root, id, rel);
   if (!linked) return { ok: false, reason: 'write', rel, lot };
   return { ok: true, rel, lot: linked };
+}
+
+// Titres de section obligatoires du gabarit (lot #107) — figés ici plutôt que dérivés du
+// gabarit courant : une US déjà rédigée reste jugée sur les titres qu'elle porte, pas sur une
+// version future de templates/us-template.md qui pourrait renommer une section.
+const US_REQUIRED_SECTIONS = ['Récit', 'Critères d\'acceptation', 'Hors périmètre', 'Preuve de clôture', 'Notes'];
+
+// Vérifie la STRUCTURE (présence des titres de section obligatoires) du fichier US pointé par
+// un lot — jamais le contenu d'un critère (un « ... » resté en l'état est un problème de
+// rédaction humaine, pas de structure). null si le lot ne pointe vers aucune US ou si le
+// fichier est illisible (fail-silent : l'appelant décide de la suite, refus ou non).
+// Retourne { missing: string[] } — [] = toutes les sections obligatoires sont présentes.
+function checkUsStructure(root, us) {
+  if (!us) return null;
+  let content;
+  try {
+    content = fs.readFileSync(path.join(root, us), 'utf8');
+  } catch (_) { return null; }
+  return { missing: US_REQUIRED_SECTIONS.filter((s) => !content.includes(`## ${s}`)) };
 }
 
 // Persiste le VERDICT de la commande verify exécutée à la clôture (lot #96), distinct de
@@ -1005,7 +1025,8 @@ function exportMarkdown(b) {
 
 module.exports = {
   backlogFile, loadBacklog, saveBacklog, addLot, setVerify, setClosedVerify, setPerimeter, setDepends, setUs,
-  usPathFor, renderUsTemplate, createUsFile, US_DIR, startLot, doneLot, dropLot, noteLot, reopenLot,
+  usPathFor, renderUsTemplate, createUsFile, checkUsStructure, US_REQUIRED_SECTIONS, US_DIR,
+  startLot, doneLot, dropLot, noteLot, reopenLot,
   touchLot, addCost, currentLot, nextLot, blockedByOf, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
   epicBilan, estimateCost, canCoexist, pairwiseCoexist, planWaves, waveBranch,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot, modelEffortTag,
