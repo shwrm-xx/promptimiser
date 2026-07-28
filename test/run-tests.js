@@ -7057,6 +7057,92 @@ section('backlog — champ us : garde d\'existence, show, export (epic « US & J
   ok(direct === null, 'U6 : lib.addLot() refuse aussi directement un chemin --us inexistant (garde doublée)');
 }
 
+section('backlog — commande `us` : lecture, --new (gabarit), --set (epic « Formalisation US », backlog #106)');
+{
+  const repo = path.join(SANDBOX, 'repo-us-new');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'a.txt'), '1');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+  const lotOf = (id) => backlogLib.loadBacklog(repo).lots.find((l) => l.id === id);
+
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Gabarit US enrichi', '--model', 'opus', '--epic', 'Formalisation US']);
+
+  // N1. lecture sans flag : aucun pointeur -> le dit, et donne la porte d'entrée. Coût zéro :
+  // la commande ne lit JAMAIS le fichier US, seulement le pointeur.
+  const rRead = runNode(BKLG, ['us', '--cwd', repo, '--id', '1']);
+  ok(/\(aucune\)/.test(rRead.out) && /--new/.test(rRead.out),
+    'N1 : `us --id N` sans pointeur -> « (aucune) » + suggestion --new');
+  ok(/introuvable/.test(runNode(BKLG, ['us', '--cwd', repo, '--id', '99']).out),
+    'N1 : `us` sur un id inconnu -> lot introuvable, rien d\'écrit');
+
+  // N2. --new : pose le fichier au chemin conventionnel ET rattache le pointeur (indissociable).
+  const rNew = runNode(BKLG, ['us', '--cwd', repo, '--id', '1', '--new']);
+  ok(/docs\/us\/US-1\.md/.test(rNew.out) && /créée/.test(rNew.out), 'N2 : `us --new` annonce le fichier créé');
+  const usAbs = path.join(repo, 'docs', 'us', 'US-1.md');
+  ok(fs.existsSync(usAbs), 'N2 : fichier US réellement posé sous docs/us/');
+  ok(lotOf(1).us === 'docs/us/US-1.md', 'N2 : pointeur us rattaché au lot dans le même geste');
+  ok(backlogLib.usPathFor(7) === 'docs/us/US-7.md', 'N2 : usPathFor — chemin conventionnel sans slug de titre');
+
+  // N3. gabarit rendu : jetons substitués (id, titre, epic), aucun {{…}} résiduel, sections tenues.
+  const body = fs.readFileSync(usAbs, 'utf8');
+  ok(/^# US 1 — Gabarit US enrichi$/m.test(body), 'N3 : gabarit — titre substitué');
+  ok(/- lot : #1/.test(body) && /- epic : Formalisation US/.test(body), 'N3 : gabarit — lot et epic substitués');
+  ok(!/\{\{/.test(body), 'N3 : gabarit — aucun jeton {{…}} résiduel après rendu');
+  for (const s of ['## Récit', '## Critères d\'acceptation', '## Hors périmètre', '## Preuve de clôture', '## Notes']) {
+    ok(body.includes(s), `N3 : gabarit — section « ${s} » présente`);
+  }
+  ok(body.split('\n').length < 60, 'N3 : gabarit sobre — sous 60 lignes (au-delà, le lot est à redécouper)');
+  ok(/- epic : —/.test(backlogLib.renderUsTemplate({ id: 5, title: 'T', epic: null })),
+    'N3 : lot sans epic -> tiret cadratin, jamais « null »');
+
+  // N4. refus doux si le fichier existe : cette commande GÉNÈRE, elle n'écrase pas une US rédigée.
+  fs.writeFileSync(usAbs, '# US rédigée à la main\n');
+  const rAgain = runNode(BKLG, ['us', '--cwd', repo, '--id', '1', '--new']);
+  ok(/Refusé/.test(rAgain.out) && /existe déjà/.test(rAgain.out), 'N4 : `us --new` sur un fichier existant -> refus doux');
+  ok(fs.readFileSync(usAbs, 'utf8') === '# US rédigée à la main\n', 'N4 : contenu existant INTACT (aucun écrasement)');
+  ok(/déjà le pointeur US/.test(rAgain.out), 'N4 : le refus dit que le fichier est déjà rattaché (rien à faire)');
+
+  // N5. --set : rattache une US écrite ailleurs (issue du refus N4 quand le lot ne pointe nulle part).
+  runNode(BKLG, ['add', '--cwd', repo, '--title', 'Lot deux', '--model', 'sonnet']);
+  fs.writeFileSync(path.join(repo, 'docs', 'us', 'US-2.md'), '# US 2\n');
+  const rExists2 = runNode(BKLG, ['us', '--cwd', repo, '--id', '2', '--new']);
+  ok(/ne pointe vers aucune US/.test(rExists2.out) && /--set docs\/us\/US-2\.md/.test(rExists2.out),
+    'N5 : refus doux -> propose --set comme issue quand le lot ne pointe nulle part');
+  const rSet = runNode(BKLG, ['us', '--cwd', repo, '--id', '2', '--set', 'docs/us/US-2.md']);
+  ok(/rattachée/.test(rSet.out) && lotOf(2).us === 'docs/us/US-2.md', 'N5 : `us --set <existant>` rattache le pointeur');
+  const rSetDead = runNode(BKLG, ['us', '--cwd', repo, '--id', '2', '--set', 'docs/us/mort.md']);
+  ok(/Refusé/.test(rSetDead.out) && /chemin inexistant/.test(rSetDead.out),
+    'N5 : `us --set <inexistant>` refusé (même garde qu\'add --us : pas de pointeur mort)');
+  ok(lotOf(2).us === 'docs/us/US-2.md', 'N5 : pointeur précédent préservé après un --set refusé');
+  ok(/s'excluent/.test(runNode(BKLG, ['us', '--cwd', repo, '--id', '2', '--new', '--set', 'docs/us/US-2.md']).out),
+    'N5 : --new et --set ensemble -> refus (intentions contradictoires)');
+  const tooLongUs = 'docs/' + 'x'.repeat(backlogLib.MAX_US) + '.md';
+  ok(/Refusé/.test(runNode(BKLG, ['us', '--cwd', repo, '--id', '2', '--set', tooLongUs]).out),
+    'N5 : --set au-delà de MAX_US -> refus (truncGuard partagé)');
+
+  // N6. lot clos : ni gabarit ni rattachement — une US écrite après coup ne gouverne plus rien.
+  // La LECTURE reste ouverte (consulter l'US d'un lot clos est légitime).
+  backlogLib.startLot(repo, 2);
+  backlogLib.doneLot(repo, 2, 'abc1234');
+  ok(/docs\/us\/US-2\.md/.test(runNode(BKLG, ['us', '--cwd', repo, '--id', '2']).out),
+    'N6 : lecture du pointeur d\'un lot clos -> toujours autorisée');
+  ok(/Refusé/.test(runNode(BKLG, ['us', '--cwd', repo, '--id', '2', '--new']).out),
+    'N6 : `us --new` sur un lot clos -> refus');
+  ok(/Refusé/.test(runNode(BKLG, ['us', '--cwd', repo, '--id', '2', '--set', 'docs/us/US-1.md']).out),
+    'N6 : `us --set` sur un lot clos -> refus');
+  ok(lotOf(2).us === 'docs/us/US-2.md', 'N6 : pointeur du lot clos inchangé');
+
+  // N7. défense en profondeur côté lib : setUs refuse un chemin mort et un lot clos, comme addLot.
+  ok(backlogLib.setUs(repo, 1, 'chemin/mort.md') === null, 'N7 : lib.setUs() refuse un chemin inexistant');
+  ok(backlogLib.setUs(repo, 1, '') === null, 'N7 : lib.setUs() refuse un chemin vide');
+  ok(backlogLib.setUs(repo, 2, 'docs/us/US-1.md') === null, 'N7 : lib.setUs() refuse un lot clos');
+  ok(backlogLib.createUsFile(repo, 404).reason === 'nolot', 'N7 : lib.createUsFile() sur un lot inconnu -> reason nolot');
+  ok(backlogLib.BOOL_FLAGS.includes('new'), 'N7 : --new déclaré booléen (sinon avalé comme valeur par la garde d\'orphelins)');
+  ok(/\| us \|/.test(runNode(BKLG, ['zzz', '--cwd', repo]).out), 'N7 : `us` listée dans les commandes de l\'aide');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

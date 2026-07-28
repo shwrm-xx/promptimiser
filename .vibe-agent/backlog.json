@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "next_id": 108,
+  "next_id": 110,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-28T07:19:46.013Z",
+  "updated_at": "2026-07-28T07:37:36.330Z",
   "lots": [
     {
       "id": 1,
@@ -2501,7 +2501,7 @@
       "id": 106,
       "title": "Gabarit US enrichi + génération du fichier",
       "scope": "fait quand : backlog.js us --id N --new crée le fichier US depuis un gabarit revu (sobre — coût de relecture assumé) et le rattache au lot ; refus doux si le fichier existe déjà ; node test/run-tests.js vert ; README/ARCHITECTURE à jour",
-      "status": "todo",
+      "status": "in_progress",
       "model_hint": "opus",
       "effort_hint": "medium",
       "epic": "Formalisation US",
@@ -2511,16 +2511,24 @@
       "closed_session_id": null,
       "closed_occupancy": null,
       "closed_verify": null,
-      "cost_tokens": 0,
-      "started_at": null,
+      "cost_tokens": 31761,
+      "started_at": "2026-07-28T07:28:00.391Z",
       "lot_number": null,
       "note": null,
-      "session_touches": 0,
+      "session_touches": 1,
       "perimeter": [],
       "depends_on": [
         105
       ],
-      "session_owner": null
+      "session_owner": null,
+      "integrations": {
+        "command_optimizer": {
+          "snapshot_start": {
+            "commands": 1,
+            "delivered_tokens": 4
+          }
+        }
+      }
     },
     {
       "id": 107,
@@ -2544,6 +2552,63 @@
       "perimeter": [],
       "depends_on": [
         106
+      ],
+      "session_owner": null
+    },
+    {
+      "id": 108,
+      "title": "Carte de clôture unique + reco session fraîche hors arbitre",
+      "scope": "fait quand : les 3 INFO de clôture fusionnées en 1 carte (1 seul slot d'arbitre) ; reco « nouvelle session » en coda APRÈS arbitrate(), 1x/clôture, jamais évincée ; auto-clôture armée sur le backlog (un in_progress + arbre propre + HEAD bougé), plus sur closure_reminded_for_batch ; « puis session fraîche » dans MSG_ACTIF/_SLIM ; tests verts ; ARCHITECTURE : prescription != diagnostic",
+      "status": "todo",
+      "model_hint": "opus",
+      "effort_hint": "high",
+      "epic": "Reco de session fraîche",
+      "verify": "node test/run-tests.js",
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "closed_verify": null,
+      "cost_tokens": 0,
+      "started_at": null,
+      "lot_number": null,
+      "note": null,
+      "session_touches": 0,
+      "perimeter": [
+        "promptimizer/hooks/stop.js",
+        "promptimizer/lib/messages.js",
+        "test/run-tests.js",
+        "ARCHITECTURE.md"
+      ],
+      "depends_on": [],
+      "session_owner": null
+    },
+    {
+      "id": 109,
+      "title": "Verdict chiffré de session fraîche dans close-batch",
+      "scope": "fait quand : la checklist ne dit plus « oui si le sujet change » mais un verdict fondé sur l'occupation (palier lu dans l'état local, zéro coût de contexte) + la raison chiffrée ; seuil calibré sur les ledgers, pas codé au jugé ; l'étape 7 de close-batch.md renvoie au verdict au lieu de le contredire ; tests verts",
+      "status": "todo",
+      "model_hint": "sonnet",
+      "effort_hint": "medium",
+      "epic": "Reco de session fraîche",
+      "verify": "node test/run-tests.js",
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "closed_verify": null,
+      "cost_tokens": 0,
+      "started_at": null,
+      "lot_number": null,
+      "note": null,
+      "session_touches": 0,
+      "perimeter": [
+        "promptimizer/scripts/close-batch.js",
+        "promptimizer/commands/close-batch.md",
+        "test/run-tests.js"
+      ],
+      "depends_on": [
+        108
       ],
       "session_owner": null
     }

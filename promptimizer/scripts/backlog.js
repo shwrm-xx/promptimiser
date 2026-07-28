@@ -566,6 +566,53 @@ function main() {
     return out(l ? `Verify du lot #${l.id} enregistrée : ${l.verify}` : `Lot #${id} introuvable ou commande vide.`);
   }
 
+  // Lot #106 : le champ `us` (lot #101) n'avait qu'une porte d'entrée, `add --us`, et supposait
+  // l'US déjà rédigée. Trois régimes ici, sur le modèle de `verify` :
+  //  - sans flag : LECTURE du pointeur (coût zéro, pas d'ouverture du fichier) ;
+  //  - --new : pose docs/us/US-<id>.md depuis le gabarit ET rattache le pointeur ;
+  //  - --set <chemin> : rattache une US déjà écrite ailleurs (issue du refus doux « existe déjà »).
+  if (cmd === 'us') {
+    const b = backlog.loadBacklog(root);
+    const cur = b.lots.find((x) => x.id === Number(id));
+    if (!cur) return out(`Lot #${id} introuvable.`);
+    const set = flag('set');
+    const wantNew = process.argv.includes('--new');
+    if (wantNew && set) {
+      return out('Refusé : --new et --set s\'excluent (générer un gabarit ou rattacher un fichier existant, pas les deux).');
+    }
+    if (set) {
+      if (truncGuard([{ name: '--set', value: set, max: backlog.MAX_US }])) return;
+      if (!fs.existsSync(path.join(root, set))) {
+        return out(`Refusé : --set pointe vers un chemin inexistant (« ${set} », relatif à « ${root} »). `
+          + `Un pointeur mort est pire qu'aucune US — écris le fichier d'abord, ou pose le gabarit avec \`us --id ${cur.id} --new\`.`);
+      }
+      const l = backlog.setUs(root, id, set);
+      if (!l) return out(`Refusé : le lot #${cur.id} est ${LABELS[cur.status]} — son pointeur US n'est plus modifiable.`);
+      return out(`US du lot #${l.id} rattachée : ${l.us}`);
+    }
+    if (!wantNew) {
+      return out(`US du lot #${cur.id} : ${cur.us || '(aucune)'}${cur.us ? '' : ` — poser le gabarit : \`us --id ${cur.id} --new\``}`);
+    }
+    const res = backlog.createUsFile(root, id);
+    if (res.ok) {
+      out(`US du lot #${res.lot.id} créée : ${res.rel} (gabarit posé, pointeur rattaché).`);
+      return out('À remplir à la main : récit, critères d\'acceptation vérifiables, hors périmètre. Le backlog ne porte QUE le chemin.');
+    }
+    if (res.reason === 'exists') {
+      const already = cur.us === res.rel;
+      out(`Refusé : ${res.rel} existe déjà — cette commande génère un gabarit, elle n'écrase jamais une US rédigée.`);
+      return out(already ? 'Ce fichier est déjà le pointeur US du lot : rien à faire, édite-le directement.'
+        : `${cur.us ? `Le lot pointe vers « ${cur.us} »` : 'Le lot ne pointe vers aucune US'} — pour rattacher ce fichier : \`us --id ${cur.id} --set ${res.rel}\`.`);
+    }
+    if (res.reason === 'closed') {
+      return out(`Refusé : le lot #${cur.id} est ${LABELS[cur.status]} — une US écrite après la clôture ne gouverne plus rien.`);
+    }
+    if (res.reason === 'template') {
+      return out(`Refusé : gabarit d'US illisible (attendu : ${PMZ_BASE}/templates/us-template.md). Réinstalle Promptimizer.`);
+    }
+    return out(`Refusé : écriture impossible sous ${res.rel} (droits ? dépôt en lecture seule ?).`);
+  }
+
   // FIA-24 (lot #98) : `setDepends` existait sans chemin CLI — corriger une dépendance après
   // création (ajout, retrait, faute de frappe d'id) imposait d'éditer backlog.json à la main,
   // hors des gardes que le reste du CLI applique. Sans --depends : LECTURE. Avec --depends "" :
@@ -698,7 +745,7 @@ function main() {
     return;
   }
 
-  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | reopen | depends | next | parallelize | fleet <join|ready|leave|show> | reintegrate | reconcile | epic | verify | trigram | export.`);
+  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | reopen | depends | next | parallelize | fleet <join|ready|leave|show> | reintegrate | reconcile | epic | verify | us | trigram | export.`);
 }
 
 if (require.main === module) {

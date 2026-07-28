@@ -32,7 +32,8 @@ quand : … » vérifiable** — au-delà, redécouper plutôt que grossir un lo
    (gabarit `templates/us-template.md` — persona/besoin/bénéfice, critères d'acceptation
    numérotés, hors-périmètre), soit « pas d'US » assumé — jamais de silence sur ce point,
    même règle que le périmètre. Ne **jamais** deviner ou halluciner un chemin : si l'US n'est
-   pas encore rédigée, l'écrire d'abord (dans le dépôt, à un chemin réel), sinon omettre `--us`.
+   pas encore rédigée, omettre `--us` à l'ajout — le lot posé, `backlog.js us --id N --new`
+   écrit le fichier depuis le gabarit et le rattache (cf. étape 4).
 2. Faire valider le découpage, les modèles préconisés, l'epic éventuel, le périmètre/les
    dépendances proposés **et le statut US de chaque lot** par l'utilisateur en **UNE**
    question (pas dix).
@@ -51,7 +52,11 @@ quand : … » vérifiable** — au-delà, redécouper plutôt que grossir un lo
    Elle est éditable après coup : `backlog.js verify --set "…" --id <id>`.
    **`--us` uniquement si le fichier existe déjà** : l'ajout est **refusé** si le chemin est
    introuvable (garde d'existence, aucun pointeur mort accepté) ; omis si l'US n'a pas été
-   statuée à l'étape 1.
+   statuée à l'étape 1. Pour un lot dont l'US a été validée mais **pas encore écrite** :
+   `backlog.js us --id <id> --new` (pose `docs/us/US-<id>.md` depuis le gabarit et rattache le
+   pointeur ; refuse d'écraser un fichier existant). Un fichier US déjà écrit ailleurs se
+   rattache après coup : `backlog.js us --id <id> --set "docs/us/US-42.md"`.
+   Le gabarit posé reste **à remplir à la main** — ni critères ni hors-périmètre inventés.
 4bis. **Si ≥ 2 lots viennent d'être persistés**, calculer le plan de vagues :
    `node ~/.claude/promptimizer/scripts/backlog.js parallelize --json` (ajouter `--epic "…"` si
    posé). Une **opportunité réelle** = au moins une vague contenant **≥ 2 lots** (une vague à 1

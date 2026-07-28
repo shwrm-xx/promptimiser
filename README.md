@@ -177,8 +177,12 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   se lire comme un lot passé du premier coup.
 - **Pointeur US** : un lot peut référencer une User Story détaillée — **pointeur seul, jamais
   le contenu**. C'est un fichier du dépôt (gabarit `promptimizer/templates/us-template.md` :
-  persona/besoin/bénéfice, critères d'acceptation numérotés) posé via `backlog.js add --us
-  docs/us/US-42.md` — chemin **vérifié à l'ajout** (un pointeur mort est refusé). Il se
+  récit persona/besoin/bénéfice, critères d'acceptation vérifiables, hors périmètre, preuve de
+  clôture) posé via `backlog.js add --us docs/us/US-42.md` — chemin **vérifié à l'ajout** (un
+  pointeur mort est refusé). Pas d'US sous la main ? `backlog.js us --id N --new` **écrit** le
+  fichier depuis le gabarit (`docs/us/US-N.md`, titre et epic du lot déjà remplis) et le
+  rattache au lot ; il refuse d'écraser un fichier existant, et `us --id N --set <chemin>`
+  rattache une US écrite ailleurs. Sans flag, `us --id N` affiche juste le pointeur. Il se
   retrouve partout où on trace : `show`, export CSV/Markdown, fiche d'archive. (Un pointeur
   Jira a existé un temps, retiré faute de connectivité réelle derrière — cf. ARCHITECTURE.md,
   décision « Frontière Jira : écarté ».)

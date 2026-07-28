@@ -432,6 +432,24 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   inventé, pour un lot sans US. `/pmz:scope` **statue** sur l'US de chaque lot (chemin existant
   ou « pas d'US » assumé), jamais en silence — et n'invente jamais de chemin : US pas encore
   rédigée → l'écrire d'abord dans le dépôt, sinon omettre `--us`.
+- **Commande `us` : gabarit généré + pointeur éditable** (lot #106, epic « Formalisation US ») :
+  `add --us` (#101) était l'unique porte d'entrée du champ et **supposait l'US déjà rédigée** —
+  un lot créé sans elle ne pouvait en recevoir une qu'en éditant `backlog.json` à la main, hors
+  gardes. Trois régimes, sur le modèle exact de `verify` : sans flag → **lecture** du pointeur
+  (le fichier US n'est jamais ouvert : coût de contexte nul) ; `--new` → pose
+  `docs/us/US-<id>.md` depuis le gabarit **et** rattache le pointeur dans le même geste
+  (`backlog.createUsFile`) ; `--set <chemin>` → rattache une US écrite ailleurs
+  (`backlog.setUs`, **même garde d'existence** qu'`addLot`). Décisions :
+  **chemin conventionnel sans slug de titre** (`usPathFor` → `docs/us/US-<id>.md`) — un titre
+  bouge, le chemin resterait faux ; **refus doux si le fichier existe** — la commande *génère*,
+  elle n'écrase jamais une US rédigée, et le refus propose `--set` comme issue ;
+  **lot clos = lecture seule** (une US écrite après la clôture ne gouverne plus rien) ;
+  **gabarit résolu depuis le code** (`lib/backlog.js` → `../templates/us-template.md`), jamais
+  depuis le dépôt utilisateur — il part tel quel dans les deux canaux d'install. Le gabarit
+  (`templates/us-template.md`) est **enrichi et sobre** : jetons `{{ID}}`/`{{TITRE}}`/`{{EPIC}}`
+  substitués au rendu, sections Récit / Critères d'acceptation / Hors périmètre / Preuve de
+  clôture / Notes, et une borne explicite (**< 60 lignes** — au-delà, ce n'est pas une US mal
+  rédigée, c'est un lot à redécouper).
 - **Pointeur `us` dans la fiche d'archive** (lot #103, epic « US & Jira ») : fait remonter `us`
   (#101) jusqu'à la seule surface de clôture qui l'ignorait — deux lignes (en-tête + section
   « Liens ») dans `ficheSkeleton` (`lib/archive.js`, tier 1, lot #95), toujours **conditionnel** :

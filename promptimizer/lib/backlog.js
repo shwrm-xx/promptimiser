@@ -109,7 +109,7 @@ const VALUE_FLAGS = ['cwd', 'id', 'epic', 'set', 'model', 'effort', 'title', 'sc
   'gate', 'final-gate', 'branch', 'state'];
 // Flags booléens (ne consomment aucune valeur) — listés pour documentation ;
 // tout flag hors VALUE_FLAGS est traité comme booléen (ne consomme rien).
-const BOOL_FLAGS = ['json', 'suggest', 'execute', 'allow-trunc', 'no-session', 'no-occupancy', 'allow-no-gate'];
+const BOOL_FLAGS = ['json', 'suggest', 'execute', 'allow-trunc', 'no-session', 'no-occupancy', 'allow-no-gate', 'new'];
 
 // Garde anti-troncature de champ (lot #90), 2e vecteur après les orphelins argv (#88) :
 // une valeur QUOTÉE mais au-delà de son plafond MAX_* serait stockée coupée par trunc()
@@ -362,6 +362,71 @@ function setVerify(root, id, verify) {
   if (!lot) return null;
   lot.verify = v;
   return saveBacklog(root, b) ? lot : null;
+}
+
+// Édite le POINTEUR US d'un lot existant (lot #106) : un lot créé sans `--us` n'avait aucun
+// chemin CLI pour en recevoir un après coup — il fallait éditer backlog.json à la main, hors
+// des gardes. Même garde d'existence qu'addLot (un pointeur mort est pire qu'aucune US), et
+// même frontière : on ne stocke QUE le chemin, jamais le contenu.
+// null si lot introuvable/clos, chemin vide, ou fichier absent sous la racine.
+function setUs(root, id, us) {
+  const u = trunc(us, MAX_US);
+  if (!u) return null;
+  if (!fs.existsSync(path.join(root, u))) return null;
+  const b = loadBacklog(root);
+  const lot = findLot(b, id);
+  if (!lot || lot.status === 'done' || lot.status === 'dropped') return null;
+  lot.us = u;
+  return saveBacklog(root, b) ? lot : null;
+}
+
+// Chemin conventionnel de l'US d'un lot, relatif à la racine du dépôt. Convention unique et
+// prévisible (pas de slug de titre : le titre bouge, le chemin resterait faux) — c'est celle
+// déjà documentée pour `--us` (docs/us/US-42.md).
+const US_DIR = 'docs/us';
+function usPathFor(id) {
+  return `${US_DIR}/US-${Number(id)}.md`;
+}
+
+// Rend le gabarit templates/us-template.md pour un lot donné (substitution des jetons {{…}}).
+// Le gabarit part tel quel dans les deux canaux d'install (miroir plat et plugin), donc il est
+// résolu depuis l'emplacement du code, jamais depuis le dépôt utilisateur.
+// '' si le gabarit est illisible (fail-silent : le CLI refuse alors proprement).
+function renderUsTemplate(lot) {
+  let tpl;
+  try {
+    tpl = fs.readFileSync(path.join(__dirname, '..', 'templates', 'us-template.md'), 'utf8');
+  } catch (_) { return ''; }
+  return tpl
+    .replace(/\{\{ID\}\}/g, String(lot.id))
+    .replace(/\{\{TITRE\}\}/g, lot.title || '<titre court>')
+    .replace(/\{\{EPIC\}\}/g, lot.epic || '—');
+}
+
+// Pose le fichier US d'un lot depuis le gabarit ET rattache le pointeur (lot #106) : les deux
+// gestes sont indissociables — un fichier posé sans pointeur serait invisible du backlog, un
+// pointeur sans fichier est refusé par setUs. REFUS DOUX si le fichier existe déjà : cette
+// commande génère, elle n'écrase jamais une US rédigée (le rattachement d'un fichier existant
+// passe par setUs / `us --set`).
+// Retourne { ok:true, rel, lot } ou { ok:false, reason, rel, lot } —
+// reason ∈ nolot | closed | exists | template | write.
+function createUsFile(root, id) {
+  const b = loadBacklog(root);
+  const lot = findLot(b, id);
+  const rel = usPathFor(id);
+  if (!lot) return { ok: false, reason: 'nolot', rel, lot: null };
+  if (lot.status === 'done' || lot.status === 'dropped') return { ok: false, reason: 'closed', rel, lot };
+  const abs = path.join(root, rel);
+  if (fs.existsSync(abs)) return { ok: false, reason: 'exists', rel, lot };
+  const body = renderUsTemplate(lot);
+  if (!body) return { ok: false, reason: 'template', rel, lot };
+  try {
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, body);
+  } catch (_) { return { ok: false, reason: 'write', rel, lot }; }
+  const linked = setUs(root, id, rel);
+  if (!linked) return { ok: false, reason: 'write', rel, lot };
+  return { ok: true, rel, lot: linked };
 }
 
 // Persiste le VERDICT de la commande verify exécutée à la clôture (lot #96), distinct de
@@ -939,7 +1004,8 @@ function exportMarkdown(b) {
 }
 
 module.exports = {
-  backlogFile, loadBacklog, saveBacklog, addLot, setVerify, setClosedVerify, setPerimeter, setDepends, startLot, doneLot, dropLot, noteLot, reopenLot,
+  backlogFile, loadBacklog, saveBacklog, addLot, setVerify, setClosedVerify, setPerimeter, setDepends, setUs,
+  usPathFor, renderUsTemplate, createUsFile, US_DIR, startLot, doneLot, dropLot, noteLot, reopenLot,
   touchLot, addCost, currentLot, nextLot, blockedByOf, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
   epicBilan, estimateCost, canCoexist, pairwiseCoexist, planWaves, waveBranch,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot, modelEffortTag,

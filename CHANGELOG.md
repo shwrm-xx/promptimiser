@@ -2,6 +2,43 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-28 — « Gabarit US enrichi + génération du fichier » (epic « Formalisation US », backlog #106)
+
+Deuxième lot de l'epic. Le champ `us` (lot #101) n'avait qu'une porte d'entrée, `add --us`, et
+elle **supposait l'US déjà rédigée** : un lot créé sans US ne pouvait en recevoir une qu'en
+éditant `backlog.json` à la main, hors de toutes les gardes. Ce lot ajoute la commande `us` —
+lecture, génération depuis un gabarit revu, rattachement d'un fichier existant.
+
+- **`templates/us-template.md`** — gabarit revu, enrichi mais sobre (< 60 lignes, borne écrite
+  dans le fichier : au-delà, ce n'est pas une US mal rédigée, c'est un lot à redécouper). Jetons
+  `{{ID}}`/`{{TITRE}}`/`{{EPIC}}` substitués au rendu ; sections « Récit », « Critères
+  d'acceptation » (forme étant-donné/quand/alors, critère vérifiable ou pas un critère),
+  « Hors périmètre » (et **pourquoi**), « Preuve de clôture » (alimente `--verify`), « Notes ».
+- **`lib/backlog.js`** — `setUs` (édition du pointeur, même garde d'existence qu'`addLot`, refus
+  sur lot clos), `usPathFor` (chemin conventionnel `docs/us/US-<id>.md`, **sans slug de titre** :
+  un titre bouge, le chemin resterait faux), `renderUsTemplate` (gabarit résolu depuis le code,
+  jamais depuis le dépôt utilisateur ; lot sans epic → tiret cadratin, jamais « null »),
+  `createUsFile` (écriture + rattachement dans le **même geste** — un fichier sans pointeur
+  serait invisible du backlog). `new` déclaré dans `BOOL_FLAGS`.
+- **`scripts/backlog.js`** — commande `us`, trois régimes sur le modèle de `verify` : sans flag
+  → lecture du pointeur (le fichier US n'est **jamais** ouvert, coût de contexte nul) ; `--new`
+  → gabarit posé + pointeur rattaché ; `--set <chemin>` → rattache une US écrite ailleurs.
+  Refus doux et explicites : fichier déjà présent (la commande génère, elle n'écrase jamais une
+  US rédigée — et propose `--set` comme issue), lot clos (une US écrite après la clôture ne
+  gouverne plus rien, la **lecture** reste ouverte), `--new` et `--set` ensemble, chemin
+  inexistant, gabarit illisible, écriture impossible.
+- **`commands/scope.md`** — l'étape 1 n'exige plus d'écrire l'US avant de poser le lot : US
+  validée mais pas écrite → poser le lot sans `--us`, puis `us --id N --new`. Le gabarit posé
+  reste **à remplir à la main** (ni critères ni hors-périmètre inventés).
+- **`README.md`**, **`ARCHITECTURE.md`** — bullet « Pointeur US » complété ; nouvelle décision
+  « Commande `us` : gabarit généré + pointeur éditable » (conventions et refus, avec le pourquoi).
+- Tests : nouvelle section (N1-N7, 35 assertions) — lecture, création, substitution des jetons,
+  absence de jeton résiduel, non-écrasement d'une US rédigée, `--set`, exclusion `--new`/`--set`,
+  plafond `MAX_US`, lot clos en lecture seule, gardes lib (`setUs`/`createUsFile`). Suite verte :
+  1682 OK, 0 échec.
+- Non vérifié : aucune installation réelle testée (`~/.claude` non touché) ; le plugin installé
+  reste en retard sur cette source (non republié).
+
 ## 2026-07-28 — « Retrait du pointeur Jira » (epic « Formalisation US », backlog #105)
 
 Premier lot de l'epic « Formalisation US » : retrait du pointeur `integrations.jira` posé aux
