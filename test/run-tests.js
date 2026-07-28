@@ -7842,6 +7842,207 @@ section('Tableau de bord — HTML autonome, thémable, sans requête réseau');
     'D114-9 : aucun hook n\'appelle le tableau de bord (mesure hors bande, comme metrics.js)');
 }
 
+// ============================ B112. BORNE D'OCCUPATION CONFIGURABLE (lot #112) ============================
+section('Borne d\'occupation : lecteur de scalaires rules.yaml + seuil zone-rouge réglable par projet (lot #112)');
+{
+  const rules = require(path.join(PKG, 'lib', 'rules'));
+
+  // Repo sandbox minimal avec un .vibe-agent/rules.yaml au contenu choisi.
+  function repo112(name, rulesBody) {
+    const dir = path.join(SANDBOX, 'b112-' + name);
+    fs.mkdirSync(path.join(dir, '.vibe-agent'), { recursive: true });
+    execFileSync('git', ['init', '-q', dir]);
+    if (rulesBody != null) fs.writeFileSync(path.join(dir, '.vibe-agent', 'rules.yaml'), rulesBody);
+    return dir;
+  }
+
+  // --- B112-1. Lecteur de scalaires : ce qu'il lit, et ce qu'il ignore en silence ---
+  const rBase = repo112('lecteur', [
+    'agent:',
+    '  name: promptimizer',
+    '',
+    'budget:',
+    '  # une ligne de commentaire pure est ignorée',
+    '  max_repeated_reads_per_file: 1   # commentaire de fin de ligne',
+    '  red_zone_tokens: 350000',
+    '  cite: "valeur # entre guillemets"',
+    '  url: http://exemple/x#ancre',
+    '  vide:',
+    '  sous_bloc:',
+    '    profond: 42',
+    '',
+    'context_policy:',
+    '  prefer:',
+    '    - git_grep',
+    '  hors_budget: 7',
+    '',
+  ].join('\n'));
+
+  ok(rules.readScalar(rBase, 'agent', 'name') === 'promptimizer', 'B112-1 : scalaire simple lu dans son bloc');
+  ok(rules.readNumber(rBase, 'budget', 'max_repeated_reads_per_file') === 1,
+    'B112-1 : commentaire de fin de ligne retiré (valeur numérique propre)');
+  ok(rules.readScalar(rBase, 'budget', 'cite') === 'valeur # entre guillemets',
+    'B112-1 : valeur entre guillemets prise telle quelle, `#` interne conservé');
+  ok(rules.readScalar(rBase, 'budget', 'url') === 'http://exemple/x#ancre',
+    'B112-1 : `#` non précédé d\'un blanc n\'est pas un commentaire');
+  ok(rules.readScalar(rBase, 'budget', 'vide') === null, 'B112-1 : clé nue (sous-bloc) hors périmètre -> null');
+  ok(rules.readScalar(rBase, 'budget', 'profond') === null,
+    'B112-1 : imbrication au-delà d\'un niveau non remontée dans le bloc parent');
+  ok(rules.readScalar(rBase, 'budget', 'hors_budget') === null,
+    'B112-1 : la désindentation ferme le bloc (une clé du bloc suivant n\'y fuit pas)');
+  ok(rules.readScalar(rBase, 'context_policy', 'prefer') === null,
+    'B112-1 : liste YAML ignorée (pas de valeur scalaire)');
+  ok(rules.readScalar(rBase, 'bloc_absent', 'x') === null, 'B112-1 : bloc absent -> null');
+  ok(rules.readScalar(rBase, 'budget', 'absente') === null, 'B112-1 : clé absente -> null');
+
+  // Bornes et formes non numériques : traitées comme absentes (l'appelant garde son défaut).
+  ok(rules.readNumber(rBase, 'budget', 'cite') === null, 'B112-1 : valeur non numérique -> readNumber null');
+  ok(rules.readNumber(rBase, 'budget', 'red_zone_tokens', 1) === 350000, 'B112-1 : readNumber respecte min inclusif');
+  ok(rules.readNumber(rBase, 'budget', 'red_zone_tokens', 1, 1000) === null,
+    'B112-1 : valeur hors bornes = absente (jamais rabotée en silence)');
+
+  // Fail-open : pas de rules.yaml, root absent, fichier illisible -> null, jamais d'exception.
+  const rNoFile = repo112('sans-rules', null);
+  ok(rules.readScalar(rNoFile, 'budget', 'red_zone_tokens') === null, 'B112-1 : rules.yaml absent -> null (fail-open)');
+  ok(rules.readScalar(null, 'budget', 'x') === null, 'B112-1 : root null -> null (fail-open)');
+  const rTrash = repo112('corrompu', '  ceci n\'est pas du YAML : : :\n\t\tbudget\n');
+  let threw112 = false;
+  try { rules.readNumber(rTrash, 'budget', 'red_zone_tokens'); } catch (_) { threw112 = true; }
+  ok(!threw112, 'B112-1 : contenu corrompu -> aucune exception');
+
+  // --- B112-2. Résolution du seuil : config prioritaire, repli strict sur le régime d'origine ---
+  const winSonnet = Math.floor(occupancy.windowForModel('claude-sonnet-5') * occupancy.RED_ZONE_RATIO);
+  const rvNone = occupancy.resolveRedZone(rNoFile, 'claude-sonnet-5');
+  ok(rvNone.source === 'window' && rvNone.tokens === winSonnet,
+    'B112-2 : rien de configuré -> régime historique (85 % de la fenêtre), source "window"');
+  ok(occupancy.resolveRedZone(null, 'claude-sonnet-5').tokens === winSonnet,
+    'B112-2 : hors repo (root null) -> régime historique, jamais d\'erreur');
+
+  const rAbs = repo112('abs', 'budget:\n  red_zone_tokens: 350000\n');
+  const rvAbs = occupancy.resolveRedZone(rAbs, 'claude-sonnet-5');
+  ok(rvAbs.source === 'config' && rvAbs.tokens === 350000,
+    'B112-2 : red_zone_tokens -> borne absolue en tokens, source "config"');
+
+  const rRatio = repo112('ratio', 'budget:\n  red_zone_ratio: 0.35\n');
+  const rvRatio = occupancy.resolveRedZone(rRatio, 'claude-sonnet-5');
+  ok(rvRatio.source === 'config' && rvRatio.tokens === 350000,
+    'B112-2 : red_zone_ratio 0,35 × fenêtre 1M = 350k');
+  ok(occupancy.resolveRedZone(rRatio, 'claude-haiku-4-5').tokens === 70000,
+    'B112-2 : le ratio reste relatif au modèle (0,35 × 200k = 70k sur haiku)');
+
+  const rBoth = repo112('both', 'budget:\n  red_zone_ratio: 0.5\n  red_zone_tokens: 120000\n');
+  ok(occupancy.resolveRedZone(rBoth, 'claude-sonnet-5').tokens === 120000,
+    'B112-2 : red_zone_tokens gagne sur red_zone_ratio');
+
+  // Valeurs aberrantes -> régime d'origine (une borne cassée ne doit pas éteindre l'alerte).
+  for (const [nom, body] of [
+    ['ratio > 1', 'budget:\n  red_zone_ratio: 35\n'],
+    ['ratio nul', 'budget:\n  red_zone_ratio: 0\n'],
+    ['ratio négatif', 'budget:\n  red_zone_ratio: -0.5\n'],
+    ['tokens nul', 'budget:\n  red_zone_tokens: 0\n'],
+    ['tokens négatif', 'budget:\n  red_zone_tokens: -1\n'],
+    ['tokens non numérique', 'budget:\n  red_zone_tokens: beaucoup\n'],
+  ]) {
+    const rBad = repo112('bad-' + nom.replace(/[^a-z]+/gi, '-'), body);
+    const rv = occupancy.resolveRedZone(rBad, 'claude-sonnet-5');
+    ok(rv.source === 'window' && rv.tokens === winSonnet, `B112-2 : ${nom} -> repli sur le régime historique`);
+  }
+
+  // --- B112-3. Seuil/verdict avec override, sans casser les signatures d'origine (#70) ---
+  ok(occupancy.redZoneThreshold('claude-sonnet-5') === 850000,
+    'B112-3 : redZoneThreshold(model) inchangé sans override (non-régression #70)');
+  ok(occupancy.redZoneThreshold('claude-sonnet-5', 350000) === 350000, 'B112-3 : override en tokens appliqué tel quel');
+  ok(occupancy.redZoneThreshold('claude-sonnet-5', 0) === 850000, 'B112-3 : override non exploitable -> défaut');
+  ok(occupancy.isRedZone(400000, 'claude-sonnet-5') === false && occupancy.isRedZone(400000, 'claude-sonnet-5', 350000) === true,
+    'B112-3 : même occupation, verdict inversé par la borne du projet');
+
+  // --- B112-4. evaluateRedZone : borne remontée, source distinguée, anti-spam préservé ---
+  const t112 = writeTranscript('b112-rz.jsonl', ['{"type":"user"}',
+    JSON.stringify({ type: 'assistant', message: { model: 'claude-sonnet-5', usage: { input_tokens: 400000 } } })]);
+  ok(occupancy.evaluateRedZone(t112, 'b112-a', 'claude-sonnet-5') === null,
+    'B112-4 : 400k sur sonnet sans borne configurée -> pas de zone rouge (comportement d\'origine)');
+  const e112 = occupancy.evaluateRedZone(t112, 'b112-b', 'claude-sonnet-5', { tokens: 350000, source: 'config' });
+  ok(e112 && e112.occ === 400000 && e112.threshold === 350000 && e112.source === 'config' && e112.window === 1000000,
+    'B112-4 : borne configurée franchie -> {occ, threshold, source:"config", window}');
+  ok(occupancy.evaluateRedZone(t112, 'b112-b', 'claude-sonnet-5', { tokens: 350000, source: 'config' }) === null,
+    'B112-4 : anti-spam 1×/épisode conservé avec une borne configurée');
+  ok(occupancy.resyncRedZone('b112-b') === true
+    && occupancy.evaluateRedZone(t112, 'b112-b', 'claude-sonnet-5', { tokens: 350000, source: 'config' }) !== null,
+    'B112-4 : réarmement sur compaction inchangé');
+  ok(occupancy.evaluateRedZone(null, 'b112-c', 'claude-sonnet-5', { tokens: 1, source: 'config' }) === null,
+    'B112-4 : transcript absent -> null même avec une borne très basse (fail-open)');
+
+  // --- B112-5. Message : deux régimes, chiffre courant, gain estimé, clôture EN MILIEU DE LOT ---
+  const mCfg = messages.redZonePrescriptionMessage(
+    { occ: 400000, model: 'claude-sonnet-5', threshold: 350000, window: 1000000, source: 'config' });
+  ok(mCfg.startsWith('⛔'), 'B112-5 : borne configurée -> sévérité ALERT (⛔) conservée');
+  ok(/BORNE D'OCCUPATION/.test(mCfg) && !/ZONE ROUGE/.test(mCfg),
+    'B112-5 : en-tête propre à la borne de projet (pas « ZONE ROUGE »)');
+  ok(!/auto-compact.{0,20}approche/.test(mCfg),
+    'B112-5 : ne prétend PAS que l\'auto-compact approche (il est encore loin à 400k/1M)');
+  ok(/≈ 400k/.test(mCfg) && /350k/.test(mCfg), 'B112-5 : cite l\'occupation courante ET la borne franchie');
+  ok(/1,25/.test(mCfg) && /handoff ≈ ~8k/.test(mCfg), 'B112-5 : gain estimé chiffré (coût de compaction vs handoff)');
+
+  const mLot = messages.redZonePrescriptionMessage(
+    { occ: 400000, model: 'claude-sonnet-5', threshold: 350000, window: 1000000, source: 'config' },
+    { title: 'Borne d\'occupation' });
+  ok(/Borne d'occupation/.test(mLot) && /EN COURS/.test(mLot),
+    'B112-5 : lot en cours nommé dans la prescription');
+  ok(/commit intermédiaire/.test(mLot) && /\/fresh-session/.test(mLot) && /\/close-batch/.test(mLot),
+    'B112-5 : clôture proposée EN MILIEU DE LOT (commit intermédiaire + session fraîche)');
+
+  const mWin = messages.redZonePrescriptionMessage(
+    { occ: 180000, model: 'claude-haiku-4-5', threshold: 170000, window: 200000, source: 'window' });
+  ok(/ZONE ROUGE/.test(mWin) && /auto-compact/.test(mWin) && /Lot fini → \/close-batch/.test(mWin),
+    'B112-5 : régime historique sans lot -> message d\'origine intact (non-régression #71)');
+
+  // --- B112-6. Bout-en-bout stop.js : la borne du projet change le comportement live ---
+  const sys112 = (r) => { try { return JSON.parse(r.out).systemMessage || ''; } catch (_) { return ''; } };
+  const tLive = writeTranscript('b112-live.jsonl', ['{"type":"user"}',
+    JSON.stringify({ type: 'assistant', message: { model: 'claude-sonnet-5', usage: { input_tokens: 400000 } } })]);
+
+  const rOff = repo112('live-off', 'budget:\n  max_repeated_reads_per_file: 1\n');
+  const sOff = runHook('stop.js', { session_id: 'b112-off', cwd: rOff, transcript_path: tLive });
+  ok(sOff.code === 0 && !/BORNE D'OCCUPATION/.test(sys112(sOff)) && !/ZONE ROUGE/.test(sys112(sOff)),
+    'B112-6 : sans borne configurée, 400k sur sonnet reste silencieux (non-régression)');
+
+  const rOn = repo112('live-on', 'budget:\n  red_zone_tokens: 350000\n');
+  const sOn = runHook('stop.js', { session_id: 'b112-on', cwd: rOn, transcript_path: tLive });
+  ok(sOn.code === 0 && /BORNE D'OCCUPATION/.test(sys112(sOn)),
+    'B112-6 : borne posée dans rules.yaml -> stop.js prescrit la clôture au franchissement');
+  const sOn2 = runHook('stop.js', { session_id: 'b112-on', cwd: rOn, transcript_path: tLive });
+  ok(sOn2.code === 0 && !/BORNE D'OCCUPATION/.test(sys112(sOn2)),
+    'B112-6 : anti-spam bout-en-bout -> pas de 2e prescription dans la même session');
+
+  // Lot en cours : la prescription le nomme et propose la clôture en milieu de lot.
+  const rLot = repo112('live-lot', 'budget:\n  red_zone_tokens: 350000\n');
+  fs.writeFileSync(path.join(rLot, '.vibe-agent', 'backlog.json'), JSON.stringify({
+    version: 1, lots: [{ id: 1, title: 'Lot à moitié fait', status: 'in_progress' }],
+  }));
+  const sLot = runHook('stop.js', { session_id: 'b112-lot', cwd: rLot, transcript_path: tLive });
+  ok(sLot.code === 0 && /Lot à moitié fait/.test(sys112(sLot)) && /commit intermédiaire/.test(sys112(sLot)),
+    'B112-6 : lot in_progress -> clôture proposée EN MILIEU DE LOT, lot nommé');
+
+  // Fail-open bout-en-bout : rules.yaml illisible -> exit 0, régime d'origine, jamais d'exit 2.
+  const rBroken = repo112('live-corrompu', ':::\n\tbudget: [\n  red_zone_tokens\n');
+  const sBroken = runHook('stop.js', { session_id: 'b112-broken', cwd: rBroken, transcript_path: tLive });
+  ok(sBroken.code === 0, 'B112-6 : rules.yaml corrompu -> stop.js exit 0 (fail-open, jamais d\'exit 2)');
+  ok(!/BORNE D'OCCUPATION/.test(sys112(sBroken)),
+    'B112-6 : rules.yaml corrompu -> aucune borne inventée, régime historique');
+
+  // --- B112-7. Template : la surface est documentée, et inerte par défaut ---
+  const tpl112 = fs.readFileSync(path.join(PKG, 'templates', 'rules.yaml'), 'utf8');
+  ok(/red_zone_tokens/.test(tpl112) && /red_zone_ratio/.test(tpl112),
+    'B112-7 : le template documente les deux clés de la borne');
+  ok(!/aucun parseur YAML ne le lit/.test(tpl112),
+    'B112-7 : le commentaire « bloc documentaire » périmé est retiré (des scalaires sont désormais lus)');
+  ok(/^\s*#\s*red_zone_tokens:/m.test(tpl112) && /^\s*#\s*red_zone_ratio:/m.test(tpl112),
+    'B112-7 : clés livrées COMMENTÉES -> un projet fraîchement initialisé garde le seuil historique');
+  const rTpl = repo112('template', tpl112);
+  ok(occupancy.resolveRedZone(rTpl, 'claude-sonnet-5').source === 'window',
+    'B112-7 : le template tel quel ne configure aucune borne (preuve d\'inertie par défaut)');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

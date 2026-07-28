@@ -12,7 +12,8 @@ Le dépôt en est la source (miroir plat → `~/.claude/`, cf. [CLAUDE.md](CLAUD
 Promptimizer
 ├─ Project Initializer      (session-start + bootstrap-project/lib/bootstrap.js + /init ;
 │                             auto-scaffold sans confirmation sur un projet neuf, 0 commit)
-├─ Context Budget Controller (occupancy.js : paliers fixes + flottant, hygiène de lecture)
+├─ Context Budget Controller (occupancy.js : paliers fixes + flottant, hygiène de lecture,
+│                             borne d'occupation réglable par projet via rules.yaml/lib/rules.js)
 └─ Batch Quality Controller  (stop + audit-batch + close-batch + ledgers + lib/lot.js)
 ```
 
@@ -32,7 +33,7 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
 | `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd`, `transcript_path` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large (anti-spam 1×/session), nudge occupation ≥ 500k en 2 lignes (anti-spam 1×/palier, lot B5), vigie modèle réel vs préconisé du lot en cours (anti-spam 1×/session, lot #42) |
 | `pre-tool-use.js` | PreToolUse `Bash` (+ `Edit`/`Write`/`MultiEdit` en vague) | `tool_input.command` / `.file_path` | `permissionDecision` allow/ask/deny **ou** `updatedInput` (réécriture RTK, sans `permissionDecision`) | sûreté commandes + périmètre fleet-fille + **bridge RTK optionnel** (default OFF, lot #81) |
 | `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite\|Bash` | `tool_input.file_path`, `tool_input.todos`, `tool_input.command` + `tool_response` (Bash) | `additionalContext` (rare, advisory) **ou** `updatedToolOutput` (réduction sortie Bash, lot #84) + effet de bord ledgers | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite), signale une relecture complète redondante (lot B4), **réduit une sortie Bash volumineuse** hors RTK (lot #84) |
-| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), **détecteur de dérive de session** (coût↑ + hitRate↓ sur 6 tours → prescrit la clôture, lot #62), **vigie des tours en boucle** (commande Bash qui échoue ≥ 3 fois d'affilée → nudge « change d'approche », anti-spam par commande, `lib/loopwatch.js`, lot #69), **vigie de dette git non commitée** (diff significatif qui grossit sur ≥ 3 tours sans commit → nudge « commit/clôture », anti-spam par palier, `lib/gitdebt.js`, lot #73), **vigie de gouvernance du CLAUDE.md** (absent ou hypertrophié > 10 Ko → nudge créer / dégraisser, 1×/session, `lib/claudemd.js`, lot #74), **notification OS opt-in** sur zone rouge et clôture de lot (`PMZ_NOTIFY=1`, `lib/notify.js`, lot #75), hygiène de lecture, **nudge subagent** à haute occupation + lectures (lot #52), **palier de gaspillage auto-surfacé** avec top-3 coupables (`waste_bucket` persisté, lot #52), rappel de clôture nommant les skills **et embarquant un brouillon d'entrée CHANGELOG pré-mâché** (en-tête daté + lot/epic/titre, scope sans son préfixe « fait quand : », fichiers modifiés plafonnés à 6, verify — `closureWithDraftMessage`, soudé au rappel pour rester atomique sous l'arbitre, lot #68), incrémente le compteur de lot, agrège le coût réel du lot en cours (`cost_tokens`) et alerte à l'approche du budget ~300k avec proposition de redécoupage (lot #43), auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, exécute la `verify` du lot à l'auto-clôture (timeout court `VERIFY_AUTOCLOSE_MS`, résultat visible, verdict calculé **avant** `doneLot` depuis le lot #111 — un `timeout` empêche la clôture, un `failed` non) + rappel doux si le commit de clôture ne touche pas `CHANGELOG.md` (lot #44), **plafonne les nudges du tour par sévérité** (`lib/arbiter.js`, ≤ 3, lot #57), écrit le handoff auto (écrasé à chaque tour) |
+| `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), **détecteur de dérive de session** (coût↑ + hitRate↓ sur 6 tours → prescrit la clôture, lot #62), **vigie des tours en boucle** (commande Bash qui échoue ≥ 3 fois d'affilée → nudge « change d'approche », anti-spam par commande, `lib/loopwatch.js`, lot #69), **vigie de dette git non commitée** (diff significatif qui grossit sur ≥ 3 tours sans commit → nudge « commit/clôture », anti-spam par palier, `lib/gitdebt.js`, lot #73), **vigie de gouvernance du CLAUDE.md** (absent ou hypertrophié > 10 Ko → nudge créer / dégraisser, 1×/session, `lib/claudemd.js`, lot #74), **notification OS opt-in** sur zone rouge et clôture de lot (`PMZ_NOTIFY=1`, `lib/notify.js`, lot #75), **borne d'occupation réglable par projet** (`budget.red_zone_tokens`/`red_zone_ratio` de `rules.yaml` via `lib/rules.js` — au franchissement, clôture prescrite y compris **en milieu de lot**, lot #112), hygiène de lecture, **nudge subagent** à haute occupation + lectures (lot #52), **palier de gaspillage auto-surfacé** avec top-3 coupables (`waste_bucket` persisté, lot #52), rappel de clôture nommant les skills **et embarquant un brouillon d'entrée CHANGELOG pré-mâché** (en-tête daté + lot/epic/titre, scope sans son préfixe « fait quand : », fichiers modifiés plafonnés à 6, verify — `closureWithDraftMessage`, soudé au rappel pour rester atomique sous l'arbitre, lot #68), incrémente le compteur de lot, agrège le coût réel du lot en cours (`cost_tokens`) et alerte à l'approche du budget ~300k avec proposition de redécoupage (lot #43), auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, exécute la `verify` du lot à l'auto-clôture (timeout court `VERIFY_AUTOCLOSE_MS`, résultat visible, verdict calculé **avant** `doneLot` depuis le lot #111 — un `timeout` empêche la clôture, un `failed` non) + rappel doux si le commit de clôture ne touche pas `CHANGELOG.md` (lot #44), **plafonne les nudges du tour par sévérité** (`lib/arbiter.js`, ≤ 3, lot #57), écrit le handoff auto (écrasé à chaque tour) |
 | `pre-compact.js` | PreCompact `manual\|auto` | `cwd`, `trigger`, `transcript_path` | `systemMessage` (manual) ou — (auto : effet de bord handoff seul) | sauve le handoff auto (plan de lots + todos compris) AVANT compaction ; la réinjection minimale se fait au SessionStart(compact). Sur `manual` (/compact), ajoute un rappel **chiffré** visible : compacter ≈ réécriture de l'occupation en cache-write (×1,25) + résumé lossy, vs clôture + handoff (~8k) — TTL prudent, aucun prix en dur (lot T1). `auto` reste silencieux (compaction subie) |
 
 ### Invariants NON négociables
@@ -98,6 +99,30 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   tour — c'est voulu (le signal grave passe avant le bruit). Canal OpenCode inchangé : son
   `occupancy-oc.js` calcule déjà l'occupation **relative à la fenêtre** nativement (buckets en
   %), hors périmètre #70/#71.
+- **Borne d'occupation réglable par projet** (`lib/rules.js` + `lib/occupancy.js:
+  configuredRedZone`/`resolveRedZone`, `messages.js: redZonePrescriptionMessage`, câblé dans
+  `stop.js`, lot #112) : le seuil #70 ne mesure qu'une chose — l'imminence de l'auto-compact. Sur
+  une fenêtre de 1M il tombe à 850k, un chiffre qu'une session atteint rarement : la borne ne
+  mordait **quasiment jamais** alors que le coût de cache devient dissuasif bien avant. D'où un
+  seuil lu par projet dans `.vibe-agent/rules.yaml`, bloc `budget:` — `red_zone_tokens` (absolu,
+  prioritaire) ou `red_zone_ratio` (fraction de la fenêtre du modèle). **Décision** : le seuil vit
+  dans `rules.yaml` et non en variable d'env / JSON séparé, parce que c'est déjà la surface de
+  règles du projet — au prix d'un **lecteur de scalaires** (`lib/rules.js`), le zéro-dépendance
+  interdisant une lib YAML. Ce lecteur n'est **pas** un parseur YAML et n'a pas vocation à le
+  devenir : paires `clé: valeur` d'un bloc de premier niveau, un seul niveau d'indentation, rien
+  d'autre (listes, sous-blocs, multi-lignes, ancres → ignorés en silence) ; `readNumber` traite une
+  valeur hors bornes comme **absente** plutôt que de la raboter (`red_zone_ratio: 35` est une faute
+  de frappe, pas une demande de 3500 %). Conséquences assumées : (a) rien de configuré, valeur
+  aberrante, `rules.yaml` illisible ou hors repo → **régime #70 strictement inchangé**, donc zéro
+  régression pour un projet existant (les clés sont livrées **commentées** dans le template) ;
+  (b) `source` (`'config'` | `'window'`) accompagne le seuil jusqu'au message, qui change d'en-tête
+  — annoncer « l'auto-compact approche » à 400k sur 1M serait faux, et une alerte fausse finit par
+  être ignorée ; (c) le lot **en cours** est joint à la prescription, qui propose alors la clôture
+  **en milieu de lot** (commit intermédiaire + `/fresh-session`, le lot reste ouvert) au lieu
+  d'arbitrer « lot fini → … sinon → … » ; (d) `stop.js` résout la racine git **avant** la branche
+  (a1) — un appel `gitRoot` déplacé, pas ajouté ; (e) **un seul épisode pour les deux régimes**
+  (même fichier d'état `redzone`) : une borne basse consomme l'unique prescription de la session, et
+  la zone haute reste couverte par les paliers absolus `BUCKETS` (500k/750k) + la dérive de session.
 - **Réinjection post-compact enrichie** (`session-start.js` branche `src === 'compact'` +
   `messages.compactResumeMessage(lot, prog, { todos, skips, decisions })`, lot #72) : après une
   compaction le contexte survit mais a perdu le **plan** ET la **mémoire des relectures déjà

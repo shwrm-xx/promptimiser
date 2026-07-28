@@ -2,6 +2,43 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-28 — « Borne d'occupation » (epic « Économie de contexte », backlog #112)
+
+Troisième lot de l'epic. La prescription « zone rouge » existait depuis #71, mais son seuil était
+codé en dur à 85 % de la fenêtre du modèle : **~850k sur une fenêtre de 1M**, un chiffre qu'une
+session atteint rarement. La borne ne mordait donc quasiment jamais, alors que le coût de relecture
+en cache devient dissuasif bien avant.
+
+- **Seuil réglable par projet** dans `.vibe-agent/rules.yaml`, bloc `budget:` —
+  `red_zone_tokens: 350000` (borne absolue, prioritaire) ou `red_zone_ratio: 0.35` (fraction de la
+  fenêtre du modèle, donc toujours relative à #70). Clés livrées **commentées** : un projet existant
+  ou fraîchement initialisé garde exactement le comportement d'avant.
+- **`lib/rules.js`** (nouveau) — lecteur de **scalaires**, pas un parseur YAML, et il n'a pas
+  vocation à le devenir : paires `clé: valeur` d'un bloc de premier niveau, un seul niveau
+  d'indentation ; listes, sous-blocs, multi-lignes et ancres sont ignorés en silence. Arbitrage
+  assumé : le seuil vit dans `rules.yaml` — déjà la surface de règles du projet — plutôt qu'en
+  variable d'env ou JSON séparé, au prix de ce lecteur, le zéro-dépendance du dépôt interdisant une
+  lib YAML. Corollaire : le commentaire « bloc documentaire (aucun parseur YAML ne le lit) » du
+  template était périmé, il est retiré.
+- **Une valeur hors bornes est traitée comme absente**, jamais rabotée : `red_zone_ratio: 35` est
+  une faute de frappe, pas une demande de 3500 %. Idem pour une valeur nulle, négative ou non
+  numérique → repli sur le seuil historique. Une borne cassée n'éteint pas l'alerte.
+- **Le message ne ment plus sur la cause** : `source` (`'config'` | `'window'`) suit le seuil
+  jusqu'à `redZonePrescriptionMessage`, qui change d'en-tête — annoncer « l'auto-compact approche »
+  à 400k sur une fenêtre de 1M serait faux, et une alerte fausse finit par être ignorée.
+- **Clôture proposée en milieu de lot** : le lot en cours est joint à la prescription, qui prescrit
+  alors explicitement commit intermédiaire + `/fresh-session` (le lot reste ouvert, le handoff le
+  reprend) au lieu d'arbitrer « lot fini → … sinon → … ». L'occupation courante et le coût comparé
+  d'une compaction restent chiffrés. `stop.js` résout la racine git **avant** la branche zone rouge
+  (appel `gitRoot` déplacé, pas ajouté).
+- Fail-open préservé de bout en bout, **aucun `exit 2`** : `rules.yaml` absent, illisible ou
+  corrompu, hors repo, backlog illisible → régime d'origine, prescription jamais escamotée.
+- Réserve assumée : **un seul épisode pour les deux régimes** (même fichier d'état `redzone`) — une
+  borne basse consomme l'unique prescription de la session, la zone haute restant couverte par les
+  paliers absolus `BUCKETS` (500k/750k) et la vigie de dérive.
+- Tests : 55 cas `B112` (lecteur, résolution du seuil, valeurs aberrantes, message dans les deux
+  régimes, bout-en-bout `stop.js`, inertie du template). **1902 OK / 0 échec**.
+
 ## 2026-07-28 — « Commande `/pmz:dashboard` » (epic « Économie de contexte », backlog #114)
 
 Second lot de l'epic, livré **en vague parallèle** avec #111 (worktrees isolés, périmètres

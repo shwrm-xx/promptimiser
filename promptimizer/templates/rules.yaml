@@ -4,10 +4,21 @@ agent:
   secondary_objective: close_batches_cleanly
 
 budget:
-  # Bloc documentaire (aucun parseur YAML ne le lit). Le vrai signal de coût est
-  # l'occupation du contexte en TOKENS — paliers dans lib/occupancy.js
-  # (150k/300k/500k/750k puis +250k) — et non un compteur de tours.
-  max_repeated_reads_per_file: 1   # relecture complète d'un fichier inchangé = gaspillage
+  # Le vrai signal de coût est l'occupation du contexte en TOKENS — paliers dans
+  # lib/occupancy.js (150k/300k/500k/750k puis +250k) — et non un compteur de tours.
+  # Seuls les scalaires NUMÉRIQUES de ce bloc sont exécutables (lib/rules.js, lecteur
+  # stdlib volontairement borné) ; le reste du fichier est lu par le modèle, pas par du code.
+  max_repeated_reads_per_file: 1   # documentaire : relecture complète d'un fichier inchangé = gaspillage
+
+  # BORNE D'OCCUPATION (lot #112) — au franchissement, le hook Stop prescrit la clôture,
+  # y compris EN MILIEU DE LOT (commit intermédiaire + /fresh-session), avec l'occupation
+  # courante et le coût comparé d'une compaction.
+  # Décommenter UNE des deux clés pour poser la borne ; sans elles, PMZ garde son seuil
+  # historique = 85 % de la fenêtre du modèle (soit ~850k sur une fenêtre de 1M — un
+  # chiffre qu'une session atteint rarement, donc une borne qui ne mord quasiment jamais).
+  # `red_zone_tokens` gagne sur `red_zone_ratio` si les deux sont posées.
+  # red_zone_tokens: 350000   # borne absolue en tokens
+  # red_zone_ratio: 0.35      # ou : fraction de la fenêtre du modèle (0 < r <= 1)
 
 context_policy:
   prefer:

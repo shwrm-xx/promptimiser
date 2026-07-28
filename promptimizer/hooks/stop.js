@@ -63,6 +63,11 @@ function main() {
   if (input.stop_hook_active === true) return passThrough(); // anti-boucle
   const sid = input.session_id || null;
   const cwd = input.cwd || process.cwd();
+  // Racine du repo résolue ICI et non plus juste avant la branche clôture (lot #112) : la
+  // prescription (a1) a désormais besoin du projet pour lire la borne d'occupation de
+  // `rules.yaml` et nommer le lot en cours. `gitRoot` est fail-open (null hors repo) et
+  // n'était déjà appelé qu'une fois — remonter l'appel ne change que son ordre.
+  const root = gitRoot(cwd);
   const parts = [];
   // Coda de clôture (lot #108) : prescription hors arbitre — émise APRÈS arbitrate(), donc jamais
   // évincée par le plafond de nudges. Reste null tant qu'aucun lot n'est clos ce tour.
@@ -80,9 +85,21 @@ function main() {
   // réel est lu au transcript (même source que la vigie modèle) ; s'il est absent, repli fenêtre
   // prudente. 1×/épisode (état 'redzone'), réarmé sur compaction plus bas. Indépendant du projet
   // (transcript + état seuls) -> marche même hors repo. Fail-open dédié dans evaluateRedZone.
-  const rz = occupancy.evaluateRedZone(input.transcript_path, sid, readLastModel(input.transcript_path));
+  // BORNE D'OCCUPATION (lot #112) : le seuil n'est plus fatalement celui de l'auto-compact — un
+  // projet peut le poser plus bas dans `.vibe-agent/rules.yaml` (bloc `budget:`), là où le coût de
+  // cache devient dissuasif. `resolveRedZone` retombe sur le régime d'origine si rien n'est
+  // configuré (ou hors repo, root === null) : zéro régression pour un projet existant. Le lot en
+  // cours est joint au message pour prescrire la clôture EN MILIEU DE LOT, dans un try/catch dédié
+  // — un backlog illisible ne doit jamais escamoter la prescription elle-même.
+  const rzModel = readLastModel(input.transcript_path);
+  const rzBound = occupancy.resolveRedZone(root, rzModel);
+  const rz = occupancy.evaluateRedZone(input.transcript_path, sid, rzModel, rzBound);
   if (rz) {
-    parts.push(redZonePrescriptionMessage(rz));
+    let rzLot = null;
+    if (root) {
+      try { rzLot = currentLot(loadBacklog(root)); } catch (_) { rzLot = null; }
+    }
+    parts.push(redZonePrescriptionMessage(rz, rzLot));
     notify.notifyRedZone(); // opt-in (#75) ; anti-spam déjà géré par evaluateRedZone lui-même
   }
 
@@ -127,7 +144,6 @@ function main() {
   if (loop) parts.push(loopingCommandMessage(loop));
 
   // (b) clôture — dans tout repo git (ledger auto-créé, jamais de confirmation requise).
-  const root = gitRoot(cwd);
   if (root) {
     ensureLedger(root);
     // Miroir compact de l'occupation dans le ledger projet (aperçu lisible).

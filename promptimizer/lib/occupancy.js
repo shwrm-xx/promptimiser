@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const cdir = require('./claude-dir');
+const rules = require('./rules');
 
 const BUCKETS = [150000, 300000, 500000, 750000];
 // Au-delà du dernier palier fixe, on continue d'alerter tous les +250k au lieu de
@@ -45,12 +46,50 @@ function windowForModel(model) {
 // (fenêtre large) et sur-alerterait sur Haiku (fenêtre étroite).
 const RED_ZONE_RATIO = 0.85;
 
-function redZoneThreshold(model) {
+// BORNE D'OCCUPATION CONFIGURABLE (lot #112). Le seuil ci-dessus mesure une seule chose :
+// l'imminence de l'auto-compact. Sur une fenêtre de 1M il tombe à 850k — un chiffre qu'une
+// session atteint rarement, si bien que la borne ne mordait jamais en pratique alors que le
+// coût de cache, lui, devient dissuasif bien avant. D'où un seuil réglable par projet, lu
+// dans `.vibe-agent/rules.yaml`, bloc `budget:` :
+//   red_zone_tokens: 350000   -> borne ABSOLUE en tokens (prioritaire)
+//   red_zone_ratio: 0.35      -> fraction de la fenêtre du modèle (repli)
+// Absent/invalide -> RED_ZONE_RATIO, donc comportement d'origine strictement préservé pour
+// tout projet existant (rules.yaml n'est copié qu'à l'init, sans ces clés).
+// `source` distingue les deux régimes pour que le message ne prétende PAS que l'auto-compact
+// approche quand c'est une borne de projet, franchie bien plus bas, qui a parlé.
+const RED_ZONE_BLOCK = 'budget';
+
+function configuredRedZone(root, model) {
+  if (!root) return null;
+  try {
+    const abs = rules.readNumber(root, RED_ZONE_BLOCK, 'red_zone_tokens', 1);
+    if (abs !== null) return { tokens: Math.floor(abs), source: 'config' };
+    const ratio = rules.readNumber(root, RED_ZONE_BLOCK, 'red_zone_ratio', 0, 1);
+    if (ratio !== null && ratio > 0) {
+      return { tokens: Math.floor(windowForModel(model) * ratio), source: 'config' };
+    }
+  } catch (_) {
+    /* fail-open : toute erreur de lecture -> seuil par défaut ci-dessous */
+  }
+  return null;
+}
+
+// Seuil effectif { tokens, source } : borne de projet si configurée, sinon marge d'auto-compact.
+function resolveRedZone(root, model) {
+  const cfg = configuredRedZone(root, model);
+  if (cfg) return cfg;
+  return { tokens: Math.floor(windowForModel(model) * RED_ZONE_RATIO), source: 'window' };
+}
+
+// `override` (tokens, optionnel) : seuil déjà résolu par l'appelant — cf. resolveRedZone.
+// Signature d'origine `redZoneThreshold(model)` inchangée.
+function redZoneThreshold(model, override) {
+  if (Number.isFinite(override) && override > 0) return Math.floor(override);
   return Math.floor(windowForModel(model) * RED_ZONE_RATIO);
 }
 
-function isRedZone(occupancy, model) {
-  return occupancy > 0 && occupancy >= redZoneThreshold(model);
+function isRedZone(occupancy, model, override) {
+  return occupancy > 0 && occupancy >= redZoneThreshold(model, override);
 }
 
 const MAX_TAIL = 8 * 1024 * 1024; // plafond dur de lecture du transcript
@@ -254,10 +293,17 @@ function resyncBucket(sessionId, occ) {
 // compaction (delta très négatif, alerts.resync de turnstats) — même politique que
 // resyncBucket. Fail-open : au pire on resignale. Retourne { occ, model, threshold, window }
 // au franchissement, sinon null.
-function evaluateRedZone(transcriptPath, sessionId, model) {
+// `bound` (lot #112, optionnel) : seuil effectif { tokens, source } issu de resolveRedZone(root,
+// model). Absent -> régime historique (85 % de la fenêtre du modèle), inchangé. Le `source` est
+// remonté à l'appelant pour que le message distingue « auto-compact imminent » d'une borne de
+// projet franchie bien plus bas. Un seul épisode pour les deux régimes (même fichier d'état) :
+// une borne basse consomme l'unique prescription de la session — les paliers absolus (BUCKETS,
+// 500k/750k) restent le filet de la zone haute.
+function evaluateRedZone(transcriptPath, sessionId, model, bound) {
   if (!transcriptPath) return null;
   const occ = readLastOccupancy(transcriptPath);
-  if (!occ || !isRedZone(occ, model)) return null;
+  const tokens = bound && Number.isFinite(bound.tokens) ? bound.tokens : undefined;
+  if (!occ || !isRedZone(occ, model, tokens)) return null;
   const sf = stateFileFor(sessionId, 'redzone');
   if (fs.existsSync(sf)) return null; // déjà prescrit cet épisode zone-rouge
   try {
@@ -265,7 +311,13 @@ function evaluateRedZone(transcriptPath, sessionId, model) {
   } catch (_) {
     /* fail-open : au pire on resignale */
   }
-  return { occ, model: model || null, threshold: redZoneThreshold(model), window: windowForModel(model) };
+  return {
+    occ,
+    model: model || null,
+    threshold: redZoneThreshold(model, tokens),
+    window: windowForModel(model),
+    source: (bound && bound.source) || 'window',
+  };
 }
 
 // Réarme la prescription zone-rouge après une VRAIE compaction (pendant symétrique de
@@ -311,5 +363,5 @@ module.exports = {
   evaluateSubagentNudge, resyncBucket, stateFileFor,
   BUCKETS, FLOATING_STEP, STATE_DIR,
   MODEL_WINDOWS, DEFAULT_WINDOW, RED_ZONE_RATIO, windowForModel, redZoneThreshold, isRedZone,
-  evaluateRedZone, resyncRedZone,
+  evaluateRedZone, resyncRedZone, configuredRedZone, resolveRedZone, RED_ZONE_BLOCK,
 };

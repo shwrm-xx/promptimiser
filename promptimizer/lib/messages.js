@@ -128,15 +128,39 @@ function compactionNudgeMessage(occ) {
 // contexte la plus grave, elle doit primer et survivre au plafond de l'arbitre (#57). VISIBLE
 // (systemMessage) : aucun coût de cache, on peut donc joindre l'argument chiffré. Émise 1× par
 // épisode zone-rouge (réarmée après compaction, cf. occupancy.resyncRedZone).
-function redZonePrescriptionMessage(rz) {
+// `rz.source` (lot #112) : 'window' = régime historique (marge d'auto-compact), 'config' = borne
+// d'occupation propre au projet (`budget.red_zone_tokens`/`red_zone_ratio` de rules.yaml), franchie
+// bien plus bas. Deux en-têtes distincts, car annoncer « l'auto-compact approche » à 350k sur une
+// fenêtre de 1M serait faux — et une alerte fausse finit par être ignorée.
+// `lot` (optionnel) : lot EN COURS. Présent, il transforme l'arbitrage générique « lot fini → …
+// sinon → … » en prescription explicite de clôture EN MILIEU DE LOT — c'est là que la borne sert :
+// interrompre un lot en cours coûte moins cher que de le finir dans un contexte saturé.
+function redZonePrescriptionMessage(rz, lot) {
   const k = Math.round(rz.occ / 1000);
   const win = Math.round(rz.window / 1000);
   const pct = Math.round((rz.occ / rz.window) * 100);
-  const lines = [
-    `ZONE ROUGE : contexte ≈ ${k}k / ~${win}k tokens de fenêtre (${pct}%) — l'auto-compact de Claude Code approche.`,
-    'Ne le subis pas (résumé lossy) : clôture MAINTENANT, tant que le contexte est intact.',
-    "Lot fini → /close-batch. Sinon → commit intermédiaire + /fresh-session : repart d'un handoff court, sans perte.",
-  ];
+  const lines = [];
+  if (rz.source === 'config') {
+    const seuil = Math.round(rz.threshold / 1000);
+    lines.push(
+      `BORNE D'OCCUPATION franchie : contexte ≈ ${k}k tokens — au-delà de la borne du projet (${seuil}k, fenêtre ~${win}k soit ${pct}%).`,
+      'Chaque tour suivant relit tout ce contexte en cache : clôture MAINTENANT plutôt que de payer la montée.',
+    );
+  } else {
+    lines.push(
+      `ZONE ROUGE : contexte ≈ ${k}k / ~${win}k tokens de fenêtre (${pct}%) — l'auto-compact de Claude Code approche.`,
+      'Ne le subis pas (résumé lossy) : clôture MAINTENANT, tant que le contexte est intact.',
+    );
+  }
+  if (lot && lot.title) {
+    lines.push(
+      `Lot « ${lot.title} » EN COURS — ne le termine pas ici : commit intermédiaire + /fresh-session (le lot reste ouvert, le handoff le reprend). Déjà bouclé → /close-batch.`,
+    );
+  } else {
+    lines.push(
+      "Lot fini → /close-batch. Sinon → commit intermédiaire + /fresh-session : repart d'un handoff court, sans perte.",
+    );
+  }
   lines.push(...compactionCostLines(rz.occ));
   return withSeverity(SEV.ALERT, lines);
 }

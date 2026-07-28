@@ -166,6 +166,15 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   `pmz:summary: <chemin> — <résumé>` d'un handoff, restituées de session en session dans le
   handoff auto), la note le **sert à la place de la relecture** ; un fichier modifié perd
   aussitôt son résumé (jamais de résumé périmé).
+- **Borne d'occupation** (réglable par projet) : par défaut, PMZ n'alerte « zone rouge » qu'à
+  l'approche de l'auto-compact (85 % de la fenêtre du modèle — soit ~850k sur une fenêtre de 1M,
+  donc rarement atteint). Pour être averti **plus tôt**, décommente une ligne dans
+  `.vibe-agent/rules.yaml`, bloc `budget:` :
+  `red_zone_tokens: 350000` (borne absolue en tokens) ou `red_zone_ratio: 0.35` (fraction de la
+  fenêtre du modèle). Au franchissement, `stop.js` prescrit la clôture **y compris en milieu de
+  lot** — commit intermédiaire + `/fresh-session`, le lot reste ouvert et le handoff le reprend —
+  avec l'occupation courante et ce que coûterait une compaction en regard. Clé absente ou valeur
+  aberrante → seuil historique inchangé.
 - **Occupation déjà haute** : au-delà de 500k tokens, un rappel court (2 lignes) est ajouté au
   prompt suivant (plafonné 1×/palier) ; à la **reprise** d'une session déjà chargée (≥ 300k),
   un message visible (zéro token ajouté au contexte) le signale sans attendre la fin du tour.
