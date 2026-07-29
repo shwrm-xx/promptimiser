@@ -9192,6 +9192,91 @@ section('B127 — catalogue marketplace (racine du dépôt)');
   }
 }
 
+// ==========================================================================
+// B128. Chemins d'aide plugin-conscients dans lib/messages.js
+// ==========================================================================
+// En canal plugin le code vit sous ${CLAUDE_PLUGIN_ROOT}, pas sous ~/.claude/promptimizer :
+// un message injecté qui affiche ce dernier donne à l'utilisateur une commande INEXISTANTE.
+// build-plugin.js ne rattrape pas le cas (rewriteMdInDir ne réécrit que les .md, jamais le JS)
+// — d'où le garde-fou ici. Sous-process obligatoire : PMZ_BASE est figé au chargement du
+// module, et run-tests.js a déjà require() messages.js sans CLAUDE_PLUGIN_ROOT.
+section('B128 — messages.js sans chemin d\'install manuelle en canal plugin');
+{
+  const ROOT_PROBE = '/pmz-probe/plugins/pmz';
+  const probe = path.join(SANDBOX, 'probe-messages.js');
+  // Balayage GÉNÉRIQUE : toute string exportée + toute string produite par une fonction
+  // exportée appelée avec un jeu d'arguments plausibles. Les appels qui échouent (mauvaise
+  // arité/forme) sont ignorés — le test ne prétend pas couvrir chaque signature, il attrape
+  // toute réintroduction du chemin en dur dans un message construit.
+  fs.writeFileSync(probe, `'use strict';
+const m = require(${JSON.stringify(path.join(PKG, 'lib', 'messages.js'))});
+const BAD = '~/.claude/promptimizer';
+const lot = { id: 7, title: 'Un lot', scope: 'fait quand : …', model_hint: 'sonnet',
+  effort_hint: 'medium', verify: null, cost_tokens: 12000, cost_turns: 4, epic: 'E', us: null,
+  perimeter: [], depends_on: [], session_touches: 0 };
+const prog = { done: 1, total: 3 };
+const TUPLES = [[], [lot], [null, lot, prog, []], [lot, null, prog, []], [prog, lot],
+  [lot, lot, prog, []], [12000], [12000, 4], [12000, 12000], ['x'], [{}], [{}, {}],
+  [lot, prog], [prog], [4, 12000], [true], [0]];
+const offenders = [];
+let produced = 0;
+const check = (label, s) => {
+  if (typeof s !== 'string' || !s) return;
+  produced++;
+  if (s.indexOf(BAD) !== -1) offenders.push(label);
+};
+for (const k of Object.keys(m)) {
+  const v = m[k];
+  if (typeof v === 'string') { check(k, v); continue; }
+  if (typeof v !== 'function') continue;
+  for (let i = 0; i < TUPLES.length; i++) {
+    let r;
+    try { r = v.apply(null, TUPLES[i]); } catch (_) { continue; }
+    if (typeof r === 'string') check(k + '(' + i + ')', r);
+    else if (r && typeof r === 'object') for (const f of Object.keys(r)) check(k + '(' + i + ').' + f, r[f]);
+  }
+}
+process.stdout.write(JSON.stringify({ offenders, produced,
+  large: m.MSG_LARGE, resume: m.backlogResumeMessage(null, lot, prog, []) }));
+`);
+  let probeOut = null;
+  try {
+    probeOut = JSON.parse(execFileSync(process.execPath, [probe], {
+      encoding: 'utf8',
+      env: Object.assign({}, process.env, { CLAUDE_PLUGIN_ROOT: ROOT_PROBE }),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }));
+  } catch (e) { probeOut = null; }
+
+  ok(probeOut !== null, 'B128-1 : sonde messages.js exécutable sous CLAUDE_PLUGIN_ROOT');
+  if (probeOut) {
+    ok(probeOut.produced > 20,
+      `B128-2 : le balayage produit bien des messages (${probeOut.produced}) — sinon l'assertion suivante serait vide de sens`);
+    ok(probeOut.offenders.length === 0,
+      `B128-3 : aucun message de messages.js ne contient ~/.claude/promptimizer sous CLAUDE_PLUGIN_ROOT (fautifs : ${probeOut.offenders.join(', ') || 'aucun'})`);
+    // Les deux occurrences corrigées, nommément : absence du mauvais chemin ET présence du bon.
+    ok(probeOut.large.indexOf(ROOT_PROBE + '/scripts/backlog.js') !== -1,
+      'B128-4 : MSG_LARGE pointe vers ${CLAUDE_PLUGIN_ROOT}/scripts/backlog.js');
+    ok(/Démarre-le \(node \/pmz-probe\/plugins\/pmz\/scripts\/backlog\.js start --id 7\)/.test(probeOut.resume),
+      'B128-5 : backlogResumeMessage (« Démarre-le ») pointe vers ${CLAUDE_PLUGIN_ROOT}/scripts/backlog.js');
+  }
+
+  // Repli install manuelle : sans CLAUDE_PLUGIN_ROOT, le chemin ~/.claude/promptimizer DOIT
+  // rester (c'est là que vit le code) — le fix ne doit pas casser le canal manuel.
+  let manualOut = null;
+  try {
+    const env = Object.assign({}, process.env);
+    delete env.CLAUDE_PLUGIN_ROOT;
+    manualOut = JSON.parse(execFileSync(process.execPath, [probe], {
+      encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'],
+    }));
+  } catch (e) { manualOut = null; }
+  ok(manualOut && manualOut.large.indexOf('node ~/.claude/promptimizer/scripts/backlog.js') !== -1,
+    'B128-6 : sans CLAUDE_PLUGIN_ROOT, MSG_LARGE garde le chemin de l\'install manuelle');
+  ok(manualOut && /Démarre-le \(node ~\/\.claude\/promptimizer\/scripts\/backlog\.js/.test(manualOut.resume),
+    'B128-7 : sans CLAUDE_PLUGIN_ROOT, backlogResumeMessage garde le chemin de l\'install manuelle');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

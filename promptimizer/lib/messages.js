@@ -5,6 +5,15 @@ const { COST_BUDGET_TOKENS, modelEffortTag } = require('./backlog');
 const { hintResolvableClaude } = require('./modelwatch');
 const { SEV, withSeverity } = require('./severity');
 
+// Base des chemins d'aide AFFICHÉS dans les messages injectés (même motif que
+// scripts/backlog.js et scripts/close-batch.js) : racine du plugin en mode plugin, sinon
+// l'emplacement de l'install manuelle. Sans ça, une session en canal plugin reçoit une
+// commande `node ~/.claude/promptimizer/scripts/…` qui n'existe pas sur la machine — et la
+// réécriture de build-plugin.js ne rattrape pas le cas (rewriteMdInDir ne traite que les .md).
+// Chemin littéral (`~` non résolu) : c'est une commande à copier dans un shell, pas un accès fs
+// — d'où le motif brut plutôt que claude-dir.pmzDir(), qui résout en absolu.
+const PMZ_BASE = (process.env.CLAUDE_PLUGIN_ROOT || '').trim() || '~/.claude/promptimizer';
+
 const MSG_ACTIF = [
   'Promptimizer actif.',
   'Priorité : réduire les relectures de contexte.',
@@ -55,7 +64,7 @@ const MSG_HANDOFF = [
 const MSG_LARGE = [
   'Demande potentiellement large.',
   'Propose un découpage en 2 à 5 lots (1 lot = 1 commit livrable), fais-le valider, puis',
-  'persiste-le : /scope, ou node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "fait quand : …" (puis start --id N).',
+  `persiste-le : /scope, ou node ${PMZ_BASE}/scripts/backlog.js add --title "…" --scope "fait quand : …" (puis start --id N).`,
   'Traite ensuite UNIQUEMENT le premier lot.',
 ].join('\n');
 
@@ -458,7 +467,7 @@ function backlogResumeMessage(cur, next, prog, blockedBy) {
     lines.push(`Plan de lots : ${prog.done}/${prog.total} faits. Prochain lot : « ${String(next.title).slice(0, 60)} »${modelEffortTag(next)}${next.scope ? ` — ${String(next.scope).slice(0, 100)}` : ''}.`);
     const bl = Array.isArray(blockedBy) ? blockedBy : [];
     if (bl.length) lines.push(`⚠️ Bloqué par ${bl.map((d) => '#' + d).join(', ')} encore ouvert : ne le démarre pas, clôture d'abord cette dépendance.`);
-    else lines.push(`Démarre-le (node ~/.claude/promptimizer/scripts/backlog.js start --id ${next.id}) puis traite ce lot uniquement.`);
+    else lines.push(`Démarre-le (node ${PMZ_BASE}/scripts/backlog.js start --id ${next.id}) puis traite ce lot uniquement.`);
     if (hintResolvableClaude(next.model_hint)) {
       lines.push('Modèle préconisé ci-dessus : bascule via /model avant de démarrer si besoin.');
     }

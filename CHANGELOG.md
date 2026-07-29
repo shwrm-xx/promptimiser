@@ -2,6 +2,33 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-29 — Chemins d'aide plugin-conscients dans `messages.js` (lot #128, epic Diffusion plugin)
+
+Deux messages injectés en session affichaient en dur le chemin de l'**install manuelle**
+`~/.claude/promptimizer` : en canal plugin, où le code vit sous `${CLAUDE_PLUGIN_ROOT}`, la
+commande proposée à l'utilisateur **n'existe pas sur sa machine**. La réécriture faite au build
+par `install/build-plugin.js` ne rattrapait pas le cas : `rewriteMdInDir()` ne traite que les
+`.md` (`commands/`, `skills/`), jamais le JS.
+
+- **`promptimizer/lib/messages.js`** : reprise du motif déjà en place dans
+  `scripts/backlog.js:49` et `scripts/close-batch.js:137` — `PMZ_BASE = CLAUDE_PLUGIN_ROOT` si
+  posé, sinon `~/.claude/promptimizer`. Appliqué aux deux occurrences : `MSG_LARGE` (« persiste-le :
+  /scope, ou node …/backlog.js add ») et `backlogResumeMessage` (« Démarre-le (node
+  …/backlog.js start --id N) »). Chemin **littéral** (`~` non résolu) et non `claude-dir.pmzDir()` :
+  c'est une commande à copier dans un shell, pas un accès fs.
+- **`test/run-tests.js`** : section **B128** (7 assertions). Garde-fou **générique** — une sonde en
+  sous-process (obligatoire : `PMZ_BASE` est figé au chargement du module) balaie *tous* les exports
+  de `messages.js`, strings et fonctions appelées avec des arguments plausibles, et refuse toute
+  occurrence de `~/.claude/promptimizer` quand `CLAUDE_PLUGIN_ROOT` est posé ; plus deux assertions
+  nominatives sur les deux messages corrigés, et deux sur le **repli install manuelle** (sans
+  `CLAUDE_PLUGIN_ROOT`, le chemin `~/.claude/promptimizer` doit rester).
+- Vérifié : `node test/run-tests.js` → **2182 OK · 0 échec**. Contre-épreuve faite sur une copie
+  volontairement régressée du module : le balayage remonte bien `MSG_LARGE` et
+  `backlogResumeMessage` (le test n'est pas vide de sens).
+- Connu, non traité (hors périmètre) : `backlogResumeMessage` est capé à 400 caractères ; avec un
+  `CLAUDE_PLUGIN_ROOT` réel (~50 c.) et un titre + scope longs, le message se coupe désormais sur la
+  ligne « Modèle préconisé ». À arbitrer dans un lot dédié (relever le cap ou raccourcir la ligne).
+
 ## 2026-07-29 — Dépôt ajoutable en marketplace (lot #127, epic Diffusion plugin)
 
 `claude plugin marketplace add shwrm-xx/promptimiser` échouait : Claude Code cherche

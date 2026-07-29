@@ -1384,6 +1384,17 @@ replacée sous `skills/promptimizer/`, chemins `~/.claude/promptimizer` réécri
 manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string relative**
 (`"./promptimizer"`). Zéro duplication committée — le plugin est un artefact de build.
 
+- **Frontière build-time / runtime des chemins affichés** (lot #128) : la réécriture
+  `~/.claude/promptimizer` → `${CLAUDE_PLUGIN_ROOT}` ci-dessus est **statique et limitée aux `.md`**
+  (`rewriteMdInDir()` : commands + skill). Tout chemin PMZ affiché à l'utilisateur **depuis du JS**
+  (message injecté par un hook, sortie d'un script) doit donc le résoudre **au runtime**, avec le
+  motif `PMZ_BASE = (process.env.CLAUDE_PLUGIN_ROOT || '').trim() || '~/.claude/promptimizer'` —
+  en place dans `scripts/backlog.js`, `scripts/close-batch.js` et `lib/messages.js`. C'est
+  volontairement un chemin **littéral** (`~` non résolu), distinct de `claude-dir.pmzDir()` qui rend
+  un absolu pour l'accès fs : ici la valeur est une commande à copier dans un shell. Un oubli ne
+  casse rien visiblement — il propose juste une commande inexistante en canal plugin —, d'où le
+  garde-fou générique en test (section B128 : balayage de tous les exports de `messages.js` sous
+  `CLAUDE_PLUGIN_ROOT`).
 - **Garde-fou `REQUIRED_COMMANDS`** (`build-plugin.js`, v1.1.4) : liste EXPLICITE des commandes
   que le plugin doit porter ; le build **échoue** (exit 1, message nommant la commande + marche
   à suivre) si l'une manque du dossier assemblé. À éditer consciemment quand on ajoute/retire une
