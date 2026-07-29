@@ -125,3 +125,4 @@
 #0120 | 2026-07-29 | b11821b | epic:Preuve de clôture fiable | verify:inconnu | fiche:oui | Borne de verify de clôture réglable (fin du faux timeout)
 #0121 | 2026-07-29 | e1fb064 | epic:Dashboard usage | verify:inconnu | fiche:non | Coût en euros (et tokens)
 #0122 | 2026-07-29 | 9498f08 | epic:Dashboard usage | verify:inconnu | fiche:oui | Refonte synthétique orientée usage
+#0123 | 2026-07-29 | ecd9478 | epic:Dashboard usage | verify:inconnu | fiche:oui | Ouverture en artefact
