@@ -3540,7 +3540,7 @@
       "epic": "Sessions courtes",
       "verify": "node test/run-tests.js",
       "us": null,
-      "closed_commit": "6571b4d",
+      "closed_commit": "90302b9",
       "closed_at": "2026-07-29T13:58:44.829Z",
       "closed_session_id": "6c889a45-1913-4dae-883e-9075fa772637",
       "closed_occupancy": 173273,
