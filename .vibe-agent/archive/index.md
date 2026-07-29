@@ -127,3 +127,4 @@
 #0122 | 2026-07-29 | 9498f08 | epic:Dashboard usage | verify:inconnu | fiche:oui | Refonte synthétique orientée usage
 #0123 | 2026-07-29 | ecd9478 | epic:Dashboard usage | verify:inconnu | fiche:oui | Ouverture en artefact
 #0124 | 2026-07-29 | 41f96a2 | epic:Sessions courtes | verify:inconnu | fiche:oui | Budget de tours par session
+#0125 | 2026-07-29 | 6571b4d | epic:Sessions courtes | verify:inconnu | fiche:non | Frein sur la sortie relue

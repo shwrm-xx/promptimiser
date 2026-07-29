@@ -9007,6 +9007,138 @@ section('Budget de tours : seuils 12/20 actifs par défaut, deux canaux, anti-sp
     'B124-9 : projet initialisé au gabarit -> budget ACTIF aux défauts (clés commentées, rien à décommenter)');
 }
 
+// ============ B125. FREIN SUR LA SORTIE RELUE (lot #125) ============
+section('Frein sur la sortie relue : nudge 1×/session sur la sortie cumulée + moyenne/tour (lot #125)');
+{
+  const outputbudget = require(path.join(PKG, 'lib', 'outputbudget'));
+  const turnstats = require(path.join(PKG, 'lib', 'turnstats'));
+
+  function repo125(name, rulesBody) {
+    const dir = path.join(SANDBOX, 'b125-' + name);
+    fs.mkdirSync(path.join(dir, '.vibe-agent'), { recursive: true });
+    execFileSync('git', ['init', '-q', dir]);
+    if (rulesBody != null) fs.writeFileSync(path.join(dir, '.vibe-agent', 'rules.yaml'), rulesBody);
+    return dir;
+  }
+  // Amorce l'historique de sortie d'une session SANS jouer N fois le hook : écrit directement
+  // l'état que turnstats persiste (offset absent -> baseline reset au prochain computeTurn,
+  // donc `o` du tour ajouté par le hook reste 0 -> les totaux seedés restent exacts).
+  function seedOutputTurns(sid, outs) {
+    fs.writeFileSync(occupancy.stateFileFor(sid, 'turns.json'),
+      JSON.stringify({ turnCount: outs.length, turns: outs.map((o) => ({ o })) }));
+  }
+  const sys125 = (r) => { try { return JSON.parse(r.out).systemMessage || ''; } catch (_) { return ''; } };
+  const t125 = writeTranscript('b125.jsonl', ['{"type":"user"}', usageLine(40000, 10000, 0, 500)]);
+
+  // --- B125-1. Seuils : défauts ACTIFS, rules.yaml ne fait que les déplacer ---
+  const rNone125 = repo125('sans-rules', null);
+  const dflt125 = outputbudget.resolveThresholds(rNone125);
+  ok(dflt125.outWarn === 30000 && dflt125.perTurnWarn === 1500, 'B125-1 : sans rules.yaml -> défauts actifs 30000/1500');
+  ok(outputbudget.resolveThresholds(null).outWarn === 30000, 'B125-1 : hors repo (root null) -> défauts, jamais d\'erreur');
+  const rSet125 = repo125('seuils', 'budget:\n  warn_after_output_tokens: 10000\n  warn_after_output_per_turn: 800\n');
+  const set125 = outputbudget.resolveThresholds(rSet125);
+  ok(set125.outWarn === 10000 && set125.perTurnWarn === 800, 'B125-1 : les deux clés de la spec sont exécutables');
+  const rHalf125 = repo125('demi', 'budget:\n  warn_after_output_tokens: 5000\n');
+  ok(outputbudget.resolveThresholds(rHalf125).outWarn === 5000 && outputbudget.resolveThresholds(rHalf125).perTurnWarn === 1500,
+    'B125-1 : une seule clé posée -> l\'autre garde son défaut');
+  for (const [nom, body] of [
+    ['0 (hors bornes)', 'budget:\n  warn_after_output_tokens: 0\n'],
+    ['négatif', 'budget:\n  warn_after_output_tokens: -3\n'],
+    ['au-delà de 2000000', 'budget:\n  warn_after_output_tokens: 9999999\n'],
+    ['non numérique', 'budget:\n  warn_after_output_tokens: beaucoup\n'],
+  ]) {
+    ok(outputbudget.resolveThresholds(repo125('bad-' + nom.replace(/[^a-z]+/gi, '-'), body)).outWarn === 30000,
+      `B125-1 : ${nom} -> clé ignorée, défaut gardé`);
+  }
+
+  // --- B125-2. Désactivation : explicite, non numérique, et seule voie possible ---
+  ok(outputbudget.disabledFor(repo125('off', 'budget:\n  output_budget: off\n')) === true,
+    'B125-2 : output_budget: off éteint le frein');
+  for (const v of ['false', 'no', 'none', 'disabled', '0']) {
+    ok(outputbudget.disabledFor(repo125('off-' + v, `budget:\n  output_budget: ${v}\n`)) === true,
+      `B125-2 : output_budget: ${v} reconnu comme extinction`);
+  }
+  ok(outputbudget.disabledFor(repo125('on', 'budget:\n  output_budget: on\n')) === false,
+    'B125-2 : une valeur non reconnue laisse le frein ACTIF (fail-open côté sûreté)');
+  ok(outputbudget.disabledFor(rNone125) === false && outputbudget.disabledFor(null) === false,
+    'B125-2 : rien de configuré / hors repo -> frein actif');
+
+  // --- B125-3. readOutputStats : cumul lu depuis l'historique FIFO de turnstats ---
+  seedOutputTurns('b125-read', [8000, 8000, 8000, 8000, 8000]);
+  const stats125 = turnstats.readOutputStats('b125-read');
+  ok(stats125.totalOut === 40000 && stats125.avgPerTurn === 8000 && stats125.measuredTurns === 5,
+    'B125-3 : cumul + moyenne + nombre de tours mesurés corrects sur l\'historique seedé');
+  const zero125 = turnstats.readOutputStats('b125-jamais-vue');
+  ok(zero125.totalOut === 0 && zero125.avgPerTurn === 0 && zero125.measuredTurns === 0,
+    'B125-3 : session inconnue -> zéros, aucun cumul inventé');
+
+  // --- B125-4. evaluate : le ET des deux seuils, plancher de tours mesurés, 1×/session, fail-open ---
+  const e1 = outputbudget.evaluate(rNone125, 'b125-e', { totalOut: 40000, avgPerTurn: 8000, measuredTurns: 5 });
+  ok(e1 && e1.totalOut === 40000 && e1.avgPerTurn === 8000, 'B125-4 : les deux seuils franchis -> verdict chiffré');
+  ok(outputbudget.evaluate(rNone125, 'b125-e', { totalOut: 90000, avgPerTurn: 20000, measuredTurns: 6 }) === null,
+    'B125-4 : 1×/session -> silence au 2e appel même bien plus haut');
+  ok(outputbudget.evaluate(rNone125, 'b125-total-seul', { totalOut: 20000, avgPerTurn: 8000, measuredTurns: 5 }) === null,
+    'B125-4 : total sous le seuil -> null malgré une moyenne haute');
+  ok(outputbudget.evaluate(rNone125, 'b125-moy-seule', { totalOut: 40000, avgPerTurn: 1000, measuredTurns: 5 }) === null,
+    'B125-4 : moyenne sous le seuil -> null malgré un total haut');
+  ok(outputbudget.evaluate(rNone125, 'b125-pic-isole', { totalOut: 260000, avgPerTurn: 130000, measuredTurns: 2 }) === null,
+    'B125-4 : un pic isolé sur < 3 tours mesurés -> null (laisse costlyTurnMessage seul sur ce cas)');
+  ok(outputbudget.evaluate(rNone125, null, { totalOut: 40000, avgPerTurn: 8000, measuredTurns: 5 }) === null,
+    'B125-4 : sans session_id -> null (pas d\'état partagé)');
+  ok(outputbudget.evaluate(rNone125, 'b125-zero', { totalOut: 0, avgPerTurn: 0, measuredTurns: 5 }) === null,
+    'B125-4 : sortie nulle -> null');
+  ok(outputbudget.evaluate(repo125('eval-off', 'budget:\n  output_budget: off\n'), 'b125-off-eval', { totalOut: 999999, avgPerTurn: 99999, measuredTurns: 10 }) === null,
+    'B125-4 : frein éteint -> silence même très haut');
+  let threw125 = false;
+  try { outputbudget.evaluate(repo125('eval-corrompu', ':::\n\tbudget: [\n  warn_after_output_tokens\n'), 'b125-c', { totalOut: 40000, avgPerTurn: 8000, measuredTurns: 5 }); }
+  catch (_) { threw125 = true; }
+  ok(!threw125, 'B125-4 : rules.yaml corrompu -> aucune exception (fail-open)');
+
+  // --- B125-5. Message : sévérité WARN, chiffré, formule de style ---
+  const mOut125 = messages.outputBudgetMessage({ totalOut: 40000, avgPerTurn: 8000, outWarn: 30000, perTurnWarn: 1500 });
+  ok(mOut125.startsWith('⚠'), 'B125-5 : nudge -> sévérité WARN');
+  ok(/Sortie cumulée/.test(mOut125) && /40k/.test(mOut125) && /8k/.test(mOut125),
+    'B125-5 : cumul ET moyenne chiffrés dans le message');
+  ok(/livrer le code dans les fichiers/.test(mOut125) && /pas de dumps/.test(mOut125),
+    'B125-5 : formule de style (pas une prescription de clôture)');
+
+  // --- B125-6. Bout-en-bout stop.js : silence en dessous, nudge au-delà, 1×/session ---
+  const rLive125 = repo125('live', null);
+  seedOutputTurns('b125-sous', [2000, 2000, 2000]);
+  const sSous125 = runHook('stop.js', { session_id: 'b125-sous', cwd: rLive125, transcript_path: t125 });
+  ok(sSous125.code === 0 && !/Sortie cumulée/.test(sys125(sSous125)),
+    'B125-6 : sous le seuil de cumul -> silence total');
+
+  seedOutputTurns('b125-on', [8000, 8000, 8000, 8000, 8000]);
+  const sOn125 = runHook('stop.js', { session_id: 'b125-on', cwd: rLive125, transcript_path: t125 });
+  ok(sOn125.code === 0 && /Sortie cumulée/.test(sys125(sOn125)) && /40k/.test(sys125(sOn125)),
+    'B125-6 : les deux seuils franchis -> nudge au Stop, chiffré');
+  const sOn125b = runHook('stop.js', { session_id: 'b125-on', cwd: rLive125, transcript_path: t125 });
+  ok(sOn125b.code === 0 && !/Sortie cumulée/.test(sys125(sOn125b)),
+    'B125-6 : anti-spam bout-en-bout -> pas de 2e nudge au tour suivant (1×/session)');
+
+  const rOff125 = repo125('live-off', 'budget:\n  output_budget: off\n');
+  seedOutputTurns('b125-live-off', [8000, 8000, 8000, 8000, 8000]);
+  const sOff125 = runHook('stop.js', { session_id: 'b125-live-off', cwd: rOff125, transcript_path: t125 });
+  ok(sOff125.code === 0 && !/Sortie cumulée/.test(sys125(sOff125)),
+    'B125-6 : output_budget: off -> silence même au-delà des deux seuils');
+
+  const rBroken125 = repo125('live-corrompu', ':::\n\tbudget: [\n  warn_after_output_tokens\n');
+  seedOutputTurns('b125-broken', [8000, 8000, 8000, 8000, 8000]);
+  const sBroken125 = runHook('stop.js', { session_id: 'b125-broken', cwd: rBroken125, transcript_path: t125 });
+  ok(sBroken125.code === 0 && /Sortie cumulée/.test(sys125(sBroken125)),
+    'B125-6 : rules.yaml corrompu -> exit 0 et défauts appliqués (le frein ne s\'éteint pas)');
+
+  // --- B125-7. Gabarit : surface documentée ---
+  const tpl125 = fs.readFileSync(path.join(PKG, 'templates', 'rules.yaml'), 'utf8');
+  ok(/warn_after_output_tokens/.test(tpl125) && /warn_after_output_per_turn/.test(tpl125) && /output_budget/.test(tpl125),
+    'B125-7 : le gabarit documente les deux seuils ET l\'interrupteur');
+  const rTpl125 = repo125('gabarit', tpl125);
+  const tplSeuils125 = outputbudget.resolveThresholds(rTpl125);
+  ok(tplSeuils125.outWarn === 30000 && tplSeuils125.perTurnWarn === 1500 && outputbudget.disabledFor(rTpl125) === false,
+    'B125-7 : projet initialisé au gabarit -> frein ACTIF aux défauts (clés commentées, rien à décommenter)');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

@@ -23,6 +23,15 @@ budget:
   # retour au défaut). Une seule clé le fait, explicitement — off | false | no | none | disabled :
   # turn_budget: off
 
+  # FREIN SUR LA SORTIE RELUE (lot #125) — ACTIF PAR DÉFAUT : nudge ⚠ 1×/session quand la
+  # sortie cumulée de la fenêtre de tours ET sa moyenne par tour dépassent toutes deux leur
+  # seuil (une sortie longue est réinjectée dans le contexte à chaque tour suivant).
+  # Bornes acceptées : 5000 à 2000000 (cumul), 200 à 50000 (moyenne/tour).
+  # warn_after_output_tokens: 30000       # défaut : 30000 tokens cumulés
+  # warn_after_output_per_turn: 1500      # défaut : 1500 tokens/tour
+  # Éteindre ce frein : off | false | no | none | disabled (même contrat que turn_budget) :
+  # output_budget: off
+
   # BORNE D'OCCUPATION (lot #112) — au franchissement, le hook Stop prescrit la clôture,
   # y compris EN MILIEU DE LOT (commit intermédiaire + /fresh-session), avec l'occupation
   # courante et le coût comparé d'une compaction.

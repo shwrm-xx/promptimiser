@@ -2,6 +2,46 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-29 — Frein sur la sortie relue (lot #125, epic Sessions courtes)
+
+Le budget de tours (lot #124) mesure le **nombre** de tours, pas ce qu'ils **coûtent** à relire.
+Une sortie longue (dumps, réponses verbeuses) est réinjectée dans le contexte à chaque tour
+suivant via le cache — elle se paie donc une fois par tour restant, pas une fois. Nouveau
+garde-fou, actif par défaut : nudge ⚠ 1×/session quand la sortie cumulée **ET** sa moyenne par
+tour dépassent toutes deux leur seuil.
+
+- **`promptimizer/lib/turnstats.js`** : nouvel export `readOutputStats(sessionId)` — cumule `o`
+  (sortie) sur l'historique FIFO déjà persisté par `computeTurn` (aucun nouveau scan de
+  transcript). Fenêtre glissante, pas cumul de session : l'historique plafonne à `MAX_TURNS` (40),
+  assumé (une session de plus de 40 tours a de toute façon déjà dépassé le budget de tours
+  plusieurs fois).
+- **`promptimizer/lib/outputbudget.js`** (nouveau) : même gabarit que `turnbudget.js` (seuils
+  `rules.readNumber` avec bornes + défauts en dur, extinction par clé **non numérique**
+  `output_budget: off`, fail-open partout) mais **un seul palier, un seul nudge par session** —
+  pas de rappel flottant, le message porte sur un style à corriger, pas une action à répéter.
+  Défauts : `warn_after_output_tokens` **30000**, `warn_after_output_per_turn` **1500**.
+  **Plancher `MIN_MEASURED_TURNS` (3)** : sans lui, un seul tour massif franchit les deux seuils
+  et fait doublon avec `costlyTurnMessage` — les deux se disputaient une place de l'arbitre de
+  tour (plafond 3), évinçant parfois un diagnostic distinct (repéré en testant bout-en-bout : le
+  nudge évinçait `lotCostMessage` sur un scénario de coût par lot existant). Exiger plusieurs
+  tours mesurés recentre le frein sur une dérive de style dans la durée, pas un pic isolé déjà
+  couvert ailleurs.
+- **`promptimizer/hooks/stop.js`** : branché juste après la métrologie par tour (a3), pousse le
+  nudge dans les nudges arbitrés (pas une coda hors arbitre — ce n'est pas une prescription de
+  clôture).
+- **`promptimizer/lib/messages.js`** : `outputBudgetMessage`, sévérité WARN, chiffré (cumul +
+  moyenne/tour), formule « livrer le code dans les fichiers, réponses courtes, pas de dumps ».
+- **Doc** : `templates/rules.yaml` documente les deux seuils et l'interrupteur (même contrat que
+  `turn_budget`).
+- Vérifié : `node test/run-tests.js` → **2157 OK · 0 échec** (37 assertions nouvelles). Bout-en-bout
+  en bac à sable : silence sous le seuil, nudge au franchissement des deux seuils, silence au
+  rejeu (1×/session), `output_budget: off` silencieux, `rules.yaml` corrompu → défauts appliqués,
+  gabarit d'init → frein actif sans rien décommenter, régression de collision avec
+  `lotCostMessage` détectée puis corrigée par le plancher de tours mesurés.
+- Non vérifié : le comportement réel de Claude face au nudge (dépend du modèle) ; justesse des
+  seuils 30000/1500 sur des sessions réelles (hérités du plan, à recaler sur le dashboard comme
+  les seuils 12/20 du lot #124).
+
 ## 2026-07-29 — Budget de tours par session (lot #124, epic Sessions courtes)
 
 PMZ mesurait le coût de session par l'**occupation en tokens** et avait explicitement écarté le

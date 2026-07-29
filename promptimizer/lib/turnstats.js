@@ -243,8 +243,29 @@ function evaluateDrift(sid) {
   };
 }
 
+// Sortie cumulée de la session, en LECTURE SEULE (lot #125). Lit l'historique FIFO déjà
+// persisté par computeTurn (`turns[].o`) — aucun nouveau scan de transcript. Plafonné à
+// MAX_TURNS (40) : le cumul est en réalité une fenêtre glissante, pas la session entière
+// depuis son origine (assumé, cf. lib/outputbudget.js). Fail-open : zéros si l'état est
+// absent/illisible, jamais de cumul inventé.
+function readOutputStats(sessionId) {
+  try {
+    const st = loadTurnState(sessionId);
+    const turns = st.turns.filter((t) => t && typeof t.o === 'number');
+    const totalOut = turns.reduce((s, t) => s + t.o, 0);
+    return {
+      totalOut,
+      avgPerTurn: turns.length ? totalOut / turns.length : 0,
+      measuredTurns: turns.length,
+      turnCount: st.turnCount,
+    };
+  } catch (_) {
+    return { totalOut: 0, avgPerTurn: 0, measuredTurns: 0, turnCount: 0 };
+  }
+}
+
 module.exports = {
-  computeTurn, evaluateDrift, readTurnCount,
+  computeTurn, evaluateDrift, readTurnCount, readOutputStats,
   // Primitives de scan exposées pour lib/subagentcost (lot #119) : le coût des tours délégués se
   // lit dans d'AUTRES fichiers que le transcript de session, mais avec exactement la même méthode
   // (offset persisté + parsing des lignes `usage`) — la dupliquer la ferait dériver.

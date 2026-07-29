@@ -244,6 +244,18 @@ function turnBudgetPromptMessage(tb) {
 }
 // ---------------------------------------------------------------------------------------
 
+// Frein sur la sortie relue (lot #125) : la sortie cumulée de la fenêtre de tours ET sa
+// moyenne par tour dépassent toutes deux leur seuil — une sortie longue est réinjectée dans
+// le contexte à chaque tour suivant via le cache, elle se paie donc une fois par tour restant.
+// 1×/session (anti-spam simple dans lib/outputbudget.js). VISIBLE (systemMessage stop.js),
+// se soumet à l'arbitre de tour comme costlyTurnMessage (pas une prescription de clôture).
+function outputBudgetMessage(ob) {
+  return withSeverity(SEV.WARN, [
+    `Sortie cumulée ≈ ${fmtK(ob.totalOut)} tokens (~${fmtK(ob.avgPerTurn)}/tour) sur cette fenêtre de tours.`,
+    'La sortie longue est repayée à chaque tour suivant : livrer le code dans les fichiers, réponses courtes, pas de dumps.',
+  ]);
+}
+
 function fmtK(n) {
   const v = Math.abs(n || 0);
   return v >= 1000 ? `${Math.round(v / 1000)}k` : `${Math.round(v)}`;
@@ -724,7 +736,7 @@ module.exports = {
   turnBudgetWarnMessage, turnBudgetPrescriptionMessage, turnBudgetPromptMessage,
   turnSplitGainRange, TURN_SCALING_MIN, TURN_SCALING_MAX,
   compactResumeMessage, COMPACT_RESUME_CAP, backlogResumeMessage, largeWithPlanMessage,
-  costlyTurnMessage, driftMessage, loopingCommandMessage, gitDebtMessage, claudeMdMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
+  costlyTurnMessage, outputBudgetMessage, driftMessage, loopingCommandMessage, gitDebtMessage, claudeMdMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
   closureWithDraftMessage, epicBilanMessage, lotClosureCardMessage, closureCardMessage, freshSessionCodaMessage,
   fmtK, statusLineText, rtkStatusLine, rtkStartupLine, RTK_PRESCRIPTION,

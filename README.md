@@ -189,6 +189,14 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   `warn_after_session_turns: 12` et `recommend_fresh_session_after_turns: 20` (3 à 500 ; hors bornes
   → défaut). Pour l'éteindre, une clé et une seule — `turn_budget: off` : aucun nombre ne peut
   désactiver un garde-fou par accident de frappe.
+- **Frein sur la sortie relue** (actif par défaut) : le budget de tours dit *combien* de tours,
+  pas ce qu'ils *coûtent* à relire — une sortie longue (dumps, réponses verbeuses) est réinjectée
+  dans le contexte à chaque tour suivant via le cache. Quand la sortie cumulée dépasse **30000
+  tokens ET** sa moyenne par tour dépasse **1500**, un nudge ⚠ 1×/session rappelle de livrer le
+  code dans les fichiers et de garder des réponses courtes. Pas de rappel flottant (contrairement
+  au budget de tours) : c'est un style à corriger, pas une action à répéter. Seuils réglables dans
+  `.vibe-agent/rules.yaml`, bloc `budget:` : `warn_after_output_tokens: 30000` et
+  `warn_after_output_per_turn: 1500` ; extinction par `output_budget: off`.
 - **Budget de la verify de clôture** (réglable par projet) : la commande `verify` du lot est
   rejouée par `/close-batch` et par `backlog.js done` avec un délai de **300 s** par défaut. Une
   suite qui dépasse ce budget est rendue « non terminée dans le délai » et le verdict `timeout`

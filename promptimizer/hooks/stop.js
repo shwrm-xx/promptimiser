@@ -25,6 +25,7 @@ const occupancy = require('../lib/occupancy');
 const { readLastModel } = require('../lib/modelwatch');
 const turnstats = require('../lib/turnstats');
 const turnbudget = require('../lib/turnbudget');
+const outputbudget = require('../lib/outputbudget');
 const loopwatch = require('../lib/loopwatch');
 const gitdebt = require('../lib/gitdebt');
 const claudemd = require('../lib/claudemd');
@@ -33,7 +34,7 @@ const { arbitrate } = require('../lib/arbiter');
 const { SEV, withSeverity } = require('../lib/severity');
 const {
   MSG_CLOTURE, occupancyMessage, redZonePrescriptionMessage,
-  costlyTurnMessage, driftMessage, loopingCommandMessage, gitDebtMessage, claudeMdMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
+  costlyTurnMessage, outputBudgetMessage, driftMessage, loopingCommandMessage, gitDebtMessage, claudeMdMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
   closureWithDraftMessage, closureCardMessage, freshSessionCodaMessage,
   turnBudgetWarnMessage, turnBudgetPrescriptionMessage,
@@ -147,6 +148,18 @@ function main() {
     // on le resynchronise pour réarmer les futures alertes de palier ; idem pour la
     // prescription zone-rouge (#71) — un nouveau franchissement du seuil re-prescrira.
     if (turn.alerts.resync) { occupancy.resyncBucket(sid, turn.occ); occupancy.resyncRedZone(sid); }
+  }
+
+  // (a3ter) FREIN SUR LA SORTIE RELUE (lot #125) : nudge ⚠ 1×/session quand la sortie
+  // cumulée de la fenêtre de tours ET sa moyenne par tour dépassent toutes deux leur seuil —
+  // une sortie longue est réinjectée dans le contexte à chaque tour suivant via le cache.
+  // Lit l'historique que computeTurn vient d'écrire (donc APRÈS lui) ; fail-open dédié.
+  if (turn) {
+    try {
+      const outStats = turnstats.readOutputStats(sid);
+      const ob = outputbudget.evaluate(root, sid, outStats);
+      if (ob) parts.push(outputBudgetMessage(ob));
+    } catch (_) { /* fail-open : pas de frein sur la sortie ce tour */ }
   }
 
   // (a3bis) dérive de session (#62) — tendance sur plusieurs tours (coût qui grimpe +
