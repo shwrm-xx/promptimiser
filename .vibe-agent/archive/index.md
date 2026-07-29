@@ -115,4 +115,5 @@
 #0110 | 2026-07-28 | 59699db | epic:Économie de contexte | verify:inconnu | fiche:oui | Moteur de mesure de session
 #0111 | 2026-07-28 | 34367f3 | epic:Économie de contexte | verify:inconnu | fiche:non | Télémétrie de clôture réparée
 #0112 | 2026-07-28 | 4e2abe0 | epic:Économie de contexte | verify:inconnu | fiche:oui | Borne d'occupation
+#0113 | 2026-07-29 | 5006aa7 | epic:Économie de contexte | verify:inconnu | fiche:non | Diagnostic de session enrichi
 #0114 | 2026-07-28 | 3c881c3 | epic:Économie de contexte | verify:inconnu | fiche:non | Commande /pmz:dashboard
