@@ -1,6 +1,6 @@
 ---
 description: Génère le tableau de bord HTML d'économie de contexte du projet (mesure hors bande)
-allowed-tools: Bash(node *)
+allowed-tools: Bash(node *), Artifact
 ---
 
 Génère le tableau de bord d'économie de contexte du projet courant, en HTML autonome.
@@ -10,6 +10,11 @@ Exécute :
 
 La page est écrite dans `.vibe-agent/dashboard.html` (options : `--sessions N` pour la largeur
 de la fenêtre, `--all` pour tout le projet, `--out <chemin>` pour une autre destination).
+Le script écrit **aussi** une variante artefact à côté (suffixe `.artifact.html` — même contenu,
+sans `<!doctype>`/`<html>`/`<head>`/`<body>`). Si l'outil **Artifact** est disponible dans cette
+session, publie cette variante avec ce même outil (titre : « Économie de contexte — tableau de
+bord », favicon 📊) en plus du fichier écrit sur disque ; sinon dis simplement que l'artefact
+n'a pas pu être publié et que le fichier reste consultable tel quel.
 Le script balaye des transcripts entiers : c'est une mesure **hors bande**, à la demande —
 ne l'appelle jamais depuis un hook.
 
@@ -21,7 +26,8 @@ et 3 points d'attention) ; le détail technique est replié au second niveau. La
 rend la même synthèse, dans le même ordre : reprends-la telle quelle.
 
 Rends compte en 5 points, sans relire la page produite :
-1. le chemin du fichier écrit ;
+1. le chemin du fichier écrit, et le résultat de la publication en artefact (publié / non
+   disponible / échec) ;
 2. la **synthèse** : les quatre blocs Constat / Garder / Améliorer / Arrêter, puis les 3 bons
    points et les 3 points d'attention, dans l'ordre du script (sévérité, puis montant en jeu).
    Un encadré annoncé comme **neutre** signale une fenêtre trop pauvre : dis-le, ne le présente

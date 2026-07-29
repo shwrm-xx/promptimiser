@@ -2,6 +2,30 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-29 — Dashboard : ouverture en artefact (lot #123, epic Dashboard usage)
+
+`/pmz:dashboard` publiait uniquement `.vibe-agent/dashboard.html`, à ouvrir soi-même dans un
+navigateur. Le script écrit désormais, **en plus**, une variante artefact prête à être publiée
+directement par l'outil **Artifact** de Claude.
+
+- **`promptimizer/scripts/dashboard.js`** : `buildContent()` (nouveau) factorise le calcul
+  titre/synthèse/corps/pied de page, partagé par `buildHtml()` (document complet, inchangé) et
+  `buildArtifactHtml()` (nouveau — même contenu, sans `<!doctype>`/`<html>`/`<head>`/`<body>` :
+  ces balises sont fournies par la coquille de l'outil de publication et rejetées si on les
+  fournit soi-même). La feuille de style n'est **pas dupliquée** : `extractStyle()` l'extrait du
+  même gabarit `templates/dashboard.html` — une variante de rendu, pas un second gabarit
+  divergent. La variante est écrite à côté du document complet (`artifactOutPath()` : suffixe
+  `.artifact.html`), avec la même politique fail-open (échec d'écriture → `written:false`, jamais
+  un exit non nul). `--json` expose `artifactOut`/`artifactWritten` ; la sortie texte annonce la
+  variante quand elle est écrite.
+- **`promptimizer/commands/dashboard.md`** : `Artifact` ajouté aux `allowed-tools` ; la commande
+  publie la variante avec cet outil quand il est disponible (titre, favicon 📊), sinon le dit
+  explicitement plutôt que de rester muette. Le compte rendu en 5 points inclut désormais le
+  résultat de la publication.
+- Vérifié : publication réelle de la variante en artefact (statut « aucun transcript », puis avec
+  les vraies sessions du projet) — rendu conforme (synthèse, KPI, `<details>` repliable, thèmes
+  clair/sombre). `node test/run-tests.js` : 2054 OK · 0 échec.
+
 ## 2026-07-29 — Dashboard : refonte synthétique orientée usage (lot #122, epic Dashboard usage)
 
 Le tableau de bord ouvrait sur sept blocs d'indicateurs : de la mesure, pas une lecture. Le

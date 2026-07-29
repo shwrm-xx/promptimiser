@@ -546,8 +546,10 @@ function footerHtml(w, cwd, version) {
     `sur le moteur <code>promptimizer/lib/metrics.js</code>.</p><ul><li>${items.join('</li><li>')}</li></ul>`;
 }
 
-function buildHtml(w, cwd, opts) {
-  const { tpl } = loadTemplate();
+// Contenu partagé par le document complet et la variante artefact : UNE SEULE construction,
+// deux rendus. Ne jamais recalculer titre/synthèse/corps séparément pour l'artefact — ce serait
+// le second gabarit divergent que le lot #123 doit éviter.
+function buildContent(w, cwd, opts) {
   const version = readVersion();
   const title = 'Économie de contexte — tableau de bord';
   const root = project.gitRoot(cwd) || cwd;
@@ -581,17 +583,44 @@ function buildHtml(w, cwd, opts) {
       rtkGainLotsSection(root));
   }
 
-  return render(tpl, {
-    TITLE: esc(title),
-    SUBTITLE: subtitle,
-    BODY: body,
-    FOOTER: footerHtml(w, cwd, version),
-  });
+  return { title, subtitle, body, footer: footerHtml(w, cwd, version) };
+}
+
+function buildHtml(w, cwd, opts) {
+  const { tpl } = loadTemplate();
+  const c = buildContent(w, cwd, opts);
+  return render(tpl, { TITLE: esc(c.title), SUBTITLE: c.subtitle, BODY: c.body, FOOTER: c.footer });
+}
+
+// Bloc <style> extrait du gabarit complet : source unique de la feuille de style, jamais
+// recopiée. Si le gabarit est absent (secours), le style de repli est déjà minimal et suffit.
+function extractStyle(tpl) {
+  const mtc = /<style>([\s\S]*?)<\/style>/.exec(tpl);
+  return mtc ? mtc[1] : '';
+}
+
+// Variante ARTEFACT (lot #123) : même contenu que `buildHtml`, sans `<!doctype>`/`<html>`/
+// `<head>`/`<body>` — un outil de publication d'artefact (ex. Claude) fournit sa propre coquille
+// et rejette ces balises dans le contenu qu'on lui passe. Toujours zéro requête réseau : même
+// feuille de style, aucun script.
+function buildArtifactHtml(w, cwd, opts) {
+  const { tpl } = loadTemplate();
+  const c = buildContent(w, cwd, opts);
+  const style = extractStyle(tpl);
+  return `<style>${style}</style>\n<div class="pmz-wrap">\n` +
+    `<header class="pmz-head">\n<h1>${esc(c.title)}</h1>\n<p class="pmz-sub">${c.subtitle}</p>\n</header>\n` +
+    `${c.body}\n<footer class="pmz-foot">\n${c.footer}\n</footer>\n</div>\n`;
+}
+
+// Chemin de la variante artefact, dérivé de la destination du document complet : même dossier,
+// suffixe `.artifact.html` — jamais un nom indépendant qui pourrait diverger du fichier principal.
+function artifactOutPath(out) {
+  return /\.html?$/i.test(out) ? out.replace(/\.html?$/i, '.artifact.html') : out + '.artifact.html';
 }
 
 // Résumé machine — pour un appelant qui veut savoir OÙ est la page et ce qu'elle dit, sans
 // parser du HTML. L'échec reste une valeur, jamais un code de sortie.
-function summary(w, out, written, cwd) {
+function summary(w, out, written, cwd, artifactOut, artifactWritten) {
   const b = w.ok ? w.cacheReadBreakdown : null;
   // Le résumé machine dit ce que DIT la page : la synthèse d'ouverture y figure donc au même
   // titre que les recommandations. Balises retirées (les textes sont des fragments HTML).
@@ -602,6 +631,8 @@ function summary(w, out, written, cwd) {
     reason: w.ok ? null : w.reason,
     out,
     written,
+    artifactOut,
+    artifactWritten,
     count: w.ok ? w.count : 0,
     turns: w.ok ? w.turns : 0,
     cost: w.ok ? w.cost.total : null,
@@ -654,14 +685,24 @@ function main() {
     written = true;
   } catch (_) { /* disque en lecture seule, chemin invalide : on le dit, on ne casse pas */ }
 
+  // Variante artefact (lot #123) : écrite en plus du document complet, jamais à sa place —
+  // un appelant peut la publier via un outil d'artefact sans jamais lire le fichier complet.
+  const artifactOut = artifactOutPath(out);
+  let artifactWritten = false;
+  try {
+    fs.writeFileSync(artifactOut, buildArtifactHtml(w, cwd, opts));
+    artifactWritten = true;
+  } catch (_) { /* même politique fail-open que le document complet */ }
+
   if (flag('json')) {
-    process.stdout.write(JSON.stringify(summary(w, out, written, cwd), null, 2) + '\n');
+    process.stdout.write(JSON.stringify(summary(w, out, written, cwd, artifactOut, artifactWritten), null, 2) + '\n');
     return;
   }
 
   const lines = ['## Tableau de bord d\'économie de contexte', ''];
   if (written) lines.push(`Page écrite : \`${out}\``);
   else lines.push(`Écriture impossible : \`${out}\` (droits ou chemin). Utilise \`--out <chemin>\` ou \`--stdout\`.`);
+  if (artifactWritten) lines.push(`Variante artefact écrite : \`${artifactOut}\` (à publier en artefact)`);
   lines.push('');
   if (!w.ok) {
     lines.push(`Statut : ${reasonText(w.reason)} — la page affiche ce statut.`);

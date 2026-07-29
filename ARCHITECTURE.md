@@ -265,6 +265,16 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   (`install.js` copie tout `commands/*.md`, `build-plugin.js` fait un `cpSync` récursif ;
   `REQUIRED_COMMANDS` n'est qu'un garde-fou d'absence, non exhaustif) — aucun fichier d'install à
   toucher pour ajouter une commande, et `scripts/help.js` la découvre de lui-même.
+  **Ouverture en artefact** (lot #123) : en plus du document complet, le script écrit une
+  variante **artefact** — même contenu, sans `<!doctype>`/`<html>`/`<head>`/`<body>` (une
+  publication d'artefact fournit sa propre coquille et rejette ces balises). `buildContent()`
+  factorise le calcul titre/synthèse/corps/pied de page, partagé par `buildHtml()` (document
+  complet) et `buildArtifactHtml()` (variante) : une **variante de rendu**, jamais un second
+  gabarit divergent — la feuille de style n'est pas dupliquée, `extractStyle()` la lit dans le
+  même `templates/dashboard.html`. Chemin dérivé du document complet (`artifactOutPath()` :
+  suffixe `.artifact.html`), même politique fail-open, exposé par `--json`
+  (`artifactOut`/`artifactWritten`). `commands/dashboard.md` publie cette variante avec l'outil
+  **Artifact** (ajouté à ses `allowed-tools`) quand il est disponible dans la session.
 - **Vigie de dette git non commitée** (`lib/gitdebt.js: evaluate`, lot #73) : signal de **tendance**
   distinct du rappel de clôture one-shot (#68, qui part au 1er tour sale puis se tait). Nudge **WARN**
   (`gitDebtMessage`) quand un **diff significatif grossit sur ≥ 3 tours SANS commit** — travail non

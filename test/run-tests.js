@@ -8070,6 +8070,42 @@ section('Tableau de bord — HTML autonome, thémable, sans requête réseau');
   const dHooks = fs.readdirSync(path.join(PKG, 'hooks')).filter((f) => f.endsWith('.js'));
   ok(dHooks.length > 0 && dHooks.every((f) => !/dashboard/.test(fs.readFileSync(path.join(PKG, 'hooks', f), 'utf8'))),
     'D114-9 : aucun hook n\'appelle le tableau de bord (mesure hors bande, comme metrics.js)');
+
+  // --- D123. OUVERTURE EN ARTEFACT (lot #123) ---
+  // Le script écrit, à côté du document complet, une variante sans <!doctype>/<html>/<head>/
+  // <body> : c'est la seule forme qu'un outil de publication d'artefact accepte en entrée.
+  const DART = path.join(DDIR, 'dashboard.artifact.html');
+  ok(fs.existsSync(DART), 'D123-1 : la variante artefact est écrite à côté du document complet');
+  const HA = dRead(DART);
+  ok(!/<!doctype/i.test(HA) && !/<html/i.test(HA) && !/<head[ >]/i.test(HA) && !/<\/body>/i.test(HA),
+    'D123-1 : la variante artefact ne contient ni <!doctype>, ni <html>, ni <head>, ni <body>');
+  ok(/<style>/.test(HA) && NET.every((re) => !re.test(HA)),
+    'D123-1 : même feuille de style intégrée, toujours zéro requête réseau');
+  ok(/>Synthèse<[\s\S]*Occupation du contexte/.test(HA) && /Sessions les plus chères/.test(HA),
+    'D123-1 : même contenu que le document complet (synthèse puis détail replié)');
+  ok(HA.indexOf('Économie de contexte — tableau de bord') !== -1,
+    'D123-1 : le titre de la page est présent dans le contenu (un artefact ne peut pas porter de <head><title>)');
+
+  // --- D123-2. La destination de l'artefact suit celle du document (--out custom, --json) ---
+  const dArtJson = runNode(DASH, ['--cwd', DCWD, '--sessions', '10', '--json', '--out', path.join(DDIR, 'j2.html')], dEnv);
+  let dJa = null;
+  try { dJa = JSON.parse(dArtJson.out); } catch (_) {}
+  ok(dJa && dJa.artifactOut === path.join(DDIR, 'j2.artifact.html') && dJa.artifactWritten === true &&
+     fs.existsSync(dJa.artifactOut),
+    'D123-2 : --json expose le chemin et l\'état d\'écriture de la variante artefact');
+  const dArtTxt = runNode(DASH, ['--cwd', DCWD, '--sessions', '10', '--out', path.join(DDIR, 'txt2.html')], dEnv);
+  ok(/Variante artefact écrite/.test(dArtTxt.out), 'D123-2 : la sortie texte annonce aussi la variante artefact');
+
+  // --- D123-3. --stdout ne produit que le document complet, aucun fichier artefact fantôme ---
+  const dArtStdoutDir = path.join(DDIR, 'stdout-no-artifact');
+  fs.mkdirSync(dArtStdoutDir, { recursive: true });
+  runNode(DASH, ['--cwd', DCWD, '--stdout'], dEnv);
+  ok(fs.readdirSync(dArtStdoutDir).length === 0, 'D123-3 : --stdout n\'écrit aucun fichier (ni document, ni artefact)');
+
+  // --- D123-4. La commande /pmz:dashboard sait publier la variante en artefact ---
+  ok(/artifact\.html/i.test(dCmd) && /Artifact/.test(dCmd),
+    'D123-4 : la commande documente la variante artefact et son outil de publication');
+  ok(/^allowed-tools:.*Artifact/m.test(dCmd), 'D123-4 : Artifact est dans les outils autorisés de la commande');
 }
 
 // ============================ B112. BORNE D'OCCUPATION CONFIGURABLE (lot #112) ============================
