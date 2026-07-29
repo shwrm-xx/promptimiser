@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 127,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-29T14:12:30.636Z",
+  "updated_at": "2026-07-29T14:20:24.866Z",
   "lots": [
     {
       "id": 1,
@@ -3563,41 +3563,28 @@
       "id": 126,
       "title": "Scope rédige les US",
       "scope": "fait quand : node test/run-tests.js vert ; scope.md sans consigne « à remplir à la main », flux rédaction→validation→écriture explicite",
-      "status": "in_progress",
+      "status": "done",
       "model_hint": "sonnet",
       "effort_hint": "medium",
       "epic": "Sessions courtes",
       "verify": "node test/run-tests.js",
       "us": null,
-      "closed_commit": null,
-      "closed_at": null,
-      "closed_session_id": null,
-      "closed_occupancy": null,
-      "closed_verify": null,
+      "closed_commit": "58c8829",
+      "closed_at": "2026-07-29T14:20:24.830Z",
+      "closed_session_id": "a85367f8-8bf5-4775-9226-ad56d8a6e846",
+      "closed_occupancy": 215849,
+      "closed_verify": "ok",
       "cost_tokens": 0,
       "cost_turns": 0,
       "cost_subagent_tokens": 0,
       "closed_avg_cost_per_turn": null,
       "started_at": "2026-07-29T14:12:30.627Z",
-      "lot_number": null,
+      "lot_number": 107,
       "note": null,
       "session_touches": 0,
       "perimeter": [],
       "depends_on": [],
-      "session_owner": null,
-      "integrations": {
-        "command_optimizer": {
-          "snapshot_start": {
-            "commands": 1,
-            "delivered_tokens": 4
-          },
-          "rtk_gain_start": {
-            "raw_tokens": 0,
-            "delivered_tokens": 0,
-            "commands": 0
-          }
-        }
-      }
+      "session_owner": null
     }
   ]
 }
