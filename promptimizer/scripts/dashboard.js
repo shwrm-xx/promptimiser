@@ -3,6 +3,12 @@
 // Tableau de bord d'économie de contexte (lot #114) — rend en HTML autonome les 5 indicateurs
 // du moteur de mesure (lot #110) pour le projet courant, plus 3 recommandations chiffrées.
 //
+// ORIENTÉ USAGE (lot #122) : la page S'OUVRE sur une synthèse Constat / Garder / Améliorer /
+// Arrêter, suivie de 3 bons points et 3 points d'attention (lib/dashboard-synthesis.js, module
+// pur nourri des mêmes mesures). Les sept blocs d'indicateurs passent au second niveau, dans un
+// `<details>` natif — un pli, pas un script. Les trois surfaces (page, `--json`, texte) rendent
+// la même synthèse dans le même ordre.
+//
 //   node promptimizer/scripts/dashboard.js                  → .vibe-agent/dashboard.html
 //   node promptimizer/scripts/dashboard.js --sessions 40    → fenêtre de 40 sessions
 //   node promptimizer/scripts/dashboard.js --all            → toutes les sessions du projet
@@ -31,6 +37,8 @@ const { readVersion } = require('../lib/version');
 const { parseCwd } = require('../lib/cli');
 const backlog = require('../lib/backlog');
 const rtkMetrics = require('../lib/rtk-metrics');
+const occupancyLib = require('../lib/occupancy');
+const synthesis = require('../lib/dashboard-synthesis');
 
 // ============================ ARGUMENTS ============================
 
@@ -103,6 +111,10 @@ const FALLBACK_TPL = [
   '@media (prefers-color-scheme:dark){:root{--pmz-bg:#16171a;--pmz-text:#ecebe7;--pmz-muted:#9c9a94;--pmz-border:#34373d;--pmz-surface:#1e2024}}',
   'body{margin:0;padding:24px;background:var(--pmz-bg);color:var(--pmz-text);font:15px/1.5 system-ui,sans-serif}',
   'section{background:var(--pmz-surface);border:1px solid var(--pmz-border);border-radius:8px;padding:14px;margin-bottom:14px}',
+  'details{border:1px solid var(--pmz-border);border-radius:8px;padding:10px 14px;margin-bottom:14px}',
+  'summary{cursor:pointer;font-weight:600}ul{padding-left:1.1em}',
+  '.s-label{font-weight:700;font-size:.75rem;text-transform:uppercase;color:var(--pmz-muted)}',
+  '.sig-detail{color:var(--pmz-muted);font-size:.85rem}',
   'footer{color:var(--pmz-muted);font-size:.8rem}</style>',
   '</head>', '<body>', '<h1>{{TITLE}}</h1>', '<p>{{SUBTITLE}}</p>', '{{BODY}}',
   '<footer>{{FOOTER}}</footer>', '</body>', '</html>', '',
@@ -132,6 +144,13 @@ function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// Fragment HTML → texte brut, pour les surfaces non graphiques (`--json`, sortie texte).
+// `<sup>` devient « ^ » AVANT le retrait des balises : sans ça, « tours<sup>1,15</sup> » se
+// lirait « tours1,15 », c'est-à-dire un nombre, pas un exposant.
+function plainText(s) {
+  return String(s == null ? '' : s).replace(/<sup>/g, '^').replace(/<[^>]+>/g, '');
 }
 
 // Largeur de barre bornée à [0,100] et arrondie : une valeur hors bornes déborderait du rail.
@@ -420,6 +439,85 @@ function rtkGainLotsSection(root) {
     `<strong>compteur local</strong> : commandes réécrites comptées côté PMZ, économie de sortie non mesurable ici.</p>`);
 }
 
+// ============================ SYNTHÈSE D'OUVERTURE (lot #122) ============================
+
+// Borne d'occupation DU PROJET (lib/occupancy.resolveRedZone) : les signaux d'occupation se
+// lisent en fraction de cette borne, jamais d'un palier absolu — sinon le même chiffre
+// sur-alerterait sur une fenêtre étroite (Haiku) et sous-alerterait sur une large (Opus).
+// Modèle de référence = le palier de tarif dominant de la fenêtre, pondéré par les tours.
+// Borne introuvable → l'option vaut `null` et les signaux d'occupation ne sont pas produits :
+// pas de seuil inventé (même règle que l'exposant `null` de la loi d'échelle).
+function windowRedZone(w, root) {
+  try {
+    const byTier = {};
+    w.sessions.forEach((s) => { byTier[s.tier] = (byTier[s.tier] || 0) + s.turns; });
+    const tier = Object.keys(byTier).sort((a, b) => byTier[b] - byTier[a])[0] || m.DEFAULT_TIER;
+    const rz = occupancyLib.resolveRedZone(root, tier);
+    return rz && rz.tokens > 0 ? rz.tokens : null;
+  } catch (_) { return null; }
+}
+
+// Ce que le cache a évité de payer : les mêmes tokens facturés au tarif d'ENTRÉE. Sommé par
+// session, donc au palier de tarif de la session — les paliers ne sont jamais mélangés. C'est
+// un ordre de grandeur mesuré sur des tokens réels, pas une facture alternative.
+function cacheSavingUsd(w) {
+  try {
+    return w.sessions.reduce((acc, s) => {
+      const p = m.priceFor(s.tier);
+      return acc + (s.totals.cacheRead / 1e6) * (p.input - p.cacheRead);
+    }, 0);
+  } catch (_) { return null; }
+}
+
+// Formateurs injectés dans lib/dashboard-synthesis (module pur) : un seul jeu de règles de mise
+// en forme dans le projet — virgule décimale, tokens abrégés, euros au taux de metrics.js.
+// `esc` en fait partie : la synthèse cite des identifiants de session, qui viennent du disque.
+const FMT = { tok, eur, pct, dec, int, esc };
+
+function buildSynthesis(w, root) {
+  return synthesis.synthesize(w, FMT, {
+    redZoneTokens: windowRedZone(w, root),
+    cacheSavingUsd: cacheSavingUsd(w),
+    ratioWarn: RATIO_WARN,
+    // Le bloc « Améliorer » ne recalcule pas un classement concurrent : il reprend la première
+    // des recommandations déjà classées par montant récupérable.
+    topReco: recommendations(w)[0] || null,
+  });
+}
+
+function synthSection(syn) {
+  const blocks = syn.blocks.map((b) =>
+    `<div class="s-block"><div class="s-label">${esc(b.label)}</div><div class="s-text">${b.text}</div></div>`).join('');
+  return card('Synthèse', `<div class="pmz-synth">${blocks}</div>` +
+    `<p class="pmz-note">Le <strong>constat</strong> est factuel ; <strong>garder</strong>, <strong>améliorer</strong> et ` +
+    `<strong>arrêter</strong> sont dérivés des mêmes mesures, par seuils nommés (aucune donnée nouvelle, aucun ` +
+    `transcript relu pour cette lecture). Le détail chiffré est au second niveau, plus bas.</p>`);
+}
+
+function sigList(items, kind) {
+  return `<ul class="pmz-sig${kind === 'watch' ? ' watch' : ''}">` + items.map((s) =>
+    `<li${s.filler ? ' class="neutral"' : ''}><div class="sig-title">${s.title}</div>` +
+    `<div class="sig-detail">${s.detail}</div></li>`).join('') + '</ul>';
+}
+
+function signalsSection(syn) {
+  return card('3 bons points · 3 points d\'attention',
+    `<div class="pmz-signals">` +
+    `<div><h3>Bons points</h3>${sigList(syn.good, 'good')}</div>` +
+    `<div><h3>Points d'attention</h3>${sigList(syn.watch, 'watch')}</div></div>` +
+    `<p class="pmz-note">Chaque signal porte le chiffre qui l'a déclenché : le seuil est contestable sans lire le code. ` +
+    `Classement par sévérité puis par montant en jeu. Un encadré <strong>neutre</strong> signale une fenêtre trop pauvre ` +
+    `pour un signal de plus — jamais un signal de complaisance.</p>`);
+}
+
+// Second niveau. `<details>` natif : le pli ne coûte pas une ligne de script, ce qui préserve
+// l'autonomie de la page (zéro réseau, zéro `<script>`).
+function detailsBlock(inner) {
+  return `<details class="pmz-more"><summary>Détail technique — indicateurs, méthode, sessions ` +
+    `<span class="s-hint">(la synthèse ci-dessus en est dérivée)</span></summary>` +
+    `<div class="pmz-more-body">${inner}</div></details>`;
+}
+
 // ============================ ASSEMBLAGE ============================
 
 const REASONS = {
@@ -474,9 +572,13 @@ function buildHtml(w, cwd, opts) {
       kpi('accrétion médiane', w.accretion.median == null ? '—' : dec(w.accretion.median, 0), 'tokens par tour'),
       kpi('loi d\'échelle', 'tours^' + k, w.scaling ? `r² ${dec(w.scaling.r2)} · n=${int(w.scaling.n)}` : 'pas assez de sessions longues'),
     ].join('') + '</div>';
-    body = kpis + occupancySection(w) + costSection(w) + breakdownSection(w) +
+    // La page S'OUVRE sur la synthèse (lot #122) : lecture d'abord, indicateurs ensuite. Tout
+    // ce qui était la page jusqu'ici passe derrière un pli.
+    const syn = buildSynthesis(w, root);
+    body = synthSection(syn) + signalsSection(syn) + detailsBlock(
+      kpis + occupancySection(w) + costSection(w) + breakdownSection(w) +
       accretionSection(w) + scalingSection(w) + recosSection(w) + sessionsSection(w, opts.top) +
-      rtkGainLotsSection(root);
+      rtkGainLotsSection(root));
   }
 
   return render(tpl, {
@@ -489,8 +591,12 @@ function buildHtml(w, cwd, opts) {
 
 // Résumé machine — pour un appelant qui veut savoir OÙ est la page et ce qu'elle dit, sans
 // parser du HTML. L'échec reste une valeur, jamais un code de sortie.
-function summary(w, out, written) {
+function summary(w, out, written, cwd) {
   const b = w.ok ? w.cacheReadBreakdown : null;
+  // Le résumé machine dit ce que DIT la page : la synthèse d'ouverture y figure donc au même
+  // titre que les recommandations. Balises retirées (les textes sont des fragments HTML).
+  const syn = w.ok ? buildSynthesis(w, project.gitRoot(cwd) || cwd) : null;
+  const plain = plainText;
   return {
     ok: !!w.ok,
     reason: w.ok ? null : w.reason,
@@ -509,6 +615,14 @@ function summary(w, out, written) {
     breakdownDegraded: !!(b && b.ratio != null && b.ratio > RATIO_WARN),
     shares: b ? b.shares : null,
     recommendations: w.ok ? recommendations(w).map((r) => r.title.replace(/<[^>]+>/g, '')) : [],
+    synthesis: syn ? {
+      constat: plain(syn.blocks.find((x) => x.key === 'constat').text),
+      garder: plain(syn.blocks.find((x) => x.key === 'garder').text),
+      ameliorer: plain(syn.blocks.find((x) => x.key === 'ameliorer').text),
+      arreter: plain(syn.blocks.find((x) => x.key === 'arreter').text),
+      good: syn.good.map((s) => plain(s.title)),
+      watch: syn.watch.map((s) => plain(s.title)),
+    } : null,
   };
 }
 
@@ -541,7 +655,7 @@ function main() {
   } catch (_) { /* disque en lecture seule, chemin invalide : on le dit, on ne casse pas */ }
 
   if (flag('json')) {
-    process.stdout.write(JSON.stringify(summary(w, out, written), null, 2) + '\n');
+    process.stdout.write(JSON.stringify(summary(w, out, written, cwd), null, 2) + '\n');
     return;
   }
 
@@ -553,6 +667,20 @@ function main() {
     lines.push(`Statut : ${reasonText(w.reason)} — la page affiche ce statut.`);
   } else {
     const b = w.cacheReadBreakdown;
+    // Même ordre que la page : la synthèse d'abord, les indicateurs ensuite. Les trois surfaces
+    // (page, --json, texte) disent la même chose, dans le même ordre.
+    const syn = buildSynthesis(w, project.gitRoot(cwd) || cwd);
+    const plain = plainText;
+    lines.push('Synthèse :');
+    syn.blocks.forEach((blk) => lines.push(`- ${blk.label} : ${plain(blk.text)}`));
+    lines.push('');
+    lines.push('3 bons points :');
+    syn.good.forEach((s, i) => lines.push(`${i + 1}. ${plain(s.title)}`));
+    lines.push('');
+    lines.push('3 points d\'attention :');
+    syn.watch.forEach((s, i) => lines.push(`${i + 1}. ${plain(s.title)}`));
+    lines.push('');
+    lines.push('Détail technique :');
     lines.push(`${w.count} session${w.count > 1 ? 's' : ''} · ${w.turns} tours · ${eur(w.cost.total)}`);
     lines.push(`- occupation : médiane ${tok(w.occupancy.median)} · p90 ${tok(w.occupancy.p90)} · max ${tok(w.occupancy.max)}`);
     lines.push(`- accrétion : ${w.accretion.median == null ? '—' : dec(w.accretion.median, 0) + ' tokens/tour'}`);

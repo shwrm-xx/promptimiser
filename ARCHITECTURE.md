@@ -235,6 +235,23 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   (compteurs déjà présents dans `analyzeWindow()`, aucun nouveau calcul). Le mode `--json` conserve
   `cost` en USD brut (rétrocompatibilité d'un consommateur existant) et ajoute `costEur` /
   `tokensTotal` / `usdToEur`.
+  **Refonte orientée usage** (lot #122) : la page **s'ouvre** sur une synthèse — Constat / Garder /
+  Améliorer / Arrêter, puis 3 bons points et 3 points d'attention — et les huit blocs d'indicateurs
+  passent au **second niveau**, dans un `<details>` natif (un pli qui ne coûte pas une ligne de
+  script : l'autonomie de la page interdit `<script>`). Frontière : la dérivation vit dans
+  `lib/dashboard-synthesis.js`, module **pur** (aucun `require`, aucune I/O, testable seul), et
+  toute mise en forme lui est **injectée** (`{ tok, eur, pct, dec, int, esc }`) sur le modèle de
+  `rtk-metrics.gainLines(co, tok)` — un seul jeu de formateurs dans le projet, celui de
+  `dashboard.js`. Le module ne mesure rien : il lit `analyzeWindow()` et applique des **seuils
+  nommés** (`THRESHOLDS`, seul point d'édition), l'occupation étant rapportée à la borne de zone
+  rouge **du projet** (`occupancy.resolveRedZone`) plutôt qu'à un palier absolu qui sur-alerterait
+  sur une fenêtre étroite. Deux règles héritées du lot #114 : une métrique absente ne produit
+  **aucun** signal (jamais de signal prudent inventé — la promesse de 3 + 3 est complétée par un
+  encadré *neutre* qui dit l'insuffisance de mesure), et le bloc « Améliorer » **reprend** la
+  première des recos déjà classées par argent au lieu de recalculer un classement concurrent. Les
+  trois surfaces (page, `--json`, sortie texte) rendent la même synthèse dans le même ordre ;
+  `plainText()` convertit `<sup>` en « ^ » avant de retirer les balises, sans quoi `tours^1,15`
+  se lirait comme un nombre.
   Trois contraintes portées par le rendu, pas par le moteur : **autonomie** (aucune requête réseau
   possible — ni CDN, police distante, script, `url()`, image ; favicon `data:,` pour neutraliser
   jusqu'à `/favicon.ico` : ouvrir une mesure locale ne doit pas pouvoir faire sortir une donnée de

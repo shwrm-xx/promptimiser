@@ -2,6 +2,50 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-29 — Dashboard : refonte synthétique orientée usage (lot #122, epic Dashboard usage)
+
+Le tableau de bord ouvrait sur sept blocs d'indicateurs : de la mesure, pas une lecture. Le
+destinataire devait se fabriquer lui-même le jugement. La page s'ouvre désormais sur une
+**synthèse** ; les indicateurs passent au second niveau.
+
+- **`lib/dashboard-synthesis.js`** (nouveau) : module **pur** — aucun `require`, aucune I/O,
+  formateurs **injectés** (`{ tok, eur, pct, dec, int, esc }`) sur le modèle de
+  `rtk-metrics.gainLines(co, tok)`. Il ne mesure rien : il dérive de `analyzeWindow()` les quatre
+  blocs **Constat / Garder / Améliorer / Arrêter** et une banque de signaux (réutilisation du
+  cache, préfixe, sortie relue, fichiers relus, prompts/injections, loi d'échelle, occupation,
+  accrétion, concentration du coût sur une session, contrôle de validité) dont les **10 seuils
+  nommés** vivent dans `THRESHOLDS`, seul point d'édition. Classement par sévérité puis par
+  montant en jeu (€, la même monnaie que les recommandations). Une métrique absente ne produit
+  **aucun** signal ; la promesse de 3 + 3 est tenue par un encadré **neutre** qui dit
+  l'insuffisance de mesure — jamais par un signal non mesuré. « Améliorer » **reprend** la
+  première des recos déjà classées par argent au lieu d'ouvrir un classement concurrent.
+- **`scripts/dashboard.js`** : la page s'ouvre sur `Synthèse` + `3 bons points · 3 points
+  d'attention` ; les **huit** blocs techniques (occupation, coût, 4 postes, accrétion, loi
+  d'échelle, recommandations, sessions, gain RTK) passent dans un `<details class="pmz-more">` —
+  un pli **natif**, aucune ligne de script (l'autonomie de la page l'interdit). L'occupation est
+  jugée en fraction de la borne de zone rouge **du projet** (`occupancy.resolveRedZone` sur le
+  palier de tarif dominant de la fenêtre), pas d'un palier absolu. Nouveau chiffre dérivé, sans
+  nouvelle mesure : ce que le cache a évité de payer au tarif d'entrée, sommé par session pour ne
+  pas mélanger les paliers. `plainText()` convertit `<sup>` en « ^ » avant de retirer les balises
+  (sans quoi `tours^1,15` se lirait « tours1,15 »). Les **trois surfaces** — page, `--json`
+  (nouvelle clé `synthesis`), sortie texte — rendent la même synthèse dans le même ordre.
+- **`templates/dashboard.html`** : jetons et mise en page de la synthèse (4 blocs libellés), des
+  deux colonnes de signaux (vert / ambre / neutre) et du pli. Aucune couleur en dur : tout passe
+  par les `--pmz-*` existants.
+- **`commands/dashboard.md`** : compte rendu en 5 points au lieu de 4 — la synthèse d'abord, et
+  l'encadré neutre doit être annoncé comme tel, jamais présenté comme un signal.
+- **`test/run-tests.js`** (bloc D122-1 à D122-7, +18 assertions) : ordre de la page, quatre blocs
+  libellés, exactement 3 + 3 tous chiffrés, pli natif sans script, huit blocs conservés dans le
+  pli, déclassement en plafonds remonté dans la synthèse, garde-fou de fenêtre pauvre (encadré
+  neutre), pureté du module (aucun `require`), et absence totale de signal quand toutes les
+  métriques sont nulles. Suite : 2044 OK · 0 échec (+ 119 OK côté OpenCode).
+- **`docs/us/US-122.md`** : gabarit vide remplacé par le contrat réellement livré (7 critères
+  vérifiables, hors périmètre argumenté, preuve de clôture).
+
+Vérifié en rendu réel : page ouverte dans le navigateur, **vrai clic** sur le pli — `open` passe à
+`true`, la hauteur du document passe de 1500 à 4273 px, premier bloc déplié « Occupation du
+contexte ».
+
 ## 2026-07-29 — Coût du dashboard en euros (et tokens) (lot #121, epic Dashboard usage)
 
 Le tableau de bord `/dashboard` affichait tous ses montants en **dollars** (KPI, décomposition du

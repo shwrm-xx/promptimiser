@@ -100,6 +100,53 @@ section.pmz-card {
 }
 .pmz-note { color: var(--pmz-muted); font-size: 0.82rem; margin: 10px 0 0; }
 
+/* ---- Synthèse d'ouverture : Constat / Garder / Améliorer / Arrêter (lot 122) ----
+   Numéro de lot écrit sans dièse dans ce fichier : le contrôle anti-couleur-en-dur de la suite
+   de tests cherche un littéral hexadécimal, et un « dièse + 3 chiffres » en est un.
+   La page s'ouvre sur cette lecture ; les indicateurs bruts passent au second niveau, dans
+   le <details> plus bas. Aucun script : le pli est natif. */
+.pmz-synth { display: grid; gap: 14px; }
+.pmz-synth .s-block { display: grid; grid-template-columns: 108px 1fr; gap: 4px 16px; align-items: baseline; }
+.pmz-synth .s-label {
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 700;
+  color: var(--pmz-accent); padding-top: 3px;
+}
+.pmz-synth .s-text { font-size: 0.95rem; }
+.pmz-synth .s-text sup { font-size: 0.75em; }
+@media (max-width: 620px) {
+  .pmz-synth .s-block { grid-template-columns: 1fr; gap: 2px; }
+}
+
+/* Bons points / points d'attention : deux colonnes, 3 items chacune */
+.pmz-signals { display: grid; grid-template-columns: 1fr 1fr; gap: var(--pmz-gap); }
+@media (max-width: 760px) { .pmz-signals { grid-template-columns: 1fr; } }
+ul.pmz-sig { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+ul.pmz-sig li {
+  border-left: 3px solid var(--pmz-ok-border); background: var(--pmz-ok-bg);
+  padding: 9px 12px; border-radius: 0 6px 6px 0;
+}
+ul.pmz-sig.watch li { border-left-color: var(--pmz-warn-border); background: var(--pmz-warn-bg); }
+ul.pmz-sig li.neutral { border-left-color: var(--pmz-border); background: var(--pmz-surface-alt); }
+.pmz-sig .sig-title { font-weight: 600; font-size: 0.9rem; color: var(--pmz-ok-text); }
+.pmz-sig.watch .sig-title { color: var(--pmz-warn-text); }
+.pmz-sig li.neutral .sig-title { color: var(--pmz-muted); }
+.pmz-sig .sig-detail { font-size: 0.84rem; color: var(--pmz-muted); margin-top: 3px; }
+
+/* Second niveau : le détail technique se déplie, il ne s'impose pas */
+details.pmz-more {
+  border: 1px solid var(--pmz-border); border-radius: var(--pmz-radius);
+  margin-bottom: var(--pmz-gap); overflow: hidden;
+}
+details.pmz-more > summary {
+  cursor: pointer; padding: 14px 18px; background: var(--pmz-surface);
+  font-weight: 600; font-size: 0.95rem; list-style: none;
+}
+details.pmz-more > summary::-webkit-details-marker { display: none; }
+details.pmz-more > summary::before { content: "\25B8\00a0"; color: var(--pmz-muted); }
+details.pmz-more[open] > summary::before { content: "\25BE\00a0"; }
+details.pmz-more > summary .s-hint { font-weight: 400; color: var(--pmz-muted); font-size: 0.85rem; }
+details.pmz-more > .pmz-more-body { padding: 16px 16px 2px; border-top: 1px solid var(--pmz-border); }
+
 /* Tuiles d'en-tête */
 .pmz-kpis { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: var(--pmz-gap); }
 .pmz-kpi {

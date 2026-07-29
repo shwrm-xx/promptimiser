@@ -7972,6 +7972,95 @@ section('Tableau de bord — HTML autonome, thémable, sans requête réseau');
   ok(dStd.code === 0 && /^<!doctype html>/i.test(dStd.out) && /3 recommandations chiffrées/.test(dStd.out),
     'D114-8 : --stdout rend la page sur la sortie standard');
 
+  // --- D122. REFONTE SYNTHÉTIQUE ORIENTÉE USAGE (lot #122) ---
+  // La page s'OUVRE sur une synthèse ; les indicateurs bruts passent derrière un pli. Ce qui est
+  // testé ici : l'ordre (synthèse avant détail), la complétude (toujours 3 + 3), le chiffrage
+  // (aucun signal sans son chiffre), et le fait que le pli ne coûte pas une ligne de script.
+  const synthLib = require(path.join(PKG, 'lib', 'dashboard-synthesis'));
+  const iSynth = H.indexOf('>Synthèse<');
+  const iSig = H.indexOf('3 bons points');
+  const iMore = H.indexOf('<details class="pmz-more">');
+  const iOcc = H.indexOf('Occupation du contexte');
+  ok(iSynth > 0 && iSig > iSynth && iMore > iSig && iOcc > iMore,
+    'D122-1 : ordre de la page — synthèse, puis 3+3, puis le détail technique replié');
+  ok(/<div class="s-label">Constat<\/div>/.test(H) && /<div class="s-label">Garder<\/div>/.test(H) &&
+     /<div class="s-label">Améliorer<\/div>/.test(H) && /<div class="s-label">Arrêter<\/div>/.test(H),
+    'D122-1 : les quatre blocs Constat / Garder / Améliorer / Arrêter sont présents et libellés');
+  const dGood = /<ul class="pmz-sig">([\s\S]*?)<\/ul>/.exec(H);
+  const dWatch = /<ul class="pmz-sig watch">([\s\S]*?)<\/ul>/.exec(H);
+  ok(dGood && (dGood[1].match(/<li/g) || []).length === 3, 'D122-2 : exactement 3 bons points');
+  ok(dWatch && (dWatch[1].match(/<li/g) || []).length === 3, 'D122-2 : exactement 3 points d\'attention');
+  ok(dGood && dWatch && [dGood[1], dWatch[1]].every((block) =>
+    block.split('<li').slice(1).every((li) => /\d/.test(li))),
+    'D122-2 : chaque signal porte le chiffre qui l\'a déclenché');
+  // Le pli est natif : aucune ligne de script n'a été introduite pour le second niveau.
+  ok(/<\/details>/.test(H) && H.indexOf('</details>') > iOcc && !/<script/i.test(H),
+    'D122-3 : le second niveau est un <details> natif fermé après les indicateurs, sans script');
+  ok(/<summary>Détail technique/.test(H), 'D122-3 : le pli est étiqueté « Détail technique »');
+  // Les sept blocs d'indicateurs du lot #114 sont TOUS passés au second niveau, aucun perdu.
+  const dInside = H.slice(iMore, H.indexOf('</details>', iMore));
+  ok(['Occupation du contexte', 'Décomposition du coût', 'Où part la lecture de cache',
+    'Accrétion (tokens/tour)', 'Loi d\'échelle', '3 recommandations chiffrées',
+    'Sessions les plus chères', 'Gain RTK par lot'].every((t) => dInside.indexOf(t) !== -1),
+    'D122-3 : les huit blocs techniques sont dans le pli — aucun bloc perdu dans la refonte');
+
+  // Fenêtre dégradée : le déclassement en plafonds remonte comme point d'attention, jamais tu.
+  ok(/plafonds, pas des parts/.test(H2) && H2.indexOf('3 bons points') > 0,
+    'D122-4 : contrôle > 1,15 → le déclassement remonte dans la synthèse d\'ouverture');
+
+  // Garde-fou de complétude : une fenêtre pauvre (1 session courte) sort quand même 3 + 3, en
+  // complétant par un constat d'insuffisance de mesure — jamais par un signal inventé.
+  const DCWD3 = '/fake/projet-dashboard-pauvre';
+  dSeed(DCWD3, [[3, 100]]);
+  const dPoor = runNode(DASH, ['--cwd', DCWD3, '--json', '--out', path.join(DDIR, 'pauvre.html')], dEnv);
+  let dJp = null;
+  try { dJp = JSON.parse(dPoor.out); } catch (_) {}
+  ok(dPoor.code === 0 && dJp && dJp.synthesis && dJp.synthesis.good.length === 3 && dJp.synthesis.watch.length === 3,
+    'D122-5 : fenêtre pauvre → toujours 3 + 3 (garde-fou de complétude)');
+  const HP = dRead(path.join(DDIR, 'pauvre.html'));
+  ok(/class="neutral"/.test(HP) && /Élargir la fenêtre/.test(HP),
+    'D122-5 : le complément est un encadré NEUTRE qui dit l\'insuffisance de mesure, pas un signal inventé');
+
+  // Les trois surfaces (page, --json, texte) rendent la même synthèse, dans le même ordre.
+  ok(dJ && dJ.synthesis && ['constat', 'garder', 'ameliorer', 'arreter'].every((k) => typeof dJ.synthesis[k] === 'string' && dJ.synthesis[k].length > 0),
+    'D122-6 : --json porte les quatre blocs de la synthèse');
+  ok(dJ && dJ.synthesis && !/[<>]/.test(dJ.synthesis.constat + dJ.synthesis.ameliorer),
+    'D122-6 : les textes du résumé machine sont du texte brut, sans balise résiduelle');
+  ok(dJ && /tours\^\d/.test(dJ.synthesis.constat),
+    'D122-6 : l\'exposant survit à la mise en texte brut (tours^k, jamais « tours1,15 »)');
+  const dStd2 = runNode(DASH, ['--cwd', DCWD, '--sessions', '10', '--out', path.join(DDIR, 'txt.html')], dEnv);
+  ok(/Synthèse :/.test(dStd2.out) && /- Constat : /.test(dStd2.out) && /- Arrêter : /.test(dStd2.out) &&
+     /3 bons points :/.test(dStd2.out) && /3 points d'attention :/.test(dStd2.out) &&
+     dStd2.out.indexOf('Synthèse :') < dStd2.out.indexOf('Détail technique :'),
+    'D122-6 : la sortie texte ouvre elle aussi sur la synthèse, détail technique ensuite');
+
+  // Module de synthèse : PUR (aucune I/O), et il ne produit AUCUN signal quand la métrique
+  // manque — pas de signal prudent inventé à la place.
+  ok(!/require\(/.test(fs.readFileSync(path.join(PKG, 'lib', 'dashboard-synthesis.js'), 'utf8')),
+    'D122-7 : lib/dashboard-synthesis.js est pur — aucun require, aucune I/O');
+  {
+    const FMT0 = { tok: () => '—', eur: () => '—', pct: () => '—', dec: () => '—', int: () => '—', esc: (x) => String(x) };
+    const empty = {
+      count: 1, turns: 0, sessions: [],
+      prefix: { median: null, min: null, max: null },
+      occupancy: { median: null, p90: null, max: null },
+      accretion: { median: null, n: 0 },
+      totals: { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 },
+      cost: { input: 0, cacheWrite: 0, cacheRead: 0, output: 0, total: 0 },
+      cacheReadBreakdown: { prefix: 0, output: 0, toolResults: 0, prompts: 0, sum: 0, actual: 0, ratio: null, shares: { prefix: null, output: null, toolResults: null, prompts: null } },
+      scaling: null, scalingCacheRead: null,
+    };
+    const built = synthLib.buildSignals(empty, FMT0, {});
+    const synOut = synthLib.synthesize(empty, FMT0, {});
+    ok(built.good.length === 0 && built.watch.length === 0,
+      'D122-7 : métriques absentes → AUCUN signal produit (jamais de signal non mesuré)');
+    ok(synOut.good.length === 3 && synOut.watch.length === 3 && synOut.good.every((s) => s.filler) &&
+       synOut.blocks.length === 4,
+      'D122-7 : le garde-fou complète malgré tout à 3 + 3, uniquement avec des encadrés neutres');
+    ok(synOut.blocks.map((b) => b.key).join(',') === 'constat,garder,ameliorer,arreter',
+      'D122-7 : les quatre blocs sortent toujours, dans l\'ordre Constat/Garder/Améliorer/Arrêter');
+  }
+
   // --- D114-9. Commande /pmz:dashboard et contrainte d'archi « hors bande » ---
   const dCmd = dRead(path.join(PKG, 'commands', 'dashboard.md'));
   ok(/^---\n/.test(dCmd) && /description:/.test(dCmd) && /allowed-tools:/.test(dCmd),

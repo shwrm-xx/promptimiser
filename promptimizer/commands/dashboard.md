@@ -16,13 +16,21 @@ ne l'appelle jamais depuis un hook.
 Le script mesure tout lui-même (occupation, décomposition du coût, accrétion, loi d'échelle,
 recommandations). **Ne fabrique aucun chiffre toi-même** : reprends ceux de sa sortie.
 
-Rends compte en 4 points, sans relire la page produite :
+La page **s'ouvre sur une synthèse** (Constat / Garder / Améliorer / Arrêter, puis 3 bons points
+et 3 points d'attention) ; le détail technique est replié au second niveau. La sortie du script
+rend la même synthèse, dans le même ordre : reprends-la telle quelle.
+
+Rends compte en 5 points, sans relire la page produite :
 1. le chemin du fichier écrit ;
-2. les indicateurs tels que chiffrés par le script (occupation, accrétion, exposant de la loi
+2. la **synthèse** : les quatre blocs Constat / Garder / Améliorer / Arrêter, puis les 3 bons
+   points et les 3 points d'attention, dans l'ordre du script (sévérité, puis montant en jeu).
+   Un encadré annoncé comme **neutre** signale une fenêtre trop pauvre : dis-le, ne le présente
+   pas comme un signal ;
+3. les indicateurs tels que chiffrés par le script (occupation, accrétion, exposant de la loi
    d'échelle, coût de la fenêtre) ;
-3. les 3 recommandations chiffrées, dans l'ordre où le script les classe (par montant
+4. les 3 recommandations chiffrées, dans l'ordre où le script les classe (par montant
    récupérable) ;
-4. les deux réserves de mesure, si elles s'appliquent — **jamais silencieusement** :
+5. les deux réserves de mesure, si elles s'appliquent — **jamais silencieusement** :
    - contrôle de décomposition **> 1,15** → les 4 postes sont des **plafonds**, pas des parts
      (compaction, ou raisonnement étendu compté en sortie mais non rejoué) ;
    - le coût d'**écriture de cache est un plancher** (tarif 5 minutes ; le TTL 1 heure n'est

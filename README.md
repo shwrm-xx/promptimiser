@@ -278,9 +278,15 @@ préfixe** en CLAUDE.md / skills / reste (système + outils + MCP, non isolable 
 Claude Code ne journalise pas le system prompt ni les schémas d'outils dans le transcript local).
 
 `/dashboard` génère `.vibe-agent/dashboard.html`, un tableau de bord **autonome** de l'économie de
-contexte du projet : occupation (médiane / p90 / max) et préfixe, décomposition du coût (cache-read
-en 4 postes), accrétion tokens/tour, loi d'échelle `coût ∝ tours^k`, et **3 recommandations
-chiffrées** classées par argent récupérable. Les montants s'affichent **en euros** (taux $→€
+contexte du projet. La page **s'ouvre sur une synthèse** orientée usage — **Constat / Garder /
+Améliorer / Arrêter**, puis **3 bons points** et **3 points d'attention**, chacun avec le chiffre
+qui l'a déclenché et son seuil. Le détail technique est au **second niveau**, derrière un pli
+(`<details>` natif, aucun script) : occupation (médiane / p90 / max) et préfixe, décomposition du
+coût (cache-read en 4 postes), accrétion tokens/tour, loi d'échelle `coût ∝ tours^k`, **3
+recommandations chiffrées** classées par argent récupérable, sessions les plus chères, gain RTK par
+lot. La synthèse ne mesure rien de neuf : elle dérive des mêmes indicateurs, par seuils nommés
+(`lib/dashboard-synthesis.js`), et une métrique absente ne produit **aucun** signal — la promesse
+de 3 + 3 est tenue par un encadré neutre qui dit l'insuffisance de mesure. Les montants s'affichent **en euros** (taux $→€
 statique de `lib/metrics.js`, réserve rappelée au footer), avec l'équivalent en tokens à côté ;
 le mode `--json` conserve le coût USD brut (`cost`) et ajoute `costEur`/`tokensTotal`. La page ne
 fait **aucune requête réseau** et suit le thème clair/sombre du système. Options : `--sessions N`
