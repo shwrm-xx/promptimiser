@@ -19,7 +19,8 @@ const { writeAutoHandoff } = require('../lib/handoff');
 const { loadSessionState, saveSessionState } = require('../lib/state');
 const { loadContextLedger, loadReadLedger, recordOccupancy, evaluateWaste } = require('../lib/ledger');
 const { incrementLot } = require('../lib/lot');
-const { loadBacklog, doneLot, setClosedVerify, nextLot, blockedByOf, progress, currentLot, addCost, COST_WARN_TOKENS, epicBilan } = require('../lib/backlog');
+const { loadBacklog, doneLot, setClosedVerify, nextLot, blockedByOf, progress, currentLot, costLotFor, addCost, COST_WARN_TOKENS, epicBilan } = require('../lib/backlog');
+const subagentcost = require('../lib/subagentcost');
 const occupancy = require('../lib/occupancy');
 const { readLastModel } = require('../lib/modelwatch');
 const turnstats = require('../lib/turnstats');
@@ -55,6 +56,23 @@ function committedSinceLotStart(root, lot) {
     return head > start;
   } catch (_) {
     return false;
+  }
+}
+
+// Repli d'attribution en vague (lot #119) : le lot que le REGISTRE DE VAGUE (fleet.json) dit
+// tenu par cette session, quand `session_owner` du backlog ne le dit pas (lot démarré sans
+// `start --owner`, cas fréquent : l'inscription se fait par `fleet join`). Le lot n'est retenu
+// que s'il est réellement in_progress au backlog — le fleet ne fait pas foi sur le statut.
+// Fail-open : null au moindre doute, aucune imputation plutôt qu'une imputation devinée.
+function fleetOwnedLot(root, sid) {
+  try {
+    if (!sid) return null;
+    const mine = require('../lib/fleet').lotForSession(root, sid);
+    if (!mine) return null;
+    const lot = loadBacklog(root).lots.find((l) => l.id === mine.id && l.status === 'in_progress');
+    return lot || null;
+  } catch (_) {
+    return null;
   }
 }
 
@@ -164,10 +182,27 @@ function main() {
     // avec proposition de redécoupage. Message VISIBLE (systemMessage) donc sans coût de
     // cache, plafonné 1× par lot·session (réarmé quand le tree redevient propre, plus bas).
     // Fail-open dédié : une erreur d'agrégation ne casse jamais la clôture ci-dessous.
+    // (a4bis) coût DÉLÉGUÉ (lot #119) : les tours d'un sous-agent (outil Agent/Task) s'écrivent
+    // dans des transcripts à part et ne passent JAMAIS par ce hook — leur coût était donc
+    // strictement invisible (un lot mené par sous-agents sortait à ~0 token). Rattrapage à
+    // chaque Stop : on scanne le delta des transcripts de sous-agents de cette session et on
+    // l'impute au même lot que le tour courant. Corpus disjoint du transcript parent, donc
+    // aucun double comptage avec computeTurn. Fail-open dédié dans computeSubagentCost.
+    let subOut = 0;
     try {
-      const cur = currentLot(loadBacklog(root));
+      const subCost = subagentcost.computeSubagentCost(input.transcript_path, sid);
+      if (subCost && Number.isFinite(subCost.out) && subCost.out > 0) subOut = subCost.out;
+    } catch (_) { /* fail-open : coût délégué non mesuré ce tour, jamais deviné */ }
+    try {
+      // Imputation NOMINATIVE (lot #119) : en vague, plusieurs lots sont in_progress à la fois et
+      // `currentLot` renvoyait le premier du tableau — chaque session créditait le lot d'une
+      // autre. `costLotFor` n'impute qu'au lot de CETTE session (rien, plutôt qu'au hasard) ;
+      // repli sur l'attribution du fleet quand le lot a été démarré sans --owner.
+      let cur = costLotFor(loadBacklog(root), sid);
+      if (!cur) cur = fleetOwnedLot(root, sid);
       if (cur) {
-        const updated = (turn && turn.out > 0) ? addCost(root, cur.id, turn.out) : cur;
+        const out = (turn && turn.out > 0 ? turn.out : 0) + subOut;
+        const updated = out > 0 ? addCost(root, cur.id, out, subOut) : cur;
         const cost = updated && Number.isFinite(updated.cost_tokens) ? updated.cost_tokens : 0;
         if (cost >= COST_WARN_TOKENS && !st.cost_reminded_for_batch) {
           st.cost_reminded_for_batch = true;

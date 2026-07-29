@@ -233,6 +233,10 @@ function evaluateDrift(sid) {
 
 module.exports = {
   computeTurn, evaluateDrift,
+  // Primitives de scan exposées pour lib/subagentcost (lot #119) : le coût des tours délégués se
+  // lit dans d'AUTRES fichiers que le transcript de session, mais avec exactement la même méthode
+  // (offset persisté + parsing des lignes `usage`) — la dupliquer la ferait dériver.
+  parseUsage, scanRange,
   COSTLY_DELTA, COSTLY_COOLDOWN, BUST_OCC_MIN, BUST_CACHE_RATIO, RESYNC_DELTA, MAX_TURNS,
   DRIFT_WINDOW, DRIFT_COST_RATIO, DRIFT_MIN_DELTA, DRIFT_HIT_DROP, DRIFT_COOLDOWN,
 };

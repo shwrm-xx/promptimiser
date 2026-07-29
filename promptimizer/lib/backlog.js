@@ -106,11 +106,11 @@ const CLOSED_VERIFY_VALUES = ['ok', 'failed', 'timeout', 'none'];
 // Flags qui consomment une valeur (mono ou liste répétable — cf. flag()/flagList()) :
 const VALUE_FLAGS = ['cwd', 'id', 'epic', 'set', 'model', 'effort', 'title', 'scope',
   'verify', 'us', 'owner', 'commit', 'note', 'into', 'format', 'depends', 'perimeter', 'session', 'occupancy',
-  'gate', 'final-gate', 'branch', 'state'];
+  'gate', 'final-gate', 'branch', 'state', 'verify-verdict'];
 // Flags booléens (ne consomment aucune valeur) — listés pour documentation ;
 // tout flag hors VALUE_FLAGS est traité comme booléen (ne consomme rien).
 const BOOL_FLAGS = ['json', 'suggest', 'execute', 'allow-trunc', 'no-session', 'no-occupancy', 'allow-no-gate', 'new',
-  'allow-incomplete-us'];
+  'allow-incomplete-us', 'no-verify'];
 
 // Garde anti-troncature de champ (lot #90), 2e vecteur après les orphelins argv (#88) :
 // une valeur QUOTÉE mais au-delà de son plafond MAX_* serait stockée coupée par trunc()
@@ -231,6 +231,10 @@ function loadBacklog(root) {
       // (même filtre qu'addCost — tokens<=0 ignoré) : numérateur et dénominateur portent sur
       // exactement les mêmes tours, donc cost_tokens/cost_turns reste une moyenne cohérente.
       cost_turns: Number.isFinite(l.cost_turns) && l.cost_turns > 0 ? l.cost_turns : 0,
+      // Part de cost_tokens produite par des tours DÉLÉGUÉS à un sous-agent (lot #119) — elle
+      // est comprise DANS cost_tokens, jamais en plus. Sans cette ventilation, un lot mené par
+      // sous-agents affiche un coût plausible sans qu'on puisse dire ce qui l'a produit.
+      cost_subagent_tokens: Number.isFinite(l.cost_subagent_tokens) && l.cost_subagent_tokens > 0 ? l.cost_subagent_tokens : 0,
       // Moyenne cost_tokens/cost_turns FIGÉE à la clôture (lot #111) — même contrat que
       // closed_occupancy : calculée une fois par doneLot, jamais recalculée après (le lot ne
       // « travaille » plus une fois done). null si aucun tour n'a compté de coût.
@@ -330,6 +334,7 @@ function addLot(root, title, scope, modelHint, epic, verify, effortHint, perimet
     closed_verify: null,
     cost_tokens: 0,
     cost_turns: 0,
+    cost_subagent_tokens: 0,
     closed_avg_cost_per_turn: null,
     started_at: null,
     lot_number: null,
@@ -541,13 +546,21 @@ function touchLot(root, id) {
 // clos/à faire ne « consomme » pas). tokens <= 0 -> no-op silencieux (renvoie le lot tel
 // quel sans réécriture inutile). Renvoie le lot à jour, ou null si introuvable/pas en cours.
 // Persistance sur le lot (pas l'état de session) => l'agrégat survit aux sessions fraîches.
-function addCost(root, id, tokens) {
+// subagentTokens (lot #119, optionnel) : PART de `tokens` produite par des tours délégués à un
+// sous-agent (elle est donc déjà comprise dans `tokens` — c'est une ventilation, pas un ajout).
+// Persistée à part pour que la part déléguée reste LISIBLE : sans elle, un lot mené par
+// sous-agents affiche un coût plausible sans qu'on puisse dire d'où il vient.
+function addCost(root, id, tokens, subagentTokens) {
   const n = Number(tokens);
   const b = loadBacklog(root);
   const lot = findLot(b, id);
   if (!lot || lot.status !== 'in_progress') return null;
   if (!Number.isFinite(n) || n <= 0) return lot;
   lot.cost_tokens = (Number.isFinite(lot.cost_tokens) ? lot.cost_tokens : 0) + Math.round(n);
+  const sub = Number(subagentTokens);
+  if (Number.isFinite(sub) && sub > 0) {
+    lot.cost_subagent_tokens = (Number.isFinite(lot.cost_subagent_tokens) ? lot.cost_subagent_tokens : 0) + Math.round(sub);
+  }
   // Accrétion tokens/tour (lot #111) : un tour compté ici est un tour qui a RÉELLEMENT
   // accru cost_tokens (même garde ci-dessus) — jamais un tour à vide.
   lot.cost_turns = (Number.isFinite(lot.cost_turns) ? lot.cost_turns : 0) + 1;
@@ -757,6 +770,26 @@ function reopenLot(root, id, note) {
 
 function currentLot(b) {
   return b.lots.find((l) => l.status === 'in_progress') || null;
+}
+
+// PUR. Lot auquel IMPUTER le coût d'un tour, pour la session `sid` (lot #119). Volontairement
+// distinct de currentLot, qui répond à une autre question (« quel lot AFFICHER ? ») et dont une
+// erreur se voit ; ici, une erreur ne se voit pas — elle FAUSSE une mesure durablement.
+// En mode vague, N lots sont in_progress en même temps (sessions distinctes, périmètres
+// disjoints) : currentLot renvoyait le PREMIER du tableau, donc toutes les sessions de la vague
+// créditaient le même lot — le coût des unes volé par l'autre, et une estimation prédictive
+// (estimateCost) empoisonnée pour tous les lots à venir.
+// Règles, du plus sûr au plus tolérant :
+//   - un seul lot en cours -> lui, même si son session_owner désigne une autre session : l'agrégat
+//     de coût est explicitement trans-session (un lot survit aux sessions fraîches, cf. addCost) ;
+//   - plusieurs -> celui dont session_owner === sid ; RIEN si aucun ne correspond. Un trou de
+//     mesure est réparable et visible (cost_tokens bas) ; une imputation au hasard, non.
+function costLotFor(b, sid) {
+  const inProg = ((b && Array.isArray(b.lots)) ? b.lots : []).filter((l) => l.status === 'in_progress');
+  if (!inProg.length) return null;
+  if (inProg.length === 1) return inProg[0];
+  if (!sid) return null;
+  return inProg.find((l) => l.session_owner === sid) || null;
 }
 
 // PUR. Dépendances d'un lot qui BLOQUENT encore son démarrage : ids de lots PRÉSENTS au statut
@@ -1071,7 +1104,7 @@ module.exports = {
   backlogFile, loadBacklog, saveBacklog, addLot, setVerify, setClosedVerify, setPerimeter, setDepends, setUs,
   usPathFor, renderUsTemplate, createUsFile, checkUsStructure, US_REQUIRED_SECTIONS, US_DIR,
   startLot, doneLot, dropLot, noteLot, reopenLot,
-  touchLot, addCost, currentLot, nextLot, blockedByOf, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
+  touchLot, addCost, currentLot, costLotFor, nextLot, blockedByOf, lastDoneLot, lotClosedBySession, lotRankInEpic, progress, summaryLines, reconcile,
   epicBilan, estimateCost, canCoexist, pairwiseCoexist, planWaves, waveBranch,
   todoSnapshotFile, writeTodoSnapshot, readTodoSnapshot, modelEffortTag,
   exportCsv, exportMarkdown, orphanArgs, overflowFields, isTruncated, VALUE_FLAGS, BOOL_FLAGS,

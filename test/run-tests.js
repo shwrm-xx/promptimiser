@@ -6165,8 +6165,9 @@ section('backlog — CLI depends corrigeable + reopen d\'un lot clos (lot #98)')
 
   // R3. --note obligatoire : sans elle, le lot reste clos
   runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
-  runNode(BKLG, ['done', '--cwd', repo, '--id', '1', '--commit', 'aaa1111']);
-  backlogLib.setClosedVerify(repo, 1, 'ok');
+  // Verdict posé par la clôture CLI elle-même (lot #119, --verify-verdict) : jadis seul
+  // setClosedVerify appelé depuis le test savait le faire.
+  runNode(BKLG, ['done', '--cwd', repo, '--id', '1', '--commit', 'aaa1111', '--verify-verdict', 'ok']);
   ok(lotOf(1).status === 'done' && lotOf(1).closed_verify === 'ok', 'R3 : lot #1 clos avec verdict verify');
   const rn = runNode(BKLG, ['reopen', '--cwd', repo, '--id', '1']);
   ok(/Refusé : --note manquante/.test(rn.out) && lotOf(1).status === 'done', 'R3 : reopen sans --note -> refus, lot intact');
@@ -6192,8 +6193,7 @@ section('backlog — CLI depends corrigeable + reopen d\'un lot clos (lot #98)')
 
   // R6. le cycle suivant repart propre (pas d'héritage de l'ancien verdict)
   runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
-  runNode(BKLG, ['done', '--cwd', repo, '--id', '1', '--commit', 'bbb2222']);
-  backlogLib.setClosedVerify(repo, 1, 'failed');
+  runNode(BKLG, ['done', '--cwd', repo, '--id', '1', '--commit', 'bbb2222', '--verify-verdict', 'failed']);
   ok(lotOf(1).closed_commit === 'bbb2222' && lotOf(1).closed_verify === 'failed',
     'R6 : re-clôture -> commit et verdict du NOUVEAU cycle (aucun héritage)');
   const idx = archive.readIndex(repo).find((e) => e.id === 1);
@@ -8276,6 +8276,254 @@ section('Diagnostic enrichi de /pmz:budget — coût marginal du token de sortie
   const aNoT = runNode(AUDIT_CTX, ['--cwd', repoNoT], { CLAUDE_CONFIG_DIR: CFG113 });
   ok(aNoT.code === 0 && !/Diagnostic enrichi/.test(aNoT.out),
     'B113-3 : session_id sans transcript correspondant -> section omise, jamais d\'échec');
+}
+
+// ====== COÛT PAR LOT EN MODE VAGUE : DÉLÉGUÉ, NOMINATIF, PROUVÉ (lot #119) ======
+section('Coût par lot en mode vague — tours délégués, imputation nominative, preuve CLI, zone partagée (lot #119)');
+{
+  const subcost = require(path.join(PKG, 'lib', 'subagentcost.js'));
+  const perim = require(path.join(PKG, 'lib', 'perimeter.js'));
+
+  // --- V1. costLotFor : à QUI imputer le coût d'un tour ? -------------------------------------
+  const mk = (lots) => ({ lots });
+  ok(backlogLib.costLotFor(mk([]), 'sid') === null, 'V1 : aucun lot en cours -> aucune imputation');
+  ok(backlogLib.costLotFor(mk([{ id: 1, status: 'todo' }]), 'sid') === null, 'V1 : lot todo -> aucune imputation');
+  ok(backlogLib.costLotFor(mk([{ id: 1, status: 'in_progress', session_owner: null }]), 'sid').id === 1,
+    'V1 : un seul lot en cours (sans owner) -> lui');
+  ok(backlogLib.costLotFor(mk([{ id: 1, status: 'in_progress', session_owner: 'vieille-session' }]), 'sid').id === 1,
+    'V1 : un seul lot en cours, owner d\'une AUTRE session -> lui quand même (agrégat trans-session)');
+  const wave = mk([
+    { id: 1, status: 'in_progress', session_owner: 'sess-A' },
+    { id: 2, status: 'in_progress', session_owner: 'sess-B' },
+  ]);
+  ok(backlogLib.costLotFor(wave, 'sess-B').id === 2, 'V1 : vague -> le lot de MA session, pas le premier du tableau');
+  ok(backlogLib.costLotFor(wave, 'sess-A').id === 1, 'V1 : vague -> l\'autre session impute sur son propre lot');
+  ok(backlogLib.costLotFor(wave, 'sess-inconnue') === null, 'V1 : vague + session non propriétaire -> RIEN (pas de vol)');
+  ok(backlogLib.costLotFor(wave, null) === null, 'V1 : vague sans session_id -> RIEN (jamais au hasard)');
+
+  // --- V2. addCost : ventilation de la part déléguée --------------------------------------------
+  const repoV = path.join(SANDBOX, 'repo-119-cost');
+  fs.mkdirSync(repoV, { recursive: true });
+  execFileSync('git', ['init', '-q', repoV]);
+  const lV = backlogLib.addLot(repoV, 'Lot délégué', 'fait quand : test', 'opus');
+  backlogLib.startLot(repoV, lV.id);
+  ok(backlogLib.loadBacklog(repoV).lots[0].cost_subagent_tokens === 0, 'V2 : addLot -> cost_subagent_tokens à 0');
+  const a1 = backlogLib.addCost(repoV, lV.id, 1000);
+  ok(a1.cost_tokens === 1000 && a1.cost_subagent_tokens === 0, 'V2 : tour non délégué -> part déléguée inchangée');
+  const a2 = backlogLib.addCost(repoV, lV.id, 1500, 900);
+  ok(a2.cost_tokens === 2500 && a2.cost_subagent_tokens === 900,
+    'V2 : part déléguée ventilée, COMPRISE dans cost_tokens (jamais en plus)');
+  const a3 = backlogLib.addCost(repoV, lV.id, 500, 0);
+  ok(a3.cost_tokens === 3000 && a3.cost_subagent_tokens === 900, 'V2 : sub=0 -> ventilation inchangée');
+  ok(a3.cost_turns === 3, 'V2 : cost_turns compte les tours, la ventilation n\'en crée pas');
+  // Rétrocompat : lot legacy sans le champ -> 0 à la lecture (jamais NaN, jamais absent).
+  const repoLV = path.join(SANDBOX, 'repo-119-legacy');
+  fs.mkdirSync(path.join(repoLV, '.vibe-agent'), { recursive: true });
+  fs.writeFileSync(path.join(repoLV, '.vibe-agent', 'backlog.json'),
+    JSON.stringify({ version: 1, next_id: 2, lots: [{ id: 1, title: 'Legacy', status: 'done', cost_tokens: 42 }] }));
+  ok(backlogLib.loadBacklog(repoLV).lots[0].cost_subagent_tokens === 0,
+    'V2 : lot legacy sans cost_subagent_tokens -> 0 (rétrocompat)');
+
+  // --- V3. subagentcost : delta des transcripts de sous-agents ----------------------------------
+  ok(subcost.subagentDir('/x/y/sess.jsonl') === path.join('/x/y/sess', 'subagents'),
+    'V3 : dossier des sous-agents dérivé du transcript parent');
+  ok(subcost.subagentDir('/x/y/sess.txt') === null && subcost.subagentDir(null) === null,
+    'V3 : chemin inattendu -> null (jamais de scan à l\'aveugle)');
+  const tS = path.join(SANDBOX, 'sess-119.jsonl');
+  fs.writeFileSync(tS, usageLine(2, 100, 0, 10) + '\n');
+  ok(subcost.computeSubagentCost(tS, 'sid-119') === null, 'V3 : aucun sous-agent -> null (cas ultra-majoritaire)');
+  const dS = path.join(SANDBOX, 'sess-119', 'subagents');
+  fs.mkdirSync(dS, { recursive: true });
+  const agA = path.join(dS, 'agent-aaa.jsonl');
+  fs.writeFileSync(agA, [usageLine(2, 10, 0, 1000), usageLine(2, 20, 0, 500)].join('\n') + '\n');
+  ok(subcost.computeSubagentCost(tS, 'sid-119').out === 1500, 'V3 : 1er passage -> tout le coût du sous-agent');
+  ok(subcost.computeSubagentCost(tS, 'sid-119').out === 0, 'V3 : 2e passage sans écriture -> 0 (offset persisté)');
+  fs.appendFileSync(agA, usageLine(2, 30, 0, 250) + '\n');
+  const dA = subcost.computeSubagentCost(tS, 'sid-119');
+  ok(dA.out === 250 && dA.agents === 1, 'V3 : seul le delta ajouté est compté');
+  fs.writeFileSync(path.join(dS, 'agent-bbb.jsonl'), usageLine(2, 5, 0, 77) + '\n');
+  ok(subcost.computeSubagentCost(tS, 'sid-119').out === 77, 'V3 : nouvel agent -> compté depuis son début');
+  fs.writeFileSync(agA, ''); // fichier tronqué/réécrit
+  ok(subcost.computeSubagentCost(tS, 'sid-119').out === 0,
+    'V3 : fichier rétréci -> recalage sans recomptage (jamais de sur-imputation)');
+  // Deux sessions distinctes ne partagent pas leurs offsets (état indexé par session).
+  ok(subcost.computeSubagentCost(tS, 'sid-119-autre').out === 77,
+    'V3 : offsets par session -> une autre session recompte pour son propre compte');
+
+  // --- V4. e2e stop.js : le coût délégué est imputé au lot --------------------------------------
+  const repoE = path.join(SANDBOX, 'repo-119-e2e');
+  fs.mkdirSync(path.join(repoE, '.vibe-agent'), { recursive: true });
+  execFileSync('git', ['init', '-q', repoE]);
+  fs.writeFileSync(path.join(repoE, '.vibe-agent', '.gitignore'), '*\n!.gitignore\n!backlog.json\n!rules.yaml\n');
+  fs.writeFileSync(path.join(repoE, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoE, 'add', '.']);
+  execFileSync('git', ['-C', repoE, 'commit', '-q', '-m', 'init']);
+  const lE9 = backlogLib.addLot(repoE, 'Lot mené en sous-agent', 'fait quand : test', 'opus');
+  backlogLib.startLot(repoE, lE9.id);
+  fs.writeFileSync(path.join(repoE, 'w.txt'), 'x'); // tree sale : lot ouvert, pas d'auto-clôture
+  const sidE = 'sess-119-e2e';
+  const tE = path.join(SANDBOX, 'e2e-119.jsonl');
+  fs.writeFileSync(tE, JSON.stringify({ type: 'assistant', message: { model: 'claude-opus-4-8' } }) + '\n');
+  fs.appendFileSync(tE, usageLine(2000, 50000, 0, 100) + '\n');
+  runHook('stop.js', { session_id: sidE, cwd: repoE, transcript_path: tE }); // tour baseline
+  const dE = path.join(SANDBOX, 'e2e-119', 'subagents');
+  fs.mkdirSync(dE, { recursive: true });
+  fs.writeFileSync(path.join(dE, 'agent-zzz.jsonl'), usageLine(2, 10, 0, 8000) + '\n');
+  fs.appendFileSync(tE, usageLine(2000, 52000, 0, 300) + '\n'); // tour principal léger
+  runHook('stop.js', { session_id: sidE, cwd: repoE, transcript_path: tE });
+  const lAfter = backlogLib.loadBacklog(repoE).lots[0];
+  ok(lAfter.cost_tokens === 8300, 'V4 : e2e -> coût du tour (300) + coût délégué (8000) imputés au lot');
+  ok(lAfter.cost_subagent_tokens === 8000, 'V4 : e2e -> part déléguée ventilée sur le lot');
+  ok(lAfter.cost_turns === 1, 'V4 : e2e -> un seul tour compté (le délégué n\'invente pas de tour)');
+  // Rejeu sans nouvelle écriture : le coût délégué n'est PAS recompté.
+  fs.appendFileSync(tE, usageLine(2000, 53000, 0, 200) + '\n');
+  runHook('stop.js', { session_id: sidE, cwd: repoE, transcript_path: tE });
+  ok(backlogLib.loadBacklog(repoE).lots[0].cost_subagent_tokens === 8000,
+    'V4 : e2e -> tour suivant sans délégation, part déléguée stable (aucun double comptage)');
+
+  // --- V5. e2e vague : plus de vol de coût entre deux lots en cours -----------------------------
+  const repoW = path.join(SANDBOX, 'repo-119-wave');
+  fs.mkdirSync(path.join(repoW, '.vibe-agent'), { recursive: true });
+  execFileSync('git', ['init', '-q', repoW]);
+  fs.writeFileSync(path.join(repoW, '.vibe-agent', '.gitignore'), '*\n!.gitignore\n!backlog.json\n!rules.yaml\n');
+  fs.writeFileSync(path.join(repoW, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoW, 'add', '.']);
+  execFileSync('git', ['-C', repoW, 'commit', '-q', '-m', 'init']);
+  const wA = backlogLib.addLot(repoW, 'Fille A', 'fait quand : A', 'opus', null, null, null, ['lib/a/**']);
+  const wB = backlogLib.addLot(repoW, 'Fille B', 'fait quand : B', 'opus', null, null, null, ['lib/b/**']);
+  backlogLib.startLot(repoW, wA.id, 'sess-fille-A');
+  backlogLib.startLot(repoW, wB.id, 'sess-fille-B');
+  const inProgW = backlogLib.loadBacklog(repoW).lots.filter((l) => l.status === 'in_progress');
+  ok(inProgW.length === 2, 'V5 : deux lots en cours coexistent (vague : sessions distinctes + périmètres disjoints)');
+  fs.writeFileSync(path.join(repoW, 'w.txt'), 'x');
+  const tW = path.join(SANDBOX, 'wave-119.jsonl');
+  fs.writeFileSync(tW, JSON.stringify({ type: 'assistant', message: { model: 'claude-opus-4-8' } }) + '\n');
+  fs.appendFileSync(tW, usageLine(2000, 40000, 0, 100) + '\n');
+  runHook('stop.js', { session_id: 'sess-fille-B', cwd: repoW, transcript_path: tW }); // baseline
+  fs.appendFileSync(tW, usageLine(2000, 41000, 0, 4000) + '\n');
+  runHook('stop.js', { session_id: 'sess-fille-B', cwd: repoW, transcript_path: tW });
+  const byId = (b, id) => b.lots.find((l) => l.id === id);
+  const bW1 = backlogLib.loadBacklog(repoW);
+  ok(byId(bW1, wB.id).cost_tokens === 4000, 'V5 : le coût va au lot de la session qui a produit le tour');
+  ok(byId(bW1, wA.id).cost_tokens === 0, 'V5 : le lot de l\'AUTRE fille n\'est pas crédité (fin du vol de coût)');
+  // Session non propriétaire (ni backlog ni fleet) : rien n'est imputé, plutôt qu'au hasard.
+  const tW2 = path.join(SANDBOX, 'wave-119-tiers.jsonl');
+  fs.writeFileSync(tW2, JSON.stringify({ type: 'assistant', message: { model: 'claude-opus-4-8' } }) + '\n');
+  fs.appendFileSync(tW2, usageLine(2000, 40000, 0, 100) + '\n');
+  runHook('stop.js', { session_id: 'sess-tierce', cwd: repoW, transcript_path: tW2 });
+  fs.appendFileSync(tW2, usageLine(2000, 41000, 0, 7000) + '\n');
+  runHook('stop.js', { session_id: 'sess-tierce', cwd: repoW, transcript_path: tW2 });
+  const bW2 = backlogLib.loadBacklog(repoW);
+  ok(byId(bW2, wA.id).cost_tokens === 0 && byId(bW2, wB.id).cost_tokens === 4000,
+    'V5 : session tierce -> aucune imputation (un trou de mesure plutôt qu\'un faux)');
+  // Repli fleet : le session_owner du backlog est PÉRIMÉ (posé à la main / session relancée) mais
+  // le registre de vague, lui, connaît le vrai id — l'imputation est retrouvée là plutôt que perdue.
+  const fleetLib9 = require(path.join(PKG, 'lib', 'fleet.js'));
+  fleetLib9.upsertLot(repoW, { id: wA.id, title: 'Fille A', session_owner: 'sess-fille-A2', perimeter: ['lib/a/**'], state: 'in_flight' });
+  const tW3 = path.join(SANDBOX, 'wave-119-fleet.jsonl');
+  fs.writeFileSync(tW3, JSON.stringify({ type: 'assistant', message: { model: 'claude-opus-4-8' } }) + '\n');
+  fs.appendFileSync(tW3, usageLine(2000, 40000, 0, 100) + '\n');
+  runHook('stop.js', { session_id: 'sess-fille-A2', cwd: repoW, transcript_path: tW3 }); // baseline
+  fs.appendFileSync(tW3, usageLine(2000, 42000, 0, 1200) + '\n');
+  runHook('stop.js', { session_id: 'sess-fille-A2', cwd: repoW, transcript_path: tW3 });
+  ok(byId(backlogLib.loadBacklog(repoW), wA.id).cost_tokens === 1200,
+    'V5 : repli fleet -> owner backlog périmé, coût quand même imputé au bon lot');
+
+  // --- V6. zone partagée : test/** ne sérialise plus la vague -----------------------------------
+  ok(perim.isShared('test/**') && perim.isShared('test/run-tests.js') && perim.isShared('tests') && perim.isShared('__tests__/a'),
+    'V6 : globs de la zone partagée reconnus');
+  ok(!perim.isShared('src/test.js') && !perim.isShared('*') && !perim.isShared('lib/test/x'),
+    'V6 : rien d\'autre n\'est partagé (« * » et un test non ancré racine ne le sont pas)');
+  ok(perim.disjoint(['lib/a/**', 'test/**'], ['lib/b/**', 'test/**']) === true,
+    'V6 : deux lots à code disjoint + test/** partagé -> DISJOINTS (jadis faux, vague sérialisée)');
+  ok(perim.disjoint(['test/**'], ['test/**']) === false,
+    'V6 : périmètres réduits à la seule zone partagée -> non disjoints (pas de coexistence sur « chacun ses tests »)');
+  ok(perim.disjoint(['lib/a/**', 'test/x.js'], ['lib/a/b.js', 'test/y.js']) === false,
+    'V6 : le code chevauchant reste bloquant (la zone partagée ne blanchit rien)');
+  ok(perim.memberVerdict(['lib/a/**', 'test/**'], 'test/run-tests.js', '/r') === 'inside',
+    'V6 : memberVerdict inchangé -> une fille garde le droit d\'écrire dans SON test/**');
+  // planWaves : 2 lots « code disjoint + tests » tiennent maintenant dans UNE vague.
+  const bWaves = {
+    lots: [
+      { id: 1, title: 'A', status: 'todo', perimeter: ['lib/a/**', 'test/**'], depends_on: [] },
+      { id: 2, title: 'B', status: 'todo', perimeter: ['lib/b/**', 'test/**'], depends_on: [] },
+      { id: 3, title: 'C', status: 'todo', perimeter: ['lib/a/deep.js', 'test/**'], depends_on: [] },
+    ],
+  };
+  const pw = backlogLib.planWaves(bWaves);
+  ok(pw.waves.length === 2 && pw.waves[0].length === 2 && pw.waves[0].map((l) => l.id).join(',') === '1,2',
+    'V6 : planWaves -> A et B dans la MÊME vague malgré test/** commun');
+  ok(pw.waves[1].length === 1 && pw.waves[1][0].id === 3,
+    'V6 : planWaves -> C repoussé (son code chevauche celui de A), pas à cause des tests');
+  // La sortie CLI dit explicitement que le conflit de merge y est attendu.
+  const repoP = path.join(SANDBOX, 'repo-119-parallelize');
+  fs.mkdirSync(repoP, { recursive: true });
+  execFileSync('git', ['init', '-q', repoP]);
+  runNode(BKLG, ['add', '--cwd', repoP, '--title', 'A', '--model', 'opus', '--perimeter', 'lib/a/**,test/**']);
+  runNode(BKLG, ['add', '--cwd', repoP, '--title', 'B', '--model', 'opus', '--perimeter', 'lib/b/**,test/**']);
+  const rPar = runNode(BKLG, ['parallelize', '--cwd', repoP]);
+  ok(/2 lot\(s\) parallélisable\(s\) sur 1 vague\(s\)/.test(rPar.out),
+    'V6 : /pmz:parallelize -> une seule vague pour deux lots qui partagent test/**');
+  ok(/Zone partagée entre ces lots.*test\/\*\*/.test(rPar.out) && /conflit de merge y est normal/.test(rPar.out),
+    'V6 : la zone partagée est ANNONCÉE (conflit attendu, arbitré par la réintégration)');
+
+  // --- V7. clôture CLI : closed_verify enfin écrit ----------------------------------------------
+  const repoC = path.join(SANDBOX, 'repo-119-close');
+  fs.mkdirSync(repoC, { recursive: true });
+  execFileSync('git', ['init', '-q', repoC]);
+  fs.writeFileSync(path.join(repoC, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoC, 'add', '.']);
+  execFileSync('git', ['-C', repoC, 'commit', '-q', '-m', 'init']);
+  const lotOfC = (id) => backlogLib.loadBacklog(repoC).lots.find((l) => l.id === id);
+  // (a) verdict fourni (chemin /close-batch) : persisté SANS relancer la verify (le marqueur
+  //     qu'écrirait la commande n'apparaît pas).
+  const marker = path.join(repoC, 'verify-a-tourne.txt');
+  runNode(BKLG, ['add', '--cwd', repoC, '--title', 'Lot verdict fourni', '--model', 'opus',
+    '--verify', `node -e "require('fs').writeFileSync('${marker.replace(/\\/g, '/')}','1')"`]);
+  const rV1 = runNode(BKLG, ['done', '--cwd', repoC, '--id', '1', '--verify-verdict', 'ok']);
+  ok(lotOfC(1).closed_verify === 'ok' && /verify : ok/.test(rV1.out),
+    'V7 : --verify-verdict ok -> closed_verify persisté par la CLI (jadis toujours null)');
+  ok(!fs.existsSync(marker), 'V7 : verdict fourni -> la verify n\'est PAS rejouée (une preuve payée une fois)');
+  // (b) sans verdict : la CLI exécute la verify du lot et en déduit le verdict.
+  runNode(BKLG, ['add', '--cwd', repoC, '--title', 'Lot verify verte', '--model', 'opus', '--verify', 'true']);
+  const rV2 = runNode(BKLG, ['done', '--cwd', repoC, '--id', '2']);
+  ok(lotOfC(2).closed_verify === 'ok' && /verify : ok/.test(rV2.out),
+    'V7 : sans flag -> la CLI exécute la verify et persiste « ok »');
+  runNode(BKLG, ['add', '--cwd', repoC, '--title', 'Lot verify rouge', '--model', 'opus', '--verify', 'false']);
+  const rV3 = runNode(BKLG, ['done', '--cwd', repoC, '--id', '3']);
+  ok(lotOfC(3).closed_verify === 'failed' && /échec PERSISTÉ/.test(rV3.out),
+    'V7 : verify rouge -> verdict « failed » persisté ET annoncé (clôture non bloquée, cf. #44/#96)');
+  // (c) lot SANS commande verify -> 'none' (même vocabulaire que l'auto-clôture du Stop).
+  runNode(BKLG, ['add', '--cwd', repoC, '--title', 'Lot sans verify', '--model', 'opus']);
+  runNode(BKLG, ['done', '--cwd', repoC, '--id', '4']);
+  ok(lotOfC(4).closed_verify === 'none', 'V7 : lot sans verify -> « none » (pas de trou de preuve)');
+  // (d) --no-verify : opt-out explicite, champ laissé à null, aucune exécution.
+  const marker2 = path.join(repoC, 'verify-b-tourne.txt');
+  runNode(BKLG, ['add', '--cwd', repoC, '--title', 'Lot opt-out', '--model', 'opus',
+    '--verify', `node -e "require('fs').writeFileSync('${marker2.replace(/\\/g, '/')}','1')"`]);
+  runNode(BKLG, ['done', '--cwd', repoC, '--id', '5', '--no-verify']);
+  ok(lotOfC(5).closed_verify === null && !fs.existsSync(marker2),
+    'V7 : --no-verify -> aucune exécution, closed_verify laissé à null (jamais un verdict inventé)');
+  // (e) valeur hors énum : refus explicite, le lot n'est pas clos au passage.
+  runNode(BKLG, ['add', '--cwd', repoC, '--title', 'Lot verdict invalide', '--model', 'opus']);
+  const rV6 = runNode(BKLG, ['done', '--cwd', repoC, '--id', '6', '--verify-verdict', 'vert']);
+  ok(/Refusé : --verify-verdict invalide/.test(rV6.out) && lotOfC(6).status !== 'done',
+    'V7 : verdict hors énum -> refus explicite, aucune clôture au passage');
+  // (f) /close-batch propose la commande done AVEC le verdict qu'il vient de mesurer.
+  const repoCB = path.join(SANDBOX, 'repo-119-closebatch');
+  fs.mkdirSync(repoCB, { recursive: true });
+  execFileSync('git', ['init', '-q', repoCB]);
+  fs.writeFileSync(path.join(repoCB, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoCB, 'add', '.']);
+  execFileSync('git', ['-C', repoCB, 'commit', '-q', '-m', 'init']);
+  runNode(BKLG, ['add', '--cwd', repoCB, '--title', 'Lot CB', '--model', 'opus', '--verify', 'true']);
+  runNode(BKLG, ['start', '--cwd', repoCB, '--id', '1']);
+  backlogLib.addCost(repoCB, 1, 5000, 3000);
+  const rCB = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', repoCB]);
+  ok(/backlog\.js done --id 1 --verify-verdict ok/.test(rCB.out),
+    'V7 : /close-batch injecte --verify-verdict dans la commande de clôture proposée');
+  ok(/dont ~3k délégués à des sous-agents/.test(rCB.out),
+    'V7 : /close-batch expose la part déléguée du coût (trailer PMZ-Cost)');
 }
 
 // ============================ RÉSUMÉ ============================

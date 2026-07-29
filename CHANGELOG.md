@@ -2,6 +2,48 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-29 — Coût par lot en mode vague : imputation aveugle réparée (lot #119, epic Économie de contexte)
+
+Quatre trous de la métrologie par lot, tous invisibles en usage normal, tous sources de chiffres
+faux ou manquants : le coût des tours **délégués** à un sous-agent, le **vol de coût** entre deux
+lots en cours, l'absence de **preuve de vérification** sur le chemin de clôture recommandé, et
+`test/**` qui **sérialisait** toute vague parallèle.
+
+- **`lib/subagentcost.js` (nouveau)** : les tours d'un sous-agent (outil Agent/Task) ne passent
+  jamais par le hook Stop — Claude Code leur ouvre un transcript séparé
+  (`<transcript>/subagents/agent-<id>.jsonl`, constaté sur des transcripts réels : un sous-agent
+  observé y avait consommé ~40k tokens de sortie, strictement invisibles). Scan par offset persisté
+  **par fichier** (même méthode que `lib/turnstats`, dont `parseUsage`/`scanRange` sont réutilisés),
+  corpus disjoint du transcript parent → aucun double comptage. Fichier rétréci → offset recalé
+  **sans rien compter** (jamais de sur-imputation) ; budget de scan borné par tour.
+- **`lib/backlog.js`** : `costLotFor(b, sid)` (pur) remplace `currentLot` pour l'**imputation** —
+  en vague, `currentLot` renvoyait le premier `in_progress` du tableau, donc toutes les sessions
+  créditaient le même lot (et empoisonnaient `estimateCost` pour les lots suivants). Un seul lot en
+  cours → lui ; plusieurs → celui dont `session_owner === sid`, et **rien** si aucun (un trou de
+  mesure est réparable, un faux non). Nouveau champ `cost_subagent_tokens` : part déléguée
+  **ventilée**, comprise dans `cost_tokens` et jamais en plus.
+- **`hooks/stop.js`** : impute `tour + délégué` au lot de **cette** session, avec repli sur le
+  registre de vague (`fleet.lotForSession`) quand le `session_owner` du backlog est périmé.
+- **`scripts/backlog.js`** : `done` sait enfin écrire `closed_verify` — soit via
+  `--verify-verdict <ok|failed|timeout|none>` (verdict déjà obtenu, injecté par `/close-batch` :
+  une preuve n'est pas payée deux fois), soit en **exécutant** la `verify` du lot lui-même.
+  `--no-verify` pour l'opt-out (champ laissé `null`, jamais de verdict inventé), refus explicite
+  sur valeur hors énum. Jusqu'ici, les lots clos par le chemin **recommandé** étaient précisément
+  ceux sans preuve persistée — l'inverse de l'intention du lot #96.
+- **`lib/perimeter.js`** : zone **partagée additive** (`test`/`tests`/`__tests__`/`spec`) retirée du
+  test de disjonction. `test/**` figurant dans presque tous les périmètres, aucune paire de lots
+  n'était jamais disjointe : la vague se réduisait à un lot, parallélisation annulée en silence.
+  Garde-fous : un périmètre réduit à la seule zone partagée reste non disjoint, et `memberVerdict`
+  (droit d'écriture d'une fille) est inchangé. `/pmz:parallelize` **annonce** la zone partagée et
+  le conflit de merge attendu, arbitré par la réintégration en pipeline.
+- **`scripts/close-batch.js`** : injecte `--verify-verdict` dans la commande `done` proposée et
+  expose la part déléguée dans le trailer `PMZ-Cost` ; `commands/close-batch.md` aligné.
+- `ARCHITECTURE.md` mis à jour (coût délégué, imputation nominative, zone partagée, clôture CLI).
+- Vérifié : `node test/run-tests.js` → **1997 OK, 0 échec** (55 tests ajoutés, section « lot #119 » :
+  imputation nominative, delta/offsets/fichier rétréci du coût délégué, e2e `stop.js` sur vague à
+  deux lots, disjonction + `planWaves` + sortie CLI de la zone partagée, six cas de `done`
+  `--verify-verdict`) ; build du canal plugin vérifié en bac à sable (nouveau module embarqué).
+
 ## 2026-07-29 — Gain RTK de niveau measured (lot #117, epic Bridge RTK)
 
 Le niveau `measured` de la métrologie RTK (lot #83) était **branché mais dormant** : la couture

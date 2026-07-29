@@ -125,7 +125,12 @@ Puis archive le handoff manuel avant qu'il ne soit détruit :
 function trailerBlock(l) {
   if (!l) return '';
   const model = l.model_hint ? `${l.model_hint}${l.effort_hint ? `/${l.effort_hint}` : ''}` : 'non posé';
-  const cost = l.cost_tokens > 0 ? `~${fmtK(l.cost_tokens)} tokens` : 'non mesuré';
+  // Part déléguée (lot #119) : rendue visible ICI parce que c'est le seul endroit où le coût du
+  // lot est restitué à l'humain — un lot mené par sous-agents n'affichait qu'un total muet.
+  const sub = Number.isFinite(l.cost_subagent_tokens) && l.cost_subagent_tokens > 0 ? l.cost_subagent_tokens : 0;
+  const cost = l.cost_tokens > 0
+    ? `~${fmtK(l.cost_tokens)} tokens${sub > 0 ? ` (dont ~${fmtK(sub)} délégués à des sous-agents)` : ''}`
+    : 'non mesuré';
   return `\n\n## Trailers du commit\n\nÀ coller en pied du message de commit :\n\`\`\`\nPMZ-Lot: ${l.id}\nPMZ-Cost: ${cost}\nPMZ-Model: ${model}\n\`\`\`\n`;
 }
 // Base des chemins d'aide affichés : racine du plugin en mode plugin, sinon install manuelle.
@@ -148,9 +153,15 @@ function main() {
   const bl = d.backlog;
   let verifyLine = '';
   let verifyVerdict = bl && bl.current && bl.current.verify ? 'inconnu' : 'aucune';
+  // Verdict MACHINE (lot #119) : la même vérification, dans le vocabulaire de closed_verify
+  // (backlog.CLOSED_VERIFY_VALUES). Injecté dans la ligne `backlog.js done` proposée plus bas
+  // pour que la clôture CLI PERSISTE la preuve sans relancer la suite de tests — jadis ce verdict
+  // n'existait qu'ici, dans du texte, et mourait avec la sortie de la commande.
+  let verifyEnum = bl && bl.current && bl.current.verify ? null : 'none';
   if (bl && bl.current && bl.current.verify) {
     const v = runVerify(d.root, bl.current.verify, VERIFY_CLOSE_MS);
     verifyVerdict = v.ok ? 'OK' : v.timedOut ? 'timeout' : 'ÉCHEC';
+    verifyEnum = v.ok ? 'ok' : v.timedOut ? 'timeout' : 'failed';
     verifyLine = v.ok
       ? `\n- Verify (\`${bl.current.verify}\`) : OK`
       : v.timedOut
@@ -162,7 +173,7 @@ function main() {
 
 - Avancement : ${bl.done}/${bl.total} faits${bl.current ? ` — en cours : #${bl.current.id} « ${bl.current.title} »` : ' — aucun lot en cours'}
 - Périmètre conforme au lot du backlog : à confirmer (dévié → node ${PMZ_BASE}/scripts/backlog.js note --id N --note "…")${verifyLine}
-- Après le commit : node ${PMZ_BASE}/scripts/backlog.js done --id ${bl.current ? bl.current.id : 'N'} (SHA du HEAD pris automatiquement ; le hook Stop le fait aussi tout seul)${bl.next ? `
+- Après le commit : node ${PMZ_BASE}/scripts/backlog.js done --id ${bl.current ? bl.current.id : 'N'}${verifyEnum ? ` --verify-verdict ${verifyEnum}` : ''} (SHA du HEAD pris automatiquement ; \`--verify-verdict\` persiste la preuve ci-dessus SANS relancer la suite — sans ce flag, \`done\` réexécute la verify lui-même)${bl.next ? `
 - Lot suivant à reprendre dans le handoff : #${bl.next.id} « ${bl.next.title} »${modelEffortTag(bl.next)} — reporter ce tag modèle/effort dans le handoff (champ « Prochaine action recommandée »)` : ''}
 ` : '';
   const out = `## Clôture du lot

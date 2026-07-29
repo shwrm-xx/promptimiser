@@ -16,8 +16,10 @@ Point de départ : `node ~/.claude/promptimizer/scripts/close-batch.js`
 4. Mettre à jour `CHANGELOG.md` si ce n'est pas fait.
 5. Proposer ou créer un commit français court.
 5bis. Si un plan de lots existe (bloc « Plan de lots » de la checklist) : marquer le lot fait
-   (`node ~/.claude/promptimizer/scripts/backlog.js done --id N` — le hook Stop le fait aussi
-   tout seul au tour suivant) et reprendre le lot suivant dans le handoff, **avec son tag
+   (reprends la ligne `backlog.js done …` telle qu'elle est écrite dans la checklist : elle porte
+   déjà `--verify-verdict`, qui **persiste la preuve** de vérification sans relancer la suite de
+   tests — le hook Stop clôt aussi tout seul au tour suivant) et reprendre le lot suivant dans le
+   handoff, **avec son tag
    modèle/effort** (`[modèle : X · effort Y]`, déjà fourni par la checklist de clôture).
 6bis. Rédiger la **fiche d'archive** du lot et l'écrire :
    `node ~/.claude/promptimizer/scripts/archive.js write --id N --stdin` (squelette pré-rempli

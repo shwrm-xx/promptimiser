@@ -6,12 +6,14 @@
 // Toujours exit 0 (fail-open) : une erreur de plan ne doit jamais casser un flux.
 const fs = require('fs');
 const path = require('path');
-const { gitRoot } = require('../lib/project');
+const { gitRoot, runVerify } = require('../lib/project');
+const { VERIFY_CLOSE_MS } = require('../lib/timeouts');
 const { parseCwd } = require('../lib/cli');
 const backlog = require('../lib/backlog');
 const reint = require('../lib/reintegrate');
 const lot = require('../lib/lot');
 const trigram = require('../lib/trigram');
+const perimeter = require('../lib/perimeter');
 const { fmtK } = require('../lib/messages');
 const { previousSessionId } = require('../lib/state');
 const { loadContextLedger } = require('../lib/ledger');
@@ -151,6 +153,14 @@ function parallelize(root, json, epicFilter) {
     for (const l of w) {
       const dep = l.depends_on.length ? ` (dépend de ${l.depends_on.map((d) => '#' + d).join(', ')})` : '';
       out(`- #${l.id} « ${l.title} »${dep} — branche \`${backlog.waveBranch(l)}\` — périmètre : ${l.perimeter.join(', ')}`);
+    }
+    // Zone partagée (lot #119) : `test/**` & co. ne comptent plus dans la disjonction — sans quoi
+    // la vague se réduisait à un lot. Le dire explicitement : le conflit de merge y est ATTENDU,
+    // pas un accident, et c'est la réintégration en pipeline qui l'arbitre.
+    const shared = Array.from(new Set(w.flatMap((l) => l.perimeter.filter((g) => perimeter.isShared(g)))));
+    if (w.length > 1 && shared.length) {
+      out(`Zone partagée entre ces lots (hors test de disjonction) : ${shared.join(', ')} — chaque lot y AJOUTE ses cas.`);
+      out('Un conflit de merge y est normal : la réintégration en pipeline l\'annule et nomme le lot coupable.');
     }
     out('');
   });
@@ -699,9 +709,42 @@ function main() {
         occupancy = cl.occupancy && Number.isFinite(cl.occupancy.last) ? cl.occupancy.last : null;
       }
     }
+    // Verdict de vérification (lot #119) : jusqu'ici SEULE l'auto-clôture du hook Stop savait
+    // écrire closed_verify — la clôture CLI, qui est le chemin RECOMMANDÉ (/close-batch), laissait
+    // le champ à null. Résultat : les lots clos proprement étaient ceux SANS preuve persistée,
+    // exactement l'inverse de l'intention (cf. #96). Deux chemins, aucun ne devine :
+    //   - `--verify-verdict <ok|failed|timeout|none>` : verdict DÉJÀ obtenu (c'est ce que
+    //     /close-batch injecte : il vient d'exécuter le verify, le relancer ici serait payer
+    //     deux fois la même preuve) ;
+    //   - à défaut, on exécute la commande `verify` du lot ici même (délai large VERIFY_CLOSE_MS,
+    //     comme /close-batch : ce n'est pas un hook). `--no-verify` coupe l'exécution — le champ
+    //     reste alors null, comme avant, jamais un verdict inventé.
+    // Non bloquant par choix : en CLI la clôture est un acte délibéré (le refus doux sur ÉCHEC est
+    // déjà porté par /close-batch). Un verdict rouge est PERSISTÉ et ANNONCÉ, pas escamoté.
+    const verdictFlag = flag('verify-verdict');
+    const preDone = backlog.loadBacklog(root).lots.find((x) => x.id === Number(id));
+    let verdict = null;
+    let verifyTail = '';
+    if (verdictFlag) {
+      if (!backlog.CLOSED_VERIFY_VALUES.includes(verdictFlag)) {
+        return out(`Refusé : --verify-verdict invalide (« ${verdictFlag} »). Valeurs acceptées : ${backlog.CLOSED_VERIFY_VALUES.join(' | ')}.`);
+      }
+      verdict = verdictFlag;
+    } else if (preDone && preDone.status !== 'done' && !process.argv.includes('--no-verify')) {
+      if (!preDone.verify) verdict = 'none';
+      else {
+        const v = runVerify(root, preDone.verify, VERIFY_CLOSE_MS);
+        verdict = v.ok ? 'ok' : (v.timedOut ? 'timeout' : 'failed');
+        if (verdict === 'failed') verifyTail = v.tail ? `\n  ${v.tail}` : '';
+      }
+    }
     const lot = backlog.doneLot(root, id, flag('commit'), null, sessionId, occupancy);
-    return out(lot ? `Lot #${lot.id} « ${lot.title} » clos${lot.closed_commit ? ` (commit ${lot.closed_commit})` : ''}.`
-      : `Lot #${id} introuvable.`);
+    if (!lot) return out(`Lot #${id} introuvable.`);
+    const posted = verdict ? backlog.setClosedVerify(root, lot.id, verdict) : null;
+    const proof = posted
+      ? ` — verify : ${verdict}${verdict === 'failed' ? ' ⚠️ échec PERSISTÉ (closed_verify), à corriger' : ''}${verdict === 'timeout' ? ' ⚠️ non terminée dans le délai — ce n\'est PAS une preuve de réussite' : ''}`
+      : (verdict ? ` — verify : ${verdict} (verdict non persisté : déjà posé)` : '');
+    return out(`Lot #${lot.id} « ${lot.title} » clos${lot.closed_commit ? ` (commit ${lot.closed_commit})` : ''}.${proof}${verifyTail}`);
   }
 
   if (cmd === 'drop') {

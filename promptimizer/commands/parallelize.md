@@ -11,6 +11,13 @@ git y est structurellement impossible) et dont toutes les dépendances `depends_
 satisfaites par une vague antérieure ou un lot déjà fait. Deux périmètres qui se **chevauchent**
 ne partagent jamais une vague (l'un est repoussé plus loin).
 
+Exception : les **fichiers de test** (`test/`, `tests/`, `__tests__/`, `spec/`) sont une **zone
+partagée additive** — chaque lot y ajoute ses cas — et ne comptent pas dans la disjonction (sans
+quoi `test/**`, présent dans presque tous les périmètres, sérialiserait toute la vague). Le plan
+l'annonce quand c'est le cas : un conflit de merge y est **attendu**, et c'est `/pmz:reintegrate`
+qui l'annule en nommant le lot coupable. Un lot dont le périmètre se réduit à cette seule zone
+reste non parallélisable.
+
 Prérequis : les lots doivent porter un **périmètre** (`add --perimeter …` ou
 `setPerimeter`) et, si un ordre s'impose, des **dépendances** (`add --depends …`). Un lot sans
 périmètre est « non parallélisable » (à traiter en série) ; un lot dont une dépendance ne pourra

@@ -21,6 +21,9 @@ function backlogSummary(root) {
       current: cur ? {
         id: cur.id, title: cur.title, verify: cur.verify || null,
         model_hint: cur.model_hint || null, effort_hint: cur.effort_hint || null, cost_tokens: cur.cost_tokens || 0,
+        // Part déléguée à des sous-agents (lot #119) : portée jusqu'au trailer de /close-batch —
+        // sans elle, le coût du lot reste un total muet sur un lot mené en sous-agents.
+        cost_subagent_tokens: cur.cost_subagent_tokens || 0,
         // Métrologie RTK (lot #83) : porte le snapshot de démarrage (ou le gain figé) jusqu'au
         // bilan de clôture, qui calcule le gain en direct depuis le compteur courant.
         integrations: cur.integrations || null,
