@@ -121,3 +121,4 @@
 #0116 | 2026-07-29 | 2374c4b | epic:Bridge RTK | verify:inconnu | fiche:oui | Prescription RTK dans la consigne injectée
 #0117 | 2026-07-29 | bf7de13 | epic:Bridge RTK | verify:inconnu | fiche:non | Gain RTK de niveau measured
 #0118 | 2026-07-29 | aa419fa | epic:Bridge RTK | verify:inconnu | fiche:non | Clivage d'état plugin/manuel : un enable qui n'active rien
+#0119 | 2026-07-29 | b38d49d | epic:Économie de contexte | verify:inconnu | fiche:oui | Coût par lot en mode vague (imputation aveugle)
