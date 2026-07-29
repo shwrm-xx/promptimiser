@@ -8043,6 +8043,117 @@ section('Borne d\'occupation : lecteur de scalaires rules.yaml + seuil zone-roug
     'B112-7 : le template tel quel ne configure aucune borne (preuve d\'inertie par défaut)');
 }
 
+// ============================ B113. DIAGNOSTIC ENRICHI DE /pmz:budget ============================
+section('Diagnostic enrichi de /pmz:budget — coût marginal du token de sortie + ventilation du préfixe (lot #113)');
+{
+  const metrics = require(path.join(PKG, 'lib', 'metrics'));
+  const prefixBreakdown = require(path.join(PKG, 'lib', 'prefix-breakdown'));
+  const ledger = require(path.join(PKG, 'lib', 'ledger'));
+
+  // --- B113-1. Coût marginal : plancher (accrétion/borne inconnues) vs projection ---
+  const sonnet = metrics.priceFor('sonnet'); // { input:3, cacheWrite:3.75, cacheRead:0.3, output:15 }
+  const floorNoAccr = metrics.marginalOutputCost({ tier: 'sonnet', accretion: null, lastOccupancy: 100000, redZoneTokens: 200000 });
+  ok(floorNoAccr.source === 'floor' && Math.abs(floorNoAccr.perTokenUsd - sonnet.output / 1e6) < 1e-12
+     && floorNoAccr.ratio === 1 && floorNoAccr.remainingTurns === null,
+    'B113-1 : sans accrétion positive -> coût plancher (émission seule), jamais de projection inventée');
+  const floorNoRedZone = metrics.marginalOutputCost({ tier: 'sonnet', accretion: 1000, lastOccupancy: 100000, redZoneTokens: null });
+  ok(floorNoRedZone.source === 'floor', 'B113-1 : sans borne de zone rouge connue -> coût plancher');
+
+  // remainingTurns = (200000−100000)/1000 = 100 ; perToken = (15 + 0,3×100)/1e6 = 45e-6 ; ratio = 3.
+  const proj = metrics.marginalOutputCost({ tier: 'sonnet', accretion: 1000, lastOccupancy: 100000, redZoneTokens: 200000 });
+  ok(proj.source === 'projected' && proj.remainingTurns === 100, 'B113-1 : tours restants projetés depuis l\'accrétion et la borne');
+  ok(Math.abs(proj.perTokenUsd - 45e-6) < 1e-12, 'B113-1 : coût marginal = émission + relecture projetée au tarif cache-read');
+  ok(Math.abs(proj.ratio - 3) < 1e-9, 'B113-1 : ratio marginal/nominal = 3');
+  ok(metrics.MARGINAL_ALERT_RATIO === 2 && proj.ratio >= metrics.MARGINAL_ALERT_RATIO,
+    'B113-1 : ce cas franchit le seuil d\'alerte exporté');
+
+  const projClamped = metrics.marginalOutputCost({ tier: 'sonnet', accretion: 500, lastOccupancy: 250000, redZoneTokens: 200000 });
+  ok(projClamped.source === 'projected' && projClamped.remainingTurns === 0 && Math.abs(projClamped.ratio - 1) < 1e-12,
+    'B113-1 : occupation déjà au-delà de la borne -> tours restants clampés à 0, pas de ratio négatif');
+
+  // --- B113-2. Ventilation du préfixe : CLAUDE.md + skills mesurés, reste clampé ---
+  const cfg113prefix = path.join(SANDBOX, 'b113-prefix-cfg');
+  const root113prefix = path.join(SANDBOX, 'b113-prefix-repo');
+  fs.mkdirSync(cfg113prefix, { recursive: true });
+  fs.mkdirSync(root113prefix, { recursive: true });
+  fs.writeFileSync(path.join(cfg113prefix, 'CLAUDE.md'), 'g'.repeat(200));  // global : 200 chars
+  fs.writeFileSync(path.join(root113prefix, 'CLAUDE.md'), 'p'.repeat(300)); // projet : 300 chars
+  fs.mkdirSync(path.join(cfg113prefix, 'skills', 'demo'), { recursive: true });
+  // frontmatter "description: une skill de demo" (17 chars après "description: ") + nom "demo" (4) = 21.
+  fs.writeFileSync(path.join(cfg113prefix, 'skills', 'demo', 'SKILL.md'),
+    '---\ndescription: une skill de demo\n---\ncorps ignoré');
+
+  const prevCfg113 = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = cfg113prefix;
+  try {
+    ok(prefixBreakdown.claudeMdChars(root113prefix) === 500, 'B113-2 : CLAUDE.md global + projet additionnés en caractères');
+    ok(prefixBreakdown.skillsChars(root113prefix) === 21, 'B113-2 : skills = nom + ligne description seule (pas le corps)');
+
+    // charsPerToken = 10 pour une arithmétique exacte : CLAUDE.md 50, skills 2.1, préfixe mesuré 100.
+    const comp = prefixBreakdown.composition(root113prefix, 100, 10);
+    ok(Math.abs(comp.claudeMd.tokens - 50) < 1e-9, 'B113-2 : CLAUDE.md converti en tokens (chars / charsPerToken)');
+    ok(Math.abs(comp.skills.tokens - 2.1) < 1e-9, 'B113-2 : skills converti en tokens');
+    ok(Math.abs(comp.rest.tokens - (100 - 50 - 2.1)) < 1e-9, 'B113-2 : reste = préfixe mesuré − (CLAUDE.md + skills)');
+    ok(Math.abs(comp.claudeMd.share + comp.skills.share + comp.rest.share - 1) < 1e-9, 'B113-2 : les 3 parts somment à 1');
+
+    // Clamp : préfixe mesuré plus petit que CLAUDE.md+skills estimés -> reste à 0, jamais négatif.
+    const compClamped = prefixBreakdown.composition(root113prefix, 10, 10);
+    ok(compClamped.rest.tokens === 0, 'B113-2 : préfixe mesuré sous l\'estimé CLAUDE.md+skills -> reste clampé à 0 (jamais négatif)');
+  } finally {
+    process.env.CLAUDE_CONFIG_DIR = prevCfg113;
+  }
+
+  // Fail-open : dossiers absents -> 0, jamais de throw.
+  ok(prefixBreakdown.claudeMdChars('/inexistant/du/tout') === 0, 'B113-2 : CLAUDE.md absent -> 0 (fail-open)');
+  ok(prefixBreakdown.skillsChars('/inexistant/du/tout') === 0, 'B113-2 : dossier skills absent -> 0 (fail-open)');
+
+  // --- B113-3. Bout-en-bout /pmz:budget : diagnostic enrichi affiché, alerte au bon seuil ---
+  const CFG113 = path.join(SANDBOX, 'b113-cfg');
+  fs.mkdirSync(CFG113, { recursive: true });
+  const repo113 = path.join(SANDBOX, 'repo-b113');
+  fs.mkdirSync(path.join(repo113, '.vibe-agent'), { recursive: true });
+  execFileSync('git', ['init', '-q', repo113]);
+  ledger.recordOccupancy(repo113, { occ: 20000, delta: 1000, sessionId: 'b113-sess' });
+
+  // Transcript réel : 20 tours de tailles 1000..20000 (pente exacte 1000 tokens/tour, tarif sonnet).
+  const tdir113 = path.join(CFG113, 'projects', metrics.projectSlug(repo113));
+  fs.mkdirSync(tdir113, { recursive: true });
+  const lines113 = [];
+  for (let i = 1; i <= 20; i++) {
+    lines113.push(JSON.stringify({ type: 'assistant', message: { model: 'claude-sonnet-5', usage: { cache_read_input_tokens: i * 1000, output_tokens: 100 } } }));
+  }
+  fs.writeFileSync(path.join(tdir113, 'b113-sess.jsonl'), lines113.join('\n') + '\n');
+
+  // Sans borne configurée -> repli sur le régime historique (85 % de la fenêtre sonnet) : la
+  // section s'affiche dès qu'un transcript exploitable existe, quel que soit le ratio obtenu.
+  const aNoBound = runNode(AUDIT_CTX, ['--cwd', repo113], { CLAUDE_CONFIG_DIR: CFG113 });
+  ok(/Diagnostic enrichi :/.test(aNoBound.out), 'B113-3 : section affichée dès qu\'un transcript exploitable existe');
+  ok(/coût marginal d'un token de sortie écrit maintenant/.test(aNoBound.out), 'B113-3 : ligne de coût marginal présente');
+  ok(/préfixe \(\d+(\.\d+)?k\) : CLAUDE\.md .*% .*· skills .*% .*· reste \(système\+outils\+MCP, non décomposable\)/.test(aNoBound.out),
+    'B113-3 : ligne de ventilation du préfixe en 3 postes');
+
+  // Borne rapprochée -> remainingTurns=(120000−20000)/1000=100 -> ratio 3,0 -> alerte affichée.
+  fs.writeFileSync(path.join(repo113, '.vibe-agent', 'rules.yaml'), 'budget:\n  red_zone_tokens: 120000\n');
+  const aAlert = runNode(AUDIT_CTX, ['--cwd', repo113], { CLAUDE_CONFIG_DIR: CFG113 });
+  ok(/× 3\.0 le tarif nominal/.test(aAlert.out), 'B113-3 : ratio marginal 3,0 calculé à partir de la borne configurée');
+  ok(/⚠️ au-delà du seuil \(× 2\)/.test(aAlert.out), 'B113-3 : alerte affichée quand le ratio franchit MARGINAL_ALERT_RATIO');
+
+  // Borne large -> remainingTurns=(30000−20000)/1000=10 -> ratio 1,2 -> pas d'alerte.
+  fs.writeFileSync(path.join(repo113, '.vibe-agent', 'rules.yaml'), 'budget:\n  red_zone_tokens: 30000\n');
+  const aNoAlert = runNode(AUDIT_CTX, ['--cwd', repo113], { CLAUDE_CONFIG_DIR: CFG113 });
+  ok(/× 1\.2 le tarif nominal/.test(aNoAlert.out), 'B113-3 : ratio marginal 1,2 sous le seuil');
+  ok(!/⚠️ au-delà du seuil/.test(aNoAlert.out), 'B113-3 : pas d\'alerte quand le ratio reste sous MARGINAL_ALERT_RATIO');
+
+  // Fail-open : session_id connu mais transcript absent -> section omise en silence, exit 0.
+  const repoNoT = path.join(SANDBOX, 'repo-b113-no-transcript');
+  fs.mkdirSync(path.join(repoNoT, '.vibe-agent'), { recursive: true });
+  execFileSync('git', ['init', '-q', repoNoT]);
+  ledger.recordOccupancy(repoNoT, { occ: 20000, delta: 0, sessionId: 'sans-transcript' });
+  const aNoT = runNode(AUDIT_CTX, ['--cwd', repoNoT], { CLAUDE_CONFIG_DIR: CFG113 });
+  ok(aNoT.code === 0 && !/Diagnostic enrichi/.test(aNoT.out),
+    'B113-3 : session_id sans transcript correspondant -> section omise, jamais d\'échec');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

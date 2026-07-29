@@ -196,6 +196,24 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   (`<claudeDir>/projects/<slug>/<sessionId>.jsonl`, donc sensible à `CLAUDE_CONFIG_DIR`).
   Fail-open sans exception : fichier absent / vide / sans usage / illisible → `{ok:false, reason}`,
   le CLI sort **toujours** en code 0 et exprime l'échec **en valeur** dans le JSON.
+- **Diagnostic enrichi de `/pmz:budget`** (`lib/metrics.js` + `lib/prefix-breakdown.js`, appelés
+  depuis `scripts/audit-context.js`, lot #113) : troisième consommateur **hors bande** du moteur de
+  mesure, mais sur la **session courante seule** (`analyzeSession` sur son transcript, jamais
+  `analyzeWindow`) — coût borné à un balayage, acceptable pour une commande sur demande, jamais pour
+  un hook. Deux ajouts : **coût marginal d'un token de sortie écrit maintenant**
+  (`metrics.marginalOutputCost`) = son émission (tarif output) + sa relecture projetée à chaque tour
+  restant (tarif cache-read × tours restants), ces tours restants dérivés de l'accrétion mesurée et
+  de la borne de zone rouge du projet (`occupancy.resolveRedZone`, lot #112) ; fail-open **en
+  valeur** vers un coût plancher (`source:'floor'`, émission seule) sans accrétion positive ou sans
+  borne connue — jamais de projection inventée. Ratio marginal/nominal ≥ `MARGINAL_ALERT_RATIO` (2,
+  exporté) → alerte : la relecture future coûte déjà plus cher que l'émission immédiate, signal
+  distinct de la zone rouge (qui parle d'imminence d'auto-compact, pas de coût). Et **ventilation du
+  préfixe** (`lib/prefix-breakdown.js`) en 3 postes mesurables — CLAUDE.md (global + projet, taille
+  sur disque) et skills (nom + ligne `description` seule, ce qui charge par défaut) — plus un
+  **reste** groupé (système + outils natifs + MCP) = préfixe mesuré − les deux premiers, clampé à 0.
+  MCP n'est **pas isolable** : Claude Code ne journalise ni le system prompt ni les schémas d'outils
+  envoyés à l'API dans le transcript local — seule la taille totale du premier tour est observable.
+  Décision actée avec Marwan (lot #113) : un reste groupé honnête plutôt qu'un chiffre MCP fabriqué.
 - **Tableau de bord HTML** (`scripts/dashboard.js` + `templates/dashboard.html`, lot #114) : second
   consommateur **hors bande** de `lib/metrics.js`, à côté de `scripts/metrics.js` (CLI texte/JSON).
   Il n'ajoute **aucun calcul** — il appelle `analyzeWindow()` et met en forme. Frontière : le moteur

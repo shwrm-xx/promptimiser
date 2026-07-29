@@ -263,7 +263,12 @@ désinstallation. Un redémarrage de session peut être nécessaire pour l'affic
 `/budget` et `/check-context` chiffrent leur statut vert/orange/rouge en **tokens réels**
 (occupation courante du contexte + gaspillage de relecture), avec repli annoncé sur le comptage
 de relectures quand l'occupation token n'est pas encore connue. `/budget` affiche aussi le
-**hitRate cache** du dernier tour quand il est connu.
+**hitRate cache** du dernier tour quand il est connu, et un **diagnostic enrichi** (lot #113) quand
+un transcript exploitable existe pour la session courante : le **coût marginal réel d'un token de
+sortie écrit maintenant** (émission + relecture future projetée jusqu'à la borne de zone rouge du
+projet, avec alerte si la relecture pèse déjà plus lourd que l'émission), et la **ventilation du
+préfixe** en CLAUDE.md / skills / reste (système + outils + MCP, non isolable séparément —
+Claude Code ne journalise pas le system prompt ni les schémas d'outils dans le transcript local).
 
 `/dashboard` génère `.vibe-agent/dashboard.html`, un tableau de bord **autonome** de l'économie de
 contexte du projet : occupation (médiane / p90 / max) et préfixe, décomposition du coût (cache-read

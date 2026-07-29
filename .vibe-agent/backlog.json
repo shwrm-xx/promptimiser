@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 120,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-28T15:39:03.290Z",
+  "updated_at": "2026-07-29T06:36:45.896Z",
   "lots": [
     {
       "id": 1,
@@ -2834,7 +2834,7 @@
       "cost_tokens": 0,
       "started_at": null,
       "lot_number": null,
-      "note": null,
+      "note": "MCP non isolé séparément (donnée absente des transcripts Claude Code) : ventilation en 3 postes CLAUDE.md / skills / reste groupé (système+outils+MCP), décision actée avec Marwan avant implémentation.",
       "session_touches": 0,
       "perimeter": [],
       "depends_on": [

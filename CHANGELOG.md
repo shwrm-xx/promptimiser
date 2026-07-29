@@ -2,6 +2,38 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-29 — « Diagnostic de session enrichi » (epic « Économie de contexte », backlog #113)
+
+Quatrième lot de l'epic, débloqué par #112. `/pmz:budget` chiffrait déjà l'occupation et le
+gaspillage de relecture, mais pas ce qu'un token de sortie coûte **réellement à cet instant** de la
+session, ni ce que contient le préfixe rejoué à chaque tour.
+
+- **Coût marginal réel d'un token de sortie** (`metrics.marginalOutputCost`) : son émission (tarif
+  output) + sa relecture projetée à chaque tour restant (tarif cache-read × tours restants), ces
+  tours restants dérivés de l'accrétion mesurée de la session et de la borne de zone rouge du projet
+  (`resolveRedZone`, #112). Fail-open **en valeur** vers un coût plancher (émission seule) sans
+  accrétion positive ou sans borne connue — jamais de projection inventée. Alerte quand le ratio
+  marginal/nominal franchit `MARGINAL_ALERT_RATIO` (2, exporté) : la relecture future coûte déjà
+  plus cher que l'émission immédiate — signal distinct de la zone rouge, qui parle d'imminence
+  d'auto-compact, pas de coût.
+- **Ventilation du préfixe** (`lib/prefix-breakdown.js`, nouveau) en 3 postes mesurables : CLAUDE.md
+  (global + projet, taille sur disque) et skills (nom + ligne `description` seule — le corps du
+  `SKILL.md` ne charge qu'à l'invocation) ; un **reste** groupé (système + outils natifs + MCP) =
+  préfixe mesuré − les deux premiers, clampé à 0. MCP n'est **pas isolable** : Claude Code ne
+  journalise ni le system prompt ni les schémas d'outils envoyés à l'API dans le transcript local —
+  seule la taille totale du premier tour est observable. Décision actée avec Marwan : un reste
+  groupé honnête plutôt qu'un chiffre MCP fabriqué.
+- Les deux calculs tournent sur la **session courante seule** (`metrics.analyzeSession` sur son
+  transcript, jamais `analyzeWindow`) — un balayage complet, réservé à une commande sur demande
+  explicite, jamais à un hook (même règle de tête que `lib/metrics.js`). Fail-open : transcript
+  absent/vide/illisible → section « Diagnostic enrichi » simplement omise, `/pmz:budget` ne casse
+  jamais.
+- Fichiers touchés : `promptimizer/lib/metrics.js` (occupancy.last + marginalOutputCost),
+  `promptimizer/lib/prefix-breakdown.js` (nouveau), `promptimizer/scripts/audit-context.js`,
+  `test/run-tests.js` (section B113, 24 assertions), `ARCHITECTURE.md`, `README.md`.
+- Vérifié : `node test/run-tests.js` → **1926 OK / 0 échec** (1902 + 24). Vérifié en bac à sable
+  (transcript synthétique + `CLAUDE_CONFIG_DIR` isolé) et en lecture seule sur le dépôt réel.
+
 ## 2026-07-28 — « Borne d'occupation » (epic « Économie de contexte », backlog #112)
 
 Troisième lot de l'epic. La prescription « zone rouge » existait depuis #71, mais son seuil était

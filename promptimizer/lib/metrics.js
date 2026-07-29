@@ -68,6 +68,12 @@ function priceFor(tier) { return PRICES[tier] || PRICES[DEFAULT_TIER]; }
 // Sous ~20 tours le bruit du premier tour (primage du cache) domine la pente.
 const MIN_TURNS_FOR_SCALING = 20;
 
+// Seuil d'alerte du coût marginal (lot #113) : ratio marginal/nominal à partir duquel la
+// relecture future d'un token de sortie pèse plus lourd que sa production immédiate. 2 = le
+// jour où continuer coûte déjà autant que recommencer devient un signal en soi, distinct de
+// l'alerte zone rouge (occupancy.js) qui, elle, parle d'imminence d'auto-compact.
+const MARGINAL_ALERT_RATIO = 2;
+
 // ============================ LOCALISATION DES TRANSCRIPTS ============================
 
 // Claude Code range les transcripts dans `<claudeDir>/projects/<slug>/<sessionId>.jsonl`,
@@ -372,6 +378,9 @@ function analyzeSession(file) {
       p90: percentile(sorted, 0.9),
       max: sorted[sorted.length - 1],
       min: sorted[0],
+      // Dernier tour CHRONOLOGIQUE (pas le max trié) : c'est la base du coût marginal
+      // (lot #113) — un token écrit MAINTENANT part de l'occupation actuelle, pas du pic.
+      last: prompts[prompts.length - 1],
     },
     accretion: slopeByIndex(prompts),
     totals,
@@ -397,6 +406,27 @@ function analyzeSession(file) {
     models,
     tier: Object.keys(tiers).sort((a, b) => tiers[b] - tiers[a])[0] || DEFAULT_TIER,
   };
+}
+
+// ============================ COÛT MARGINAL D'UN TOKEN DE SORTIE ============================
+
+// Un token de sortie écrit maintenant coûte son émission (tarif output) PLUS sa relecture à
+// chaque tour restant de la session (tarif cache-read, bien moins cher à l'unité mais répété).
+// `remainingTurns` est projeté depuis l'accrétion mesurée (pente tokens/tour, indicateur #3 de
+// analyzeSession) et la borne de zone rouge du projet (occupancy.resolveRedZone) : au rythme
+// observé, combien de tours avant la borne. Fail-open : sans accrétion positive ou sans borne
+// connue, on retombe sur le coût plancher (émission seule, `source: 'floor'`) plutôt que
+// d'inventer une projection — jamais de chiffre de relecture fantôme (même règle que la
+// décomposition du cache-read plus haut).
+function marginalOutputCost(opts) {
+  const o = opts || {};
+  const p = priceFor(o.tier);
+  const floor = { perTokenUsd: p.output / 1e6, remainingTurns: null, ratio: 1, source: 'floor' };
+  if (!(o.accretion > 0) || !(o.redZoneTokens > 0) || typeof o.lastOccupancy !== 'number') return floor;
+  const remainingTurns = Math.max(0, (o.redZoneTokens - o.lastOccupancy) / o.accretion);
+  const perTokenUsd = (p.output + p.cacheRead * remainingTurns) / 1e6;
+  const ratio = floor.perTokenUsd > 0 ? perTokenUsd / floor.perTokenUsd : 1;
+  return { perTokenUsd, remainingTurns, ratio, source: 'projected' };
 }
 
 // ============================ ANALYSE D'UNE FENÊTRE DE SESSIONS ============================
@@ -496,9 +526,9 @@ function analyzeWindow(cwd, opts) {
 }
 
 module.exports = {
-  CHARS_PER_TOKEN, PRICES, DEFAULT_TIER, MIN_TURNS_FOR_SCALING,
+  CHARS_PER_TOKEN, PRICES, DEFAULT_TIER, MIN_TURNS_FOR_SCALING, MARGINAL_ALERT_RATIO,
   tierForModel, priceFor,
   projectSlug, transcriptDir, listTranscripts,
   forEachLine, median, percentile, slopeByIndex, logLogFit, blockChars,
-  analyzeSession, analyzeWindow,
+  analyzeSession, analyzeWindow, marginalOutputCost,
 };

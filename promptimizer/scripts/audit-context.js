@@ -4,14 +4,17 @@
 // Le statut est piloté par les TOKENS RÉELS : occupation courante (miroir posé par le
 // hook Stop dans context-ledger.json.occupancy) combinée au gaspillage de relecture (B1).
 // Fallback annoncé sur le comptage de relectures quand aucune occupation token n'est connue.
+const path = require('path');
 const { gitRoot, isInitialized } = require('../lib/project');
 const { loadReadLedger, loadContextLedger, WASTE_BUCKETS } = require('../lib/ledger');
-const { BUCKETS, stateFileFor } = require('../lib/occupancy');
+const { BUCKETS, stateFileFor, resolveRedZone } = require('../lib/occupancy');
 const { readJson } = require('../lib/fsjson');
 const { parseCwd } = require('../lib/cli');
 const rtkStatus = require('../lib/rtk-status');
 const rtkMetrics = require('../lib/rtk-metrics');
 const { rtkStatusLine } = require('../lib/messages');
+const metrics = require('../lib/metrics');
+const prefixBreakdown = require('../lib/prefix-breakdown');
 
 // Best-effort, jamais bloquant : une panne RTK ne doit jamais faire échouer /pmz:budget.
 function rtkLine(root) {
@@ -52,8 +55,68 @@ function tokenStatus(occ, wasteTotal) {
   return statut;
 }
 
+// Diagnostic enrichi (lot #113) : coût marginal réel d'un token de sortie à la longueur de
+// session courante + ventilation du préfixe. Nécessite un balayage COMPLET du transcript
+// courant (metrics.analyzeSession) — coûteux, donc réservé à cette commande sur demande
+// explicite, jamais à un hook (règle de tête de lib/metrics.js). Fail-open : toute panne
+// (transcript introuvable, session trop jeune, erreur de lecture) -> section omise en silence,
+// jamais de chiffre inventé ni d'échec de /pmz:budget.
+function enrichedDiagnostic(root, cwd, sessionId) {
+  if (!sessionId) return null;
+  try {
+    const file = path.join(metrics.transcriptDir(cwd), `${sessionId}.jsonl`);
+    const session = metrics.analyzeSession(file);
+    if (!session.ok) return null;
+    const redZone = resolveRedZone(root, session.tier);
+    const marginal = metrics.marginalOutputCost({
+      tier: session.tier,
+      accretion: session.accretion,
+      lastOccupancy: session.occupancy.last,
+      redZoneTokens: redZone.tokens,
+    });
+    const prefix = prefixBreakdown.composition(root, session.prefix, metrics.CHARS_PER_TOKEN);
+    return { marginal, prefix };
+  } catch (_) {
+    return null;
+  }
+}
+
+function fmtPct(share) { return share == null ? '—' : `${Math.round(share * 100)}%`; }
+
+function enrichedDiagnosticLines(diag) {
+  const fmtK = (t) => `${(t / 1000).toFixed(1)}k`;
+  const lines = [];
+  lines.push('');
+  lines.push('Diagnostic enrichi :');
+  const m = diag.marginal;
+  const per1k = m.perTokenUsd * 1000;
+  if (m.source === 'projected') {
+    lines.push(
+      `- coût marginal d'un token de sortie écrit maintenant : ≈ $${per1k.toFixed(4)} / 1000 tokens `
+      + `(× ${m.ratio.toFixed(1)} le tarif nominal, ${Math.round(m.remainingTurns)} tour(s) de relecture `
+      + `projetés avant la borne de zone rouge)`
+    );
+    if (m.ratio >= metrics.MARGINAL_ALERT_RATIO) {
+      lines.push(
+        `  ⚠️ au-delà du seuil (× ${metrics.MARGINAL_ALERT_RATIO}) : écrire maintenant coûte déjà `
+        + `plus cher en relecture future qu'en émission — clôturer bientôt limite ce surcoût.`
+      );
+    }
+  } else {
+    lines.push(`- coût marginal d'un token de sortie : ≈ $${per1k.toFixed(4)} / 1000 tokens (plancher — accrétion ou borne encore inconnue, pas de projection)`);
+  }
+  const p = diag.prefix;
+  lines.push(
+    `- préfixe (${fmtK(p.prefixTokens)}) : CLAUDE.md ${fmtPct(p.claudeMd.share)} (≈ ${fmtK(p.claudeMd.tokens)}) · `
+    + `skills ${fmtPct(p.skills.share)} (≈ ${fmtK(p.skills.tokens)}) · `
+    + `reste (système+outils+MCP, non décomposable) ${fmtPct(p.rest.share)} (≈ ${fmtK(p.rest.tokens)})`
+  );
+  return lines;
+}
+
 function main() {
-  const root = gitRoot(parseCwd());
+  const cwd = parseCwd();
+  const root = gitRoot(cwd);
   if (!root || !isInitialized(root)) {
     process.stdout.write('## Économie de contexte\n\nStatut : non applicable (projet non initialisé)\n');
     return;
@@ -117,6 +180,10 @@ function main() {
     lines.push(sparkline(deltas));
     lines.push(`- delta moyen : ${avgDelta >= 0 ? '+' : ''}${fmtK(avgDelta)} / tour · sortie moyenne : ${fmtK(avgOut)} / tour`);
   }
+
+  const diag = enrichedDiagnostic(root, cwd, sid);
+  if (diag) enrichedDiagnosticLines(diag).forEach((l) => lines.push(l));
+
   lines.push('');
   lines.push('Gaspillage estimé :');
   if (wasteEntries.length) {
