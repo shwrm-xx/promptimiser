@@ -2,6 +2,28 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-29 — Titre de session : plus de repli sur un lot todo affiché comme fait
+
+Suite du fix du même jour (« la clôture prime sur le lot fraîchement enchaîné ») : quand
+**aucun** lot clos n'était attribuable à la session précédente (cas d'une session intermédiaire
+qui n'a rien clos, ex. une simple correction de métadonnée), `suggestedTitle` retombait sur
+`nextLot()` — le **prochain lot à faire**, encore `todo`, jamais touché — et le rendait avec le
+**même format** qu'un lot terminé. Résultat observé en session réelle : titre proposant « [PMZ ·
+#116] ... » alors que #116 n'avait pas démarré, le vrai dernier lot clos étant #115.
+
+- **`lib/lot.js`** : retrait du repli `nextLot()` dans `suggestedTitle`. Une déduction
+  CHANGELOG/git a été envisagée en remplacement mais rejetée : elle souffre du **même biais
+  d'attribution** (le dernier commit peut appartenir à une session encore plus ancienne que la
+  précédente) — deux tests existants encodent déjà cet invariant (« lot clos périmé sans lot
+  suivant : pas de repli sur git/CHANGELOG »). Repli final : « Session Libre » nue, honnête sur
+  l'absence de signal fiable.
+- Le tri par `id` de `lastDoneLot` (backlog.js) n'a **pas** été changé pour `closed_at` malgré un
+  cas observé où un lot d'id plus bas (#115) a clos chronologiquement APRÈS un lot d'id plus haut
+  (#118) — ce tri a déjà été essayé et abandonné (données `closed_at` sales sur un autre projet,
+  cf. commentaire `lastDoneLot`). Non résolu ici, documenté pour une reprise éventuelle.
+- Vérifié en bac à sable (backlog à 4 lots reproduisant le cas réel) + suite complète
+  (`test/run-tests.js`, 1946 OK).
+
 ## 2026-07-29 — Lot #116 — Prescription RTK dans la consigne injectée
 
 Quand RTK est détecté (`present-inactive` ou `active`), la ligne courte injectée au démarrage

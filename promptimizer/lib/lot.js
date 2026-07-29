@@ -202,13 +202,15 @@ function suggestedTitle(root) {
         // combien de sessions ça a pris pour y arriver.
         if (!knownStale) return T(last, 0);
       }
-      // Prochain lot à faire : dernier recours, encore à venir.
-      const next = backlog.nextLot(b);
-      if (next) return T(next, 0);
-      // Plan non vide mais rien d'exploitable pour CETTE session (lot clos périmé, rien
-      // à faire ensuite) : un titre EXISTE dans le plan mais ne décrit pas la session
-      // précédente — le taire plutôt que le remplacer par une autre supposition (même
-      // logique que le fix « ne jamais mentir sur ce qui a été fait »).
+      // PAS de repli sur le prochain lot à faire : `nextLot` est todo, jamais touché — le
+      // rendre avec `titleForLot` (même format qu'un lot clos, cf. ci-dessus) affirmerait que
+      // la session précédente a fait un travail qui n'a même pas commencé (bug 2026-07-29 :
+      // titre affichait le prochain lot todo comme s'il était clos). PAS de déduction
+      // CHANGELOG/git non plus : ce texte souffre du même biais d'attribution qu'un lot
+      // périmé (dernier commit/entrée possiblement posé par une session ENCORE plus ancienne
+      // que la précédente, cf. test « lot clos périmé sans lot suivant »). Un titre EXISTE
+      // dans le plan mais ne décrit pas la session précédente : le taire (Session Libre nue)
+      // plutôt que le remplacer par une autre supposition, aussi fausse l'une que l'autre.
       return libre;
     }
   } catch (_) {

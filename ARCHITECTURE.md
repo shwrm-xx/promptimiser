@@ -757,7 +757,10 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   session précédente** (`lotClosedBySession` : `closed_session_id === previousSessionId`, cf.
   plus bas — chemin **primaire**, ajouté v1.1.5) > lot **en cours** (travail qui continue,
   seulement si aucune clôture n'est attribuable à la session précédente) > dernier lot **clos**
-  (repli sans attribution possible) > prochain lot à faire (dernier recours). L'attribution est
+  (repli sans attribution possible, cf. plus bas). **Jamais** de repli sur le prochain lot **à
+  faire** (`nextLot`, todo) : rendu avec le même format qu'un lot clos (`titleForLot` ne distingue
+  pas le statut), il affirmerait à tort qu'un travail non commencé a été fait (fix 2026-07-29,
+  cf. plus bas). L'attribution est
   le vrai signal « qu'a fait la session précédente » : chaque session clôt son propre lot, donc 3
   sessions successives reçoivent 3 titres **distincts** (retour utilisateur japlan-app : 3
   sessions nommées à l'identique « #34 » — fix 2026-07-13). La clôture prime sur le lot en cours
@@ -790,7 +793,12 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   déduction ne s'applique **jamais** quand le plan contient un lot mais qu'il est écarté comme
   périmé (cas ci-dessus) : un titre existe alors dans le plan, il est volontairement tu — le
   remplacer par une supposition externe reviendrait à mentir de la même façon que ce que le fix
-  visait à éliminer. Puis demande à l'assistant de **proposer** ce nom en clair **et de poser une
+  visait à éliminer. Tentation écartée (fix 2026-07-29) : déduire du CHANGELOG/dernier commit
+  dans CE cas précis plutôt que de rester nu — rejeté, car ce texte souffre du **même biais
+  d'attribution** qu'un lot périmé (le dernier commit peut appartenir à une session encore plus
+  ancienne que la précédente, pas à celle qu'on nomme) ; la déduction ne reste légitime que
+  lorsque le plan n'offre **aucun** titre du tout (cas ci-dessus), pas quand il en offre un qu'on
+  choisit de taire. Puis demande à l'assistant de **proposer** ce nom en clair **et de poser une
   question à choix IMMÉDIATE** (valider / autre nom / non) **en tout début de 1er tour, avant de
   traiter la demande** — retour utilisateur 2026-07-12 (v1.1.1) : un renommage proposé en fin de
   tour ou sans dialogue n'est jamais traité — puis de tenter le renommage réel
