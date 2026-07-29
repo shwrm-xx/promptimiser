@@ -118,4 +118,5 @@
 #0113 | 2026-07-29 | 5006aa7 | epic:Économie de contexte | verify:inconnu | fiche:oui | Diagnostic de session enrichi
 #0114 | 2026-07-28 | 3c881c3 | epic:Économie de contexte | verify:inconnu | fiche:non | Commande /pmz:dashboard
 #0115 | 2026-07-29 | f4b0ca2 | epic:Bridge RTK | verify:inconnu | fiche:non | Délégation RTK éprouvée (deux hooks sur PreToolUse)
+#0116 | 2026-07-29 | 2374c4b | epic:Bridge RTK | verify:inconnu | fiche:oui | Prescription RTK dans la consigne injectée
 #0118 | 2026-07-29 | aa419fa | epic:Bridge RTK | verify:inconnu | fiche:non | Clivage d'état plugin/manuel : un enable qui n'active rien
