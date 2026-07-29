@@ -18,12 +18,25 @@ const occupancy = require('../lib/occupancy');
 // Bloc « Gain RTK » du bilan de clôture (lot #83). Le lot n'est pas encore clos ici → on calcule
 // le gain EN DIRECT depuis le snapshot de démarrage figé sur le lot + l'état courant du compteur.
 // Rien à afficher si aucune preuve (pas de snapshot, aucune réécriture) — jamais de valeur inventée.
-function rtkGainBlock(cur) {
+// root : nécessaire au niveau measured (lot #117) pour réinterroger EN DIRECT le contrat RTK
+// (`rtk gain -p -f json`, filtré au projet courant) et le comparer au snapshot de démarrage.
+function rtkGainBlock(root, cur) {
   try {
     const co = cur && cur.integrations && cur.integrations.command_optimizer;
     const start = co && co.snapshot_start ? co.snapshot_start : null;
+    const rtkStart = co && co.rtk_gain_start ? co.rtk_gain_start : null;
+    let rtkStats = null;
+    if (rtkStart) {
+      const rtkEnd = rtkMetrics.rtkGainSnapshot(root);
+      if (rtkEnd) {
+        rtkStats = {
+          raw_tokens: Math.max(0, rtkEnd.raw_tokens - rtkStart.raw_tokens),
+          delivered_tokens: Math.max(0, rtkEnd.delivered_tokens - rtkStart.delivered_tokens),
+        };
+      }
+    }
     // co déjà finalisé (lot rouvert/clos) OU calcul en direct depuis le snapshot de démarrage.
-    const gain = (co && co.evidence) ? co : rtkMetrics.computeLotGain({ start });
+    const gain = (co && co.evidence) ? co : rtkMetrics.computeLotGain({ start, rtkStats });
     const lines = rtkMetrics.gainLines(gain, fmtK);
     return lines.length ? `\n${lines.join('\n')}\n` : '';
   } catch (_) {
@@ -166,7 +179,7 @@ Checklist :
 - CHANGELOG mis à jour : ${changelog}
 - Commit fait : ${commit}
 - Non vérifié explicitement listé : à confirmer
-${backlogBlock}${ficheBlock(d.root, bl && bl.current, verifyVerdict)}${rtkGainBlock(bl && bl.current)}${trailerBlock(bl && bl.current)}
+${backlogBlock}${ficheBlock(d.root, bl && bl.current, verifyVerdict)}${rtkGainBlock(d.root, bl && bl.current)}${trailerBlock(bl && bl.current)}
 ## Économie de contexte
 
 - lectures évitées : voir .vibe-agent/read-ledger.json

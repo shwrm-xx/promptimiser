@@ -5,9 +5,11 @@
 // de preuve — jamais une valeur inventée (règle absolue du lot). Trois niveaux :
 //
 //   - `measured`  : chiffres issus de RTK lui-même (sorties brutes vs transmises → économie réelle).
-//                   Couture BRANCHÉE mais DORMANTE : `computeLotGain` accepte un objet `rtkStats`
-//                   pré-calculé, mais on ne DEVINE PAS le contrat CLI d'un `rtk stats` inconnu
-//                   (inventer un format = inventer une valeur). Réservé à un contrat RTK défini.
+//                   Contrat CLI confirmé lot #117 (`rtk gain -p -f json`, RTK 0.43.0 — la
+//                   prémisse « contrat RTK non défini » du lot #83 est levée, elle est PÉRIMÉE) :
+//                   `{ summary: { total_commands, total_input, total_output, ... } }`, `-p` filtre
+//                   au projet courant (cwd). `rtkGainSnapshot` interroge ce contrat ; le delta
+//                   entre le snapshot de démarrage et de clôture du lot devient `rtkStats`.
 //   - `local`     : ce qu'on peut PROUVER aujourd'hui, sans RTK — un compteur local des commandes
 //                   effectivement réécrites + le volume de commande LIVRÉ (tokens estimés du texte
 //                   réellement transmis). PAS d'« économie » ici : la compression opère sur la
@@ -25,9 +27,12 @@
 // pourquoi ce niveau s'appelle `local` (preuve faible, explicitement étiquetée), pas `measured`.
 
 const path = require('path');
+const { execFileSync } = require('child_process');
 const cdir = require('./claude-dir');
 const { readJson, writeAtomic } = require('./fsjson');
 const { estTokens } = require('./ledger');
+const { findTool } = require('./env');
+const { RTK_STATUS_MS } = require('./timeouts');
 
 function stateDir() {
   return process.env.PMZ_STATE_DIR || cdir.stateDir();
@@ -48,6 +53,35 @@ function snapshot() {
     };
   } catch (_) {
     return { commands: 0, delivered_tokens: 0 };
+  }
+}
+
+// Snapshot du compteur TENU PAR RTK LUI-MÊME (niveau measured), via son contrat CLI confirmé
+// `rtk gain -p -f json` (RTK 0.43.0). `-p` filtre au projet courant (cwd) : le total renvoyé est
+// cumulatif depuis toujours pour ce projet, jamais un delta — c'est l'appelant (backlog.startLot/
+// doneLot) qui fige un snapshot au démarrage et soustrait au snapshot de clôture (même schéma que
+// le compteur local ci-dessus). Fail-open ABSOLU : binaire absent, timeout, JSON invalide ou champs
+// non numériques -> null, jamais d'exception (chemin appelé depuis startLot/doneLot).
+function rtkGainSnapshot(cwd) {
+  try {
+    const bin = findTool('rtk');
+    if (!bin) return null;
+    const out = execFileSync(bin, ['gain', '-p', '-f', 'json'], {
+      encoding: 'utf8',
+      timeout: RTK_STATUS_MS,
+      cwd: cwd || process.cwd(),
+    });
+    const parsed = JSON.parse(out);
+    const s = parsed && parsed.summary;
+    if (!s || !Number.isFinite(s.total_input) || !Number.isFinite(s.total_output)
+      || !Number.isFinite(s.total_commands)) return null;
+    return {
+      raw_tokens: Math.max(0, s.total_input),
+      delivered_tokens: Math.max(0, s.total_output),
+      commands: Math.max(0, s.total_commands),
+    };
+  } catch (_) {
+    return null;
   }
 }
 
@@ -139,4 +173,4 @@ function gainLines(co, fmtK) {
   return [];
 }
 
-module.exports = { metricsFile, snapshot, recordRewrite, computeLotGain, gainLines };
+module.exports = { metricsFile, snapshot, recordRewrite, rtkGainSnapshot, computeLotGain, gainLines };

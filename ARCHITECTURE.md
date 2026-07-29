@@ -487,9 +487,14 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   `lib/rtk-metrics.js` rattache au lot clos une mesure du travail confié à RTK, **avec son niveau
   de preuve** — jamais une valeur inventée (contrainte cardinale du lot). Trois niveaux :
   (1) **`measured`** = chiffres issus de RTK lui-même (sorties brutes vs transmises → économie
-  réelle + ratio) ; couture **branchée mais DORMANTE** — `computeLotGain` accepte un objet
-  `rtkStats` pré-calculé, mais PMZ **ne devine pas** le contrat CLI d'un `rtk stats` inconnu
-  (inventer un format serait inventer une valeur) : réservé à un contrat RTK défini.
+  réelle + ratio). Couture **activée depuis le lot #117** : `rtk-metrics.rtkGainSnapshot()`
+  interroge le contrat CLI **confirmé** `rtk gain -p -f json` (RTK 0.43.0 ; `-p` filtre au projet
+  courant) — la prémisse « contrat RTK non défini » du lot #83 est **levée, documentée comme
+  périmée**. `backlog.startLot` fige ce snapshot (`rtk_gain_start`, best-effort — binaire absent/en
+  échec => champ omis, niveau `local` inchangé) ; `backlog.doneLot` **et** le bilan en direct de
+  `close-batch.js` réinterrogent le contrat à la clôture et soustraient pour obtenir le `rtkStats`
+  passé à `computeLotGain`. Fail-open à chaque étape : jamais d'exception, jamais de delta si RTK
+  est indisponible à l'une des deux bornes (repli silencieux sur le niveau `local`).
   (2) **`local`** = ce qui est prouvable aujourd'hui sans RTK — un **compteur local monotone**
   (`PMZ_STATE_DIR/rtk-metrics.json`, survit aux updates) des commandes **effectivement réécrites**
   + le volume de commande **livré** (tokens estimés du texte transmis). **Aucun `tokens_saved`
@@ -511,7 +516,10 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   `rtk-metrics.gainLines` ; rien si aucune preuve. **Export** (`backlog.exportCsv/Markdown`) :
   4 colonnes dérivées ajoutées — `command_optimizer_provider`, `command_tokens_saved`
   (mesuré seulement), `command_saving_ratio` (mesuré seulement), `command_evidence` — vides pour
-  un lot sans métrologie.
+  un lot sans métrologie. **Tableau de bord** (lot #117, `scripts/dashboard.js`) : section « Gain
+  RTK par lot » lue directement depuis `backlog.json` (indépendante de la fenêtre de transcripts
+  des autres sections) — un lot clos sans preuve RTK est absent de la liste (jamais affiché à
+  zéro), le niveau de preuve (`measured`/`local`) est toujours affiché à côté du chiffre.
 - **Champ `us` : pointeur US vérifié** (lot #101, epic « US & Jira ») : un lot peut porter un
   **chemin** (relatif à la racine du dépôt, `MAX_US=200`) vers une User Story détaillée —
   persona/besoin/bénéfice, critères d'acceptation numérotés, hors-périmètre — jamais son

@@ -511,9 +511,14 @@ function startLot(root, id, sessionOwner) {
   // Métrologie RTK (lot #83) : fige le snapshot du compteur au démarrage → le delta à la
   // clôture (doneLot) est le travail confié à RTK PENDANT ce lot. Best-effort : au pire pas
   // de snapshot → niveau de preuve « rien » à la clôture (jamais de valeur inventée).
+  // Snapshot MEASURED (lot #117) : en plus du compteur local, fige aussi le compteur tenu par
+  // RTK lui-même (contrat `rtk gain -p -f json`) si le binaire répond — absent/en échec => pas
+  // de champ, niveau local inchangé à la clôture (fail-open, cf. rtk-metrics.rtkGainSnapshot).
   try {
-    const snap = require('./rtk-metrics').snapshot();
-    lot.integrations = { command_optimizer: { snapshot_start: snap } };
+    const rtkMetrics = require('./rtk-metrics');
+    lot.integrations = { command_optimizer: { snapshot_start: rtkMetrics.snapshot() } };
+    const rtkGainStart = rtkMetrics.rtkGainSnapshot(root);
+    if (rtkGainStart) lot.integrations.command_optimizer.rtk_gain_start = rtkGainStart;
   } catch (_) { /* fail-open : lot sans métrologie */ }
   return saveBacklog(root, b) ? lot : null;
 }
@@ -584,11 +589,26 @@ function doneLot(root, id, commitSha, lotNumber, sessionId, occupancy) {
   // Métrologie RTK (lot #83) : fige le gain = delta(compteur) depuis le snapshot de démarrage.
   // Le snapshot transitoire est remplacé par l'objet gain FINAL, ou retiré si aucune preuve
   // (aucune réécriture pendant le lot, ou pas de snapshot de démarrage) — « rien si aucune donnée ».
+  // Delta MEASURED (lot #117) : si un snapshot RTK de démarrage existe, réinterroge le contrat
+  // RTK à la clôture et soustrait — jamais un delta si RTK est indisponible à l'une des deux
+  // bornes (le compteur global de RTK n'est alors pas comparable, on ne DEVINE pas ; repli
+  // silencieux sur le niveau local géré par computeLotGain).
   try {
     const rtkMetrics = require('./rtk-metrics');
-    const start = lot.integrations && lot.integrations.command_optimizer
-      && lot.integrations.command_optimizer.snapshot_start;
-    const gain = rtkMetrics.computeLotGain({ start: start || null });
+    const co = lot.integrations && lot.integrations.command_optimizer;
+    const start = co && co.snapshot_start;
+    const rtkStart = co && co.rtk_gain_start;
+    let rtkStats = null;
+    if (rtkStart) {
+      const rtkEnd = rtkMetrics.rtkGainSnapshot(root);
+      if (rtkEnd) {
+        rtkStats = {
+          raw_tokens: Math.max(0, rtkEnd.raw_tokens - rtkStart.raw_tokens),
+          delivered_tokens: Math.max(0, rtkEnd.delivered_tokens - rtkStart.delivered_tokens),
+        };
+      }
+    }
+    const gain = rtkMetrics.computeLotGain({ start: start || null, rtkStats });
     if (gain) lot.integrations = { command_optimizer: gain };
     else delete lot.integrations;
   } catch (_) {

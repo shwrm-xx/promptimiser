@@ -2,6 +2,32 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-29 — Gain RTK de niveau measured (lot #117, epic Bridge RTK)
+
+Le niveau `measured` de la métrologie RTK (lot #83) était **branché mais dormant** : la couture
+existait (`computeLotGain` acceptait un `rtkStats` pré-calculé) mais rien ne l'alimentait, faute
+de contrat CLI confirmé. Vérification en bac à sable sur le binaire RTK réellement installé
+(0.43.0) : `rtk gain -p -f json` répond `{ summary: { total_commands, total_input, total_output,
+... } }`, `-p` filtre au projet courant — la prémisse « contrat non défini » du lot #83 est donc
+**levée et documentée comme périmée**.
+
+- **`lib/rtk-metrics.js`** : nouvelle fonction `rtkGainSnapshot(cwd)` qui interroge ce contrat.
+  Fail-open absolu (binaire absent, timeout, JSON invalide, champs non numériques → `null`,
+  jamais d'exception) — appelée depuis `backlog.startLot`/`doneLot`, chemin sensible aux pannes.
+- **`lib/backlog.js`** : `startLot` fige ce snapshot (`rtk_gain_start`, best-effort, à côté du
+  compteur local existant) ; `doneLot` réinterroge à la clôture, calcule le delta et le passe en
+  `rtkStats` à `computeLotGain` → niveau `measured` vivant si RTK a répondu aux deux bornes,
+  repli silencieux sur `local` sinon (jamais de delta inventé sur une seule mesure).
+- **`scripts/close-batch.js`** : le bilan de clôture en direct (avant que le lot ne soit
+  effectivement clos) fait le même calcul, pour un aperçu cohérent avec ce que `doneLot` figera.
+- **`scripts/dashboard.js`** : nouvelle section « Gain RTK par lot », lue depuis `backlog.json`
+  (indépendante de la fenêtre de transcripts des autres sections) — niveau de preuve
+  (mesuré/compteur local) toujours affiché à côté du chiffre, lot sans preuve absent de la liste.
+- `ARCHITECTURE.md` mis à jour (section « Métrologie honnête des gains RTK »).
+- Vérifié : `node test/run-tests.js` → 1946 OK, 0 échec (aucun test nouveau — les 4 issues de
+  `computeLotGain`, dont `measured` via `rtkStats`, étaient déjà couvertes) + vérification
+  manuelle en bac à sable (capture start/end réelle, rendu HTML des deux niveaux de preuve).
+
 ## 2026-07-29 — Titre de session : plus de repli sur un lot todo affiché comme fait
 
 Suite du fix du même jour (« la clôture prime sur le lot fraîchement enchaîné ») : quand

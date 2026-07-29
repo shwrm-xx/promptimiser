@@ -29,6 +29,8 @@ const m = require('../lib/metrics');
 const project = require('../lib/project');
 const { readVersion } = require('../lib/version');
 const { parseCwd } = require('../lib/cli');
+const backlog = require('../lib/backlog');
+const rtkMetrics = require('../lib/rtk-metrics');
 
 // ============================ ARGUMENTS ============================
 
@@ -382,6 +384,38 @@ function sessionsSection(w, top) {
     `</tr></thead><tbody>${rows}</tbody></table></div>${skipped}`);
 }
 
+// Gain RTK par lot (lot #117) : source = backlog.json, PAS les transcripts (indépendant de la
+// fenêtre de sessions ci-dessus). Un lot clos sans `integrations.command_optimizer` n'a aucune
+// preuve RTK -> absent de la liste plutôt qu'affiché à zéro (jamais de valeur inventée). Le
+// niveau de preuve (measured/local) est toujours affiché à côté du chiffre, jamais tu.
+function rtkGainLotsSection(root) {
+  let lots;
+  try {
+    lots = backlog.loadBacklog(root).lots
+      .filter((l) => l.status === 'done' && l.integrations && l.integrations.command_optimizer
+        && l.integrations.command_optimizer.evidence)
+      .sort((a, b) => (b.closed_at || '').localeCompare(a.closed_at || ''));
+  } catch (_) {
+    lots = [];
+  }
+  if (!lots.length) {
+    return card('Gain RTK par lot',
+      `<p class="pmz-note">Aucun lot clos avec preuve RTK (compteur local ou mesuré) pour ce projet.</p>`);
+  }
+  const rows = lots.map((l) => {
+    const co = l.integrations.command_optimizer;
+    const lines = rtkMetrics.gainLines(co, tok);
+    const badge = co.evidence === 'measured' ? '<span class="pmz-badge">mesuré</span>' : '<span class="pmz-badge warn">compteur local</span>';
+    const detail = lines.slice(1).join(' · ');
+    return `<tr><td>#${esc(l.id)}</td><td>${esc(l.title || '—')}</td><td>${badge}</td><td>${esc(detail)}</td></tr>`;
+  }).join('');
+  return card('Gain RTK par lot',
+    `<div class="pmz-scroll"><table class="pmz-table"><thead><tr><th>lot</th><th>titre</th>` +
+    `<th>preuve</th><th>chiffres</th></tr></thead><tbody>${rows}</tbody></table></div>` +
+    `<p class="pmz-note"><strong>mesuré</strong> : chiffres issus du contrat RTK lui-même (<code>rtk gain</code>). ` +
+    `<strong>compteur local</strong> : commandes réécrites comptées côté PMZ, économie de sortie non mesurable ici.</p>`);
+}
+
 // ============================ ASSEMBLAGE ============================
 
 const REASONS = {
@@ -412,6 +446,7 @@ function buildHtml(w, cwd, opts) {
   const { tpl } = loadTemplate();
   const version = readVersion();
   const title = 'Économie de contexte — tableau de bord';
+  const root = project.gitRoot(cwd) || cwd;
   let subtitle;
   let body;
 
@@ -420,7 +455,8 @@ function buildHtml(w, cwd, opts) {
     body = card('Mesure indisponible',
       `<p><strong>Statut : ${esc(reasonText(w.reason))}.</strong></p>` +
       `<p class="pmz-note">Dossier de transcripts attendu : <code>${esc(w.dir || m.transcriptDir(cwd))}</code>. ` +
-      `Rien n'a échoué : le moteur exprime l'absence de mesure en valeur, et la page est produite quand même.</p>`);
+      `Rien n'a échoué : le moteur exprime l'absence de mesure en valeur, et la page est produite quand même.</p>`)
+      + rtkGainLotsSection(root);
   } else {
     subtitle = `Projet <code>${esc(cwd)}</code> · ${int(w.count)} session${w.count > 1 ? 's' : ''} · ` +
       `${int(w.turns)} tours · ${usd(w.cost.total)} · généré le ${esc(frDate(Date.now()))}`;
@@ -432,7 +468,8 @@ function buildHtml(w, cwd, opts) {
       kpi('loi d\'échelle', 'tours^' + k, w.scaling ? `r² ${dec(w.scaling.r2)} · n=${int(w.scaling.n)}` : 'pas assez de sessions longues'),
     ].join('') + '</div>';
     body = kpis + occupancySection(w) + costSection(w) + breakdownSection(w) +
-      accretionSection(w) + scalingSection(w) + recosSection(w) + sessionsSection(w, opts.top);
+      accretionSection(w) + scalingSection(w) + recosSection(w) + sessionsSection(w, opts.top) +
+      rtkGainLotsSection(root);
   }
 
   return render(tpl, {
