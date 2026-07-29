@@ -582,6 +582,11 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   #83 — un simple cumul). `hooks/session-start.js` ajoute la ligne courte au même point que le
   rappel `MSG_ACTIF`/`MSG_ACTIF_SLIM` (1×/session, anti-spam). Best-effort strict partout : une
   panne RTK (binaire, fs) ne fait jamais échouer ces surfaces, elle fait juste disparaître la ligne.
+- **Prescription RTK dans la consigne injectée** (lot #116) : sur les états `present-inactif`/
+  `actif` (binaire confirmé fonctionnel), `rtkStartupLine` ajoute `RTK_PRESCRIPTION` — les 5
+  équivalents `rtk` (grep/read/git/ls/find) à préférer aux commandes nues, texte repris tel quel
+  de la sortie réelle de `rtk init` (mêmes commandes, mêmes chiffres de gain), pas une paraphrase
+  inventée. Absent sur `conflict`/`incompatible` (binaire non fiable dans ces états).
 - **Fallback natif de sortie volumineuse** (lot #84, épilogue de l'epic « Bridge RTK ») :
   `lib/output-fallback.js` + branche `Bash` de `post-tool-use.js`. Filet **générique** quand RTK est
   absent — pas un remplacement fonctionnel de RTK. C'est un hook **PostToolUse (sortie)**, distinct

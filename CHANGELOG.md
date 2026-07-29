@@ -2,6 +2,19 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-29 — Lot #116 — Prescription RTK dans la consigne injectée
+
+Quand RTK est détecté (`present-inactive` ou `active`), la ligne courte injectée au démarrage
+(`rtkStartupLine`) prescrit désormais les 5 équivalents `rtk` (grep/read/git/ls/find) au lieu des
+commandes nues — texte repris de la sortie réelle de `rtk init` (mêmes commandes, mêmes chiffres
+de gain), pas une paraphrase inventée. Silence inchangé à l'état `absent` ; pas de prescription
+sur `conflict`/`incompatible` (binaire non fiable dans ces états).
+
+- **`lib/messages.js`** : constante `RTK_PRESCRIPTION` (exportée) + extension de `rtkStartupLine`
+  (lot #86) sur les états `present-inactive`/`active` — pas de brique neuve.
+- **`test/run-tests.js`** : verrouille la présence de la prescription sur les deux états
+  concernés, son absence sur `conflict`/`incompatible`, et les 5 équivalents cités.
+
 ## 2026-07-29 — Titre de session : la clôture prime sur le lot fraîchement enchaîné
 
 `suggestedTitle` (nommage de la session PRÉCÉDENTE, cf. `session-start.js`) regardait le lot

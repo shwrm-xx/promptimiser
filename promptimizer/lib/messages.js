@@ -628,14 +628,22 @@ function rtkStatusLine(status, cumulative) {
   return line;
 }
 
+// Prescription des équivalents rtk (lot #116) : texte REPRIS tel quel de la sortie réelle de
+// `rtk init` (section « Files & Search » + en-tête « Git »), pas une paraphrase inventée — les
+// 5 commandes citées par le scope du lot (grep, read, git, ls, find), mêmes chiffres de gain.
+// N'apparaît que si le binaire rtk répond (present-inactive/active) : prescrire l'usage d'un
+// binaire absent, en conflit ou incompatible n'a pas de sens.
+const RTK_PRESCRIPTION =
+  'Préfixe grep/read/git/ls/find par `rtk` (`rtk grep`, `rtk read`, `rtk git`, `rtk ls`, `rtk find` — 60-80% de gain, cf. `rtk init`).';
+
 // Ligne COURTE pour l'injection de démarrage (session-start.js) : silence total à l'état
 // absent (zéro bruit sur l'immense majorité des sessions, RTK n'étant pas installé) ; sinon
 // 1 ligne qui pointe vers /pmz:rtk pour les 4 états notables.
 function rtkStartupLine(status) {
   const s = status || {};
   if (!s.state || s.state === 'absent') return null;
-  if (s.state === 'active') return 'Bridge RTK actif (/pmz:rtk pour le statut détaillé).';
-  if (s.state === 'present-inactive') return 'RTK détecté, bridge inactif — /pmz:rtk pour l’activer.';
+  if (s.state === 'active') return 'Bridge RTK actif (/pmz:rtk pour le statut détaillé). ' + RTK_PRESCRIPTION;
+  if (s.state === 'present-inactive') return 'RTK détecté, bridge inactif — /pmz:rtk pour l’activer. ' + RTK_PRESCRIPTION;
   if (s.state === 'conflict') {
     return 'Bridge RTK en conflit' + (s.neutralized ? ' (neutralisé automatiquement)' : '') + ' — /pmz:rtk pour le détail.';
   }
@@ -650,5 +658,5 @@ module.exports = {
   costlyTurnMessage, driftMessage, loopingCommandMessage, gitDebtMessage, claudeMdMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
   closureWithDraftMessage, epicBilanMessage, lotClosureCardMessage, closureCardMessage, freshSessionCodaMessage,
-  fmtK, statusLineText, rtkStatusLine, rtkStartupLine,
+  fmtK, statusLineText, rtkStatusLine, rtkStartupLine, RTK_PRESCRIPTION,
 };

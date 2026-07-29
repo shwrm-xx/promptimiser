@@ -6948,6 +6948,21 @@ section('RTK visible dans le verbe PMZ (about/budget/session-start, lot #86)');
   ok(/incompatible/.test(messages.rtkStartupLine({ state: 'incompatible' })),
     'rtkStartupLine: incompatible → signalé');
 
+  // -- Lot #116 : prescription des équivalents rtk (grep/read/git/ls/find), texte repris de
+  // `rtk init`, uniquement quand le binaire répond (present-inactive/active) --
+  ok(messages.rtkStartupLine({ state: 'present-inactive' }).includes(messages.RTK_PRESCRIPTION),
+    'rtkStartupLine: présent-inactif → prescription rtk incluse');
+  ok(messages.rtkStartupLine({ state: 'active' }).includes(messages.RTK_PRESCRIPTION),
+    'rtkStartupLine: actif → prescription rtk incluse');
+  ok(/`rtk grep`/.test(messages.RTK_PRESCRIPTION) && /`rtk read`/.test(messages.RTK_PRESCRIPTION)
+    && /`rtk git`/.test(messages.RTK_PRESCRIPTION) && /`rtk ls`/.test(messages.RTK_PRESCRIPTION)
+    && /`rtk find`/.test(messages.RTK_PRESCRIPTION),
+    'RTK_PRESCRIPTION: les 5 équivalents du scope (grep/read/git/ls/find) sont cités');
+  ok(!messages.rtkStartupLine({ state: 'conflict', neutralized: false }).includes(messages.RTK_PRESCRIPTION),
+    'rtkStartupLine: conflit → pas de prescription (binaire non fiable dans cet état)');
+  ok(!messages.rtkStartupLine({ state: 'incompatible' }).includes(messages.RTK_PRESCRIPTION),
+    'rtkStartupLine: incompatible → pas de prescription (binaire cassé)');
+
   // -- Intégration about.js / audit-context.js / session-start.js : ligne selon l'état réel du
   // binaire, piloté par un PATH contrôlé (jamais le PATH réel de la machine — cf. bug #87 sur
   // le test RTK2 "binaire absent", contaminé par un vrai `rtk` installé sur cette machine).
