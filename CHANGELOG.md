@@ -35,6 +35,14 @@ dépôt nu s'ajoute en une commande, sans qu'aucun artefact de build n'entre dan
   `node test/run-tests.js` → **2175 OK · 0 échec** (nouvelle section B127, 18 assertions :
   emplacement, cohérence catalogue ↔ `plugin.json`, absence de `version`, forme de la source,
   non-régression de la syntaxe `@plugin-release` dans la doc et le script).
+- Vérifié bout-en-bout, en bac à sable `CLAUDE_CONFIG_DIR` et **depuis le dépôt public nu**
+  (jamais le vrai `~/.claude`) : `claude plugin marketplace add shwrm-xx/promptimiser` puis
+  `claude plugin install pmz@pmz-marketplace` → *Successfully installed*, `plugin details pmz`
+  affiche **2.4.0 · 6 hooks · 14 skills**, avec `install/` et `statusline` bien absents. La branche
+  d'artefact a été republiée en 2.4.0 au passage (`fc2157a` → `80da00f`, elle était figée en 2.0.1).
+- Repéré en passant, **hors périmètre** (spawné à part) : `lib/messages.js:58` et `:461` portent en
+  dur `~/.claude/promptimizer` dans des consignes injectées — faux en canal plugin, et non couvert
+  par la réécriture du build qui ne traite que les `.md`. Défaut préexistant, pas une régression.
 
 ## 2026-07-29 — `/pmz:scope` rédige les US (lot #126, epic Sessions courtes)
 
