@@ -3171,7 +3171,7 @@
       "epic": "Bridge RTK",
       "verify": "node test/run-tests.js",
       "us": null,
-      "closed_commit": "a329242",
+      "closed_commit": "bf7de13",
       "closed_at": "2026-07-29T07:39:08.733Z",
       "closed_session_id": "d7350b34-eabb-4a2c-be4e-743fc0490988",
       "closed_occupancy": 138207,
