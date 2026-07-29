@@ -6779,6 +6779,24 @@ section('Bridge RTK — statut, activation persistée, conflits sur 3 canaux (lo
       'DIVERGENCE: canal manuel propre (pas de plugin détecté) → aucune fausse alerte, enable accepté');
     rtkStatus.writeEnableState(false);
   }
+
+  // -- Verdict lot #115 (spike coexistence PreToolUse) : NON, on garde le gate PMZ --
+  ok(rtkStatus.RTK_HOOK_COEXISTENCE_VERDICT === 'keep-bridge',
+    'VERDICT #115: coexistence hook natif RTK / gate PMZ sur PreToolUse Bash tranchée NON (garder le bridge)');
+  {
+    // Preuve structurelle du corollaire du verdict : le gate de sûreté (bash-guard classify,
+    // deny/ask) ne consulte JAMAIS rtk-status et rend donc TOUJOURS son verdict, qu'un conflit
+    // RTK soit détecté ou non — seul le bridge de RÉÉCRITURE (optionnel) dépend de rtk-status.
+    ok(bashVerdict('rm -rf /') === 'deny',
+      'VERDICT #115: commande catastrophique → deny, indépendamment de tout état RTK (aucun rtk-status en jeu ici)');
+    ok(bashVerdict('git reset --hard') === 'ask',
+      'VERDICT #115: commande destructive → ask, indépendamment de tout état RTK');
+    const src = fs.readFileSync(path.join(HOOKS, 'pre-tool-use.js'), 'utf8');
+    const classifyIdx = src.indexOf('classify(cmd)');
+    const rewriteIdx = src.indexOf('rewriteCommand(cmd');
+    ok(classifyIdx !== -1 && rewriteIdx !== -1 && classifyIdx < rewriteIdx,
+      'VERDICT #115: dans la source, classify() (deny/ask PMZ) est appelé AVANT rewriteCommand() (bridge RTK) — jamais conditionné à lui');
+  }
 }
 
 // ============================ RTK3. MÉTROLOGIE HONNÊTE DES GAINS (lot #83) ============================

@@ -15,6 +15,21 @@ lot (jamais encore touché) au lieu de la clôture qu'elle venait de faire.
   inchangé quand aucune clôture n'est attribuable à la session précédente.
 - Vérifié en bac à sable (backlog à deux lots : un `done` avec `closed_session_id`, un
   `in_progress` neuf) — le titre suggéré cite désormais le lot clos, plus le suivant.
+## 2026-07-29 — « Délégation RTK éprouvée : verdict coexistence PreToolUse » (epic « Bridge RTK », backlog #115)
+
+Spike : le hook natif `rtk init -g` (PreToolUse `Bash`) peut-il remplacer le gate de sûreté PMZ
+(`bash-guard.classify()`) plutôt que coexister avec lui ? **Verdict : NON** — on garde le gate PMZ.
+
+- Doc Claude Code officielle confirme que plusieurs hooks PreToolUse pour un même matcher tournent
+  **en parallèle et indépendamment** (pas de chaînage, `tool_input` original pour chacun), sans
+  aucune règle documentée de fusion/priorité entre décisions divergentes.
+- Le binaire `rtk` (v0.43.0) expose son propre format de décision de permission (`deny_rule`) — un
+  second décideur de sûreté non coordonné avec PMZ, pas un simple réécrivain.
+- Trace live à deux hooks concurrents tentée en bac à sable (`claude -p`), bloquée par une frontière
+  d'auth propre à cet environnement — documenté honnêtement comme non vérifié en pratique.
+- `rtk-status.RTK_HOOK_COEXISTENCE_VERDICT` exporté, verrouillé par test ; `classify()` s'exécute
+  toujours avant tout accès au bridge RTK (inchangé, déjà vrai) — deny/ask PMZ jamais conditionné.
+- Doc : [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## 2026-07-29 — « Clivage d'état plugin/manuel : un enable qui n'active rien » (epic « Bridge RTK », backlog #118)
 

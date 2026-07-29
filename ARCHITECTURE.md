@@ -1165,6 +1165,27 @@ retirées sont sérialisées dans le **sidecar** `state/taken-over.json` ; `--re
 depuis ce sidecar** (le backup horodaté n'est qu'un filet de secours, pas la source de
 restauration) et **signale** un sidecar corrompu au lieu de l'avaler. Écriture atomique, perms 0600.
 
+**Verdict coexistence PreToolUse — hook natif RTK vs gate PMZ** (lot #115, epic Bridge RTK) :
+question posée — `rtk init -g` installe son propre hook sur PreToolUse `Bash` ; peut-il
+remplacer le gate de sûreté PMZ (`bash-guard.classify()`, deny/ask) plutôt que coexister avec
+lui ? **Verdict : NON**, on garde le gate PMZ ; aucune recommandation de bascule vers `rtk init -g`
+seul. Preuves : (1) la doc Claude Code officielle confirme que plusieurs hooks PreToolUse pour un
+même matcher tournent **en parallèle et indépendamment** (chacun reçoit le `tool_input`
+**original**, pas de chaînage) et **ne documente aucune règle de fusion/priorité** entre
+`permissionDecision`/`updatedInput` divergents ; (2) le binaire `rtk` (v0.43.0) expose son propre
+format de décision de permission (`deny` via sa config `deny_rule`) — ce n'est pas un simple
+réécrivain, c'est un **second décideur de sûreté non coordonné** avec PMZ ; (3) une trace live à
+deux hooks concurrents (bac à sable `claude -p`) a été tentée mais bloquée par une frontière
+d'auth propre à cet environnement (impossible d'authentifier un second process CLI headless
+depuis cette session) — non affirmé comme vérifié en pratique faute de cette preuve-là. Portée du
+verdict : le mécanisme de neutralisation existant (lot #82, conflit détecté → `bridgeEnabled`
+repassé à `false`) protège **uniquement** contre la double réécriture du bridge **optionnel** — il
+reste inchangé et suffisant pour ce risque précis. Le gate de sûreté, lui, ne consulte **jamais**
+`rtk-status` : `pre-tool-use.js` appelle `classify(cmd)` avant tout accès à `rewriteCommand()`, il
+rend donc toujours son verdict deny/ask, qu'un conflit RTK soit détecté ou non. Verdict exporté
+(`rtk-status.RTK_HOOK_COEXISTENCE_VERDICT`) et verrouillé par test (`test/run-tests.js`) pour
+éviter de rouvrir la question sans nouvelle preuve.
+
 ### Statusline opt-in (lot #45)
 
 Barre d'état Claude Code **opt-in** : `PMZ v<version> · <epic> · lot #<id> <titre> · <faits>/<total> · ctx <occupation>`.

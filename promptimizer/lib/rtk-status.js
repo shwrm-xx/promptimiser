@@ -196,6 +196,36 @@ function computeStatus(opts) {
   };
 }
 
+// --- Verdict lot #115 (spike coexistence PreToolUse) ---
+// Question posée : le hook natif RTK (`rtk init -g`) et le gate de sûreté PMZ (bash-guard
+// classify(), en amont du bridge dans pre-tool-use.js) peuvent-ils coexister sur le MÊME
+// matcher PreToolUse « Bash » sans que PMZ perde sa fonction de sûreté ? Verdict : NON — on
+// garde le gate PMZ, on ne recommande PAS `rtk init -g` en remplacement.
+//
+// Preuves :
+// 1. Doc Claude Code officielle (code.claude.com/docs/en/hooks, section « Hook handler
+//    fields ») : « All matching hooks run in parallel [...] ». Plusieurs hooks PreToolUse pour
+//    un même matcher tournent donc en PARALLÈLE et de façon INDÉPENDANTE (pas de chaînage :
+//    chacun reçoit le `tool_input` ORIGINAL, pas la sortie d'un autre hook). La doc NE PRÉCISE
+//    AUCUNE règle de fusion/priorité quand plusieurs hooks renvoient des `permissionDecision`
+//    ou des `updatedInput` divergents pour le même appel d'outil.
+// 2. Le binaire `rtk` (chaînes extraites du binaire installé, v0.43.0) expose son propre
+//    format de décision (`{"decision":"deny","reason":"Blocked by RTK permission rule"}`,
+//    config `skip:deny_rule`) : le hook natif RTK n'est donc pas un simple réécrivain, c'est un
+//    SECOND décideur de permission autonome, non coordonné avec `bash-guard.classify()`.
+// 3. Conséquence : rien ne garantit qu'un `deny`/`ask` PMZ (commande catastrophique/destructive)
+//    « gagne » face à un `allow` RTK (ou l'inverse) en cas de désaccord — silence de la
+//    plateforme sur ce point précis. Une preuve empirique par trace live (bac à sable avec deux
+//    hooks concurrents sur un process `claude -p` distinct) a été tentée mais bloquée par une
+//    frontière d'auth propre à cet environnement (impossible d'authentifier un second process
+//    CLI headless depuis cette session) — non vérifiable ici, donc non affirmé comme prouvé.
+// Portée du verdict : le mécanisme de neutralisation existant (conflit → bridgeEnabled=false,
+// ci-dessus) protège UNIQUEMENT contre la double réécriture du bridge OPTIONNEL. Il reste
+// inchangé et suffisant pour ce risque-là. Le gate de sûreté (classify) ne consulte JAMAIS
+// rtk-status — il rend toujours son verdict, qu'un conflit RTK soit détecté ou non (cf.
+// pre-tool-use.js : classify() s'exécute avant tout accès à rtk-status/optimizer).
+const RTK_HOOK_COEXISTENCE_VERDICT = 'keep-bridge';
+
 module.exports = {
   stateFile,
   stateDivergenceRisk,
@@ -208,4 +238,5 @@ module.exports = {
   detectOpenCodeConflict,
   detectCodexConflict,
   computeStatus,
+  RTK_HOOK_COEXISTENCE_VERDICT,
 };
