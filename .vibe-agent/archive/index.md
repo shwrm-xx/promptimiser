@@ -129,3 +129,4 @@
 #0124 | 2026-07-29 | 41f96a2 | epic:Sessions courtes | verify:inconnu | fiche:oui | Budget de tours par session
 #0125 | 2026-07-29 | 90302b9 | epic:Sessions courtes | verify:inconnu | fiche:oui | Frein sur la sortie relue
 #0126 | 2026-07-29 | 58c8829 | epic:Sessions courtes | verify:inconnu | fiche:oui | Scope rédige les US
+#0128 | 2026-07-29 | edff444 | epic:Diffusion plugin | verify:inconnu | fiche:non | Chemins d'aide plugin-conscients dans messages.js
