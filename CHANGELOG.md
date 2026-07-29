@@ -2,6 +2,20 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-29 — Titre de session : la clôture prime sur le lot fraîchement enchaîné
+
+`suggestedTitle` (nommage de la session PRÉCÉDENTE, cf. `session-start.js`) regardait le lot
+`in_progress` avant de vérifier ce que la session précédente avait réellement clos. Si cette
+session clôturait un lot puis enchaînait aussitôt sur le suivant, le titre affichait le nouveau
+lot (jamais encore touché) au lieu de la clôture qu'elle venait de faire.
+
+- **`lib/lot.js`** : `lotClosedBySession(prevSid)` est désormais vérifié **avant** `currentLot()`
+  — la clôture attribuée à la session précédente prime toujours sur un lot en cours fraîchement
+  démarré. Le chemin « lot en cours qui continue sur plusieurs sessions » (`(partie N)`) reste
+  inchangé quand aucune clôture n'est attribuable à la session précédente.
+- Vérifié en bac à sable (backlog à deux lots : un `done` avec `closed_session_id`, un
+  `in_progress` neuf) — le titre suggéré cite désormais le lot clos, plus le suivant.
+
 ## 2026-07-29 — « Clivage d'état plugin/manuel : un enable qui n'active rien » (epic « Bridge RTK », backlog #118)
 
 Un `/pmz:rtk enable` lancé « à la main » (terminal nu, hors session Claude Code) n'a aucun moyen de

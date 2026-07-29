@@ -748,13 +748,17 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   sans `Lot #X` (aucun plan où le ranger) mais l'`#Y` accompagne toujours le trigramme. Sans lot du
   tout (titre déduit du CHANGELOG/commit) : **« [XXX] Session Libre · résumé »** (pas d'`#Y` à
   afficher). Construit sur le lot
-  backlog le plus pertinent (`lib/lot.js: suggestedTitle`) — priorité : lot **en cours** (travail qui continue) >
-  lot **attribué à la session précédente** (`lotClosedBySession` : `closed_session_id === previousSessionId`,
-  cf. plus bas — chemin **primaire**, ajouté v1.1.5) > dernier lot **clos** (repli sans attribution
-  possible) > prochain lot à faire (dernier recours). L'attribution est le vrai signal « qu'a fait
-  la session précédente » : chaque session clôt son propre lot, donc 3 sessions successives
-  reçoivent 3 titres **distincts** (retour utilisateur japlan-app : 3 sessions nommées à
-  l'identique « #34 » — fix 2026-07-13). En repli, le « dernier » lot clos est celui au plus grand
+  backlog le plus pertinent (`lib/lot.js: suggestedTitle`) — priorité : lot **attribué à la
+  session précédente** (`lotClosedBySession` : `closed_session_id === previousSessionId`, cf.
+  plus bas — chemin **primaire**, ajouté v1.1.5) > lot **en cours** (travail qui continue,
+  seulement si aucune clôture n'est attribuable à la session précédente) > dernier lot **clos**
+  (repli sans attribution possible) > prochain lot à faire (dernier recours). L'attribution est
+  le vrai signal « qu'a fait la session précédente » : chaque session clôt son propre lot, donc 3
+  sessions successives reçoivent 3 titres **distincts** (retour utilisateur japlan-app : 3
+  sessions nommées à l'identique « #34 » — fix 2026-07-13). La clôture prime sur le lot en cours
+  car une session qui clôt un lot puis enchaîne aussitôt sur le suivant laisse un `currentLot`
+  fraîchement démarré (jamais encore touché) : le nommer masquerait ce que la session précédente
+  a réellement fait (fix 2026-07-29). En repli, le « dernier » lot clos est celui au plus grand
   **`id`** — **ni** `lot_number` (compteur global recyclé/`null`, figeait « Lot 7 » — fix 2026-07-12),
   **ni** `closed_at` : cet horodatage s'est révélé **non fiable** sur données réelles (dates à la
   journée, valeurs saisies à la main, clôtures dans le désordre — un vieux #34 au `closed_at`

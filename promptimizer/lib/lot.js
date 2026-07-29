@@ -169,18 +169,27 @@ function suggestedTitle(root) {
       // passage qui décrit la session précédente à la session suivante.
       // Rang dans le plan calculé au point d'appel (backlog `b` sous la main).
       const T = (l, touches) => titleForLot(trigram, l, touches, backlog.lotRankInEpic(b, l));
-      const cur = backlog.currentLot(b);
-      if (cur) {
-        const touches = backlog.touchLot(root, cur.id) || 1;
-        return T(cur, touches);
-      }
       const prevSid = previousSessionId(root);
       // Chemin PRIMAIRE : le lot que la session PRÉCÉDENTE a réellement clos (attribution
       // par closed_session_id, posé par stop.js). Fiable, indépendant des horodatages sales,
       // et distinct d'une session à l'autre — chaque session clôt son propre lot, donc plus
       // de titre figé identique sur plusieurs sessions (bug japlan : 3 sessions → même #34).
+      // Vérifié AVANT le lot en cours : si la session précédente a clos un lot puis enchaîné
+      // sur le suivant (cur = nouveau lot in_progress, jamais encore touché), c'est la
+      // clôture qui décrit cette session-là, pas le lot fraîchement démarré (bug : titre
+      // affichait le lot courant au lieu du lot clos).
       const mine = backlog.lotClosedBySession(b, prevSid);
       if (mine) return T(mine, 0);
+      // Lot en cours (travail qui continue, rien clos par la session précédente) : le focus
+      // du lot backlog prime, jamais de numéro d'ID concurrent. touchLot compte les sessions
+      // successives qui laissent ce lot ouvert (« (partie N) » si >1, cf. titleForLot) —
+      // incrémenté ICI (une fois par vrai démarrage de session, cf. hooks/session-start.js)
+      // car c'est le seul point de passage qui décrit la session précédente à la suivante.
+      const cur = backlog.currentLot(b);
+      if (cur) {
+        const touches = backlog.touchLot(root, cur.id) || 1;
+        return T(cur, touches);
+      }
       // Repli SANS attribution possible (clôture manuelle/legacy, closed_session_id absent) :
       // dernier lot clos par id. Mais un lot clos par une session ANTÉRIEURE à la précédente
       // ne décrit pas cette session-là (ex. « état des lieux » qui n'a rien clos) : on ne
