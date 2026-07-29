@@ -2,6 +2,35 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-29 — Préconisation de modèle non rognée par le cap du resume (lot #129, epic Diffusion plugin)
+
+Suite directe du lot #128, qui avait **signalé** cet effet de bord au CHANGELOG sans le traiter :
+c'était une sous-estimation. La ligne rognée par le cap de `backlogResumeMessage` n'est pas un
+détail de longueur, c'est la **préconisation de modèle par lot** (lot B6) — perdue en canal plugin
+à chaque session démarrée sans lot en cours, donc dans les consignes réellement injectées.
+
+- **Cause** : le commentaire de `backlogResumeMessage` postulait que les nudges secondaires « seront
+  rognés d'abord », en supposant que la troncature ne morde jamais dans le cas nominal. Faux dès que
+  `PMZ_BASE` est un chemin absolu : mesuré à **474 c.** au pire cas nominal avec un root de 65 c.,
+  contre 431 c. en install manuelle (root de 22 c.).
+- **Relever le cap ne suffit pas** — et c'est la correction que j'avais recommandée à tort : la
+  longueur de `PMZ_BASE` n'est pas bornable (nom d'utilisateur et nom de marketplace arbitraires),
+  donc aucune valeur fixe ne garantit la survie de la dernière ligne. Vérifié par contre-épreuve :
+  avec le cap remis à 400 mais la troncature sélective en place, la préconisation survit quand même
+  — c'est bien le mécanisme, non le cap, qui porte la garantie.
+- **`promptimizer/lib/messages.js`** : troncature **sélective**. En dépassement, le budget est repris
+  sur le `scope` (champ de confort, déjà coupé à 100 c. et redonné par le backlog) au lieu de couper
+  la fin du message ; la troncature dure reste en filet pour le cas dégénéré. Cap porté à 460 et
+  **exporté** (`BACKLOG_RESUME_CAP`) pour que le test cesse de recopier la valeur en dur.
+- **`test/run-tests.js`** : B128 étendu (+10 assertions, 4 propriétés × 2 longueurs de root réalistes,
+  dont un root de 87 c.) — chemin de commande entier, préconisation de modèle présente en fin de
+  message, aucune troncature dure, et scope effectivement rogné. TR5 lit désormais le cap sur le
+  module.
+- **`ARCHITECTURE.md`** : la règle généralisée (un message plafonné qui embarque un chemin doit rogner
+  son champ de confort, pas sa fin) ajoutée en corollaire de la puce #128.
+- Vérifié : `node test/run-tests.js` → **2192 OK · 0 échec**. Contre-épreuve sur copies régressées :
+  sans la troncature sélective, la préconisation est bien perdue (`tronqué=true`, `/model survit=false`).
+
 ## 2026-07-29 — Chemins d'aide plugin-conscients dans `messages.js` (lot #128, epic Diffusion plugin)
 
 Deux messages injectés en session affichaient en dur le chemin de l'**install manuelle**

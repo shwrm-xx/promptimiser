@@ -4332,7 +4332,7 @@ section('Clôture prouvée : verify à l\'auto-clôture + garde-fou CHANGELOG (l
 }
 
 // ============================ T-bis. TRANSITIONS DE LOT (lot #55) ============================
-section('Transitions de lot : backlogResumeMessage — verify prescrit + /model + cap 400c (lot #55)');
+section('Transitions de lot : backlogResumeMessage — verify prescrit + /model + cap et troncature sélective (lots #55, #128)');
 {
   const brm = messages.backlogResumeMessage;
   const prog = { done: 2, total: 5 };
@@ -4360,10 +4360,14 @@ section('Transitions de lot : backlogResumeMessage — verify prescrit + /model 
   ok(/start --id 7/.test(mNext) && /\[modèle : haiku/.test(mNext), 'resume : prochain lot -> instruction start + tag');
   ok(/\/model/.test(mNext), 'resume : prochain lot hint Claude -> /model');
 
-  // TR5. Cap 400c tenu au PIRE cas (titre/scope/hint maximaux, tous les nudges présents).
+  // TR5. Cap tenu au PIRE cas (titre/scope/hint maximaux, tous les nudges présents).
+  // Valeur lue sur le module (BACKLOG_RESUME_CAP) et non recopiée : le cap a bougé une fois
+  // (400 -> 460, lot #128) et un 400 en dur ici serait passé vert sur un module régressé.
+  const CAP = messages.BACKLOG_RESUME_CAP;
+  ok(CAP === 460, `resume : cap exporté = 460 (lu : ${CAP})`);
   const worst = { title: 'W'.repeat(80), scope: 'z'.repeat(400), model_hint: 'z'.repeat(40) + 'sonnet', effort_hint: 'xhigh', verify: null };
   const mWorst = brm(worst, null, { done: 999, total: 999 });
-  ok(mWorst.length <= 400, `resume : cap 400c respecté au pire cas (len=${mWorst.length})`);
+  ok(mWorst.length <= CAP, `resume : cap ${CAP}c respecté au pire cas (len=${mWorst.length})`);
   ok(/Lot en cours/.test(mWorst), 'resume : au pire cas, l\'identité du lot survit à la troncature');
 
   // TR6. Plan terminé (ni cur ni next) -> null (rien à rappeler).
@@ -9236,8 +9240,12 @@ for (const k of Object.keys(m)) {
     else if (r && typeof r === 'object') for (const f of Object.keys(r)) check(k + '(' + i + ').' + f, r[f]);
   }
 }
+// Lot au pire cas NOMINAL (titre et scope à leurs plafonds de troncature, hint Claude) :
+// c'est le message le plus long qu'un vrai backlog puisse produire sur la branche « next ».
+const long = Object.assign({}, lot, { id: 9999, title: 'T'.repeat(60), scope: 'S'.repeat(400) });
 process.stdout.write(JSON.stringify({ offenders, produced,
-  large: m.MSG_LARGE, resume: m.backlogResumeMessage(null, lot, prog, []) }));
+  large: m.MSG_LARGE, resume: m.backlogResumeMessage(null, lot, prog, []),
+  resumeLong: m.backlogResumeMessage(null, long, prog, []) }));
 `);
   let probeOut = null;
   try {
@@ -9259,6 +9267,51 @@ process.stdout.write(JSON.stringify({ offenders, produced,
       'B128-4 : MSG_LARGE pointe vers ${CLAUDE_PLUGIN_ROOT}/scripts/backlog.js');
     ok(/Démarre-le \(node \/pmz-probe\/plugins\/pmz\/scripts\/backlog\.js start --id 7\)/.test(probeOut.resume),
       'B128-5 : backlogResumeMessage (« Démarre-le ») pointe vers ${CLAUDE_PLUGIN_ROOT}/scripts/backlog.js');
+  }
+
+  // Régression trouvée EN CORRIGEANT le chemin (lot #128) : en plugin, PMZ_BASE est un chemin
+  // ABSOLU (~50 c. contre 21), ce qui poussait la branche « next » au-delà de l'ancien cap 400 —
+  // et la ligne rognée était la préconisation de modèle (lot B6). On rejoue le cas avec un root
+  // de la LONGUEUR RÉELLE d'un cache plugin, pas le root court de la sonde ci-dessus.
+  const ROOT_REAL = '/Users/utilisateur.test/.claude/plugins/cache/pmz-marketplace/pmz';
+  let realOut = null;
+  try {
+    realOut = JSON.parse(execFileSync(process.execPath, [probe], {
+      encoding: 'utf8',
+      env: Object.assign({}, process.env, { CLAUDE_PLUGIN_ROOT: ROOT_REAL }),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }));
+  } catch (e) { realOut = null; }
+  // Root XL : la longueur de PMZ_BASE n'est PAS bornable (nom d'utilisateur + nom de marketplace
+  // arbitraires). Un cap fixe seul ne tient donc pas la promesse — c'est la troncature sélective
+  // (rogner le scope, pas la fin du message) qui doit tenir, quelle que soit la longueur du root.
+  const ROOT_XL = '/Users/prenom.nom-de-famille/.claude/plugins/cache/un-nom-de-marketplace-tres-long/pmz';
+  const runProbe = (root) => {
+    try {
+      return JSON.parse(execFileSync(process.execPath, [probe], {
+        encoding: 'utf8',
+        env: Object.assign({}, process.env, { CLAUDE_PLUGIN_ROOT: root }),
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }));
+    } catch (e) { return null; }
+  };
+  const realOut2 = realOut;
+  ok(realOut2 !== null, 'B128-8 : sonde exécutable sous un CLAUDE_PLUGIN_ROOT de longueur réelle');
+  for (const [root, tag] of [[ROOT_REAL, 'B128-9'], [ROOT_XL, 'B128-10']]) {
+    const o = root === ROOT_REAL ? realOut2 : runProbe(root);
+    if (!o) { ok(false, `${tag} : sonde exécutable sous root ${root.length}c`); continue; }
+    const r = o.resumeLong;
+    // Les trois propriétés qui doivent tenir ENSEMBLE au pire cas nominal, quel que soit le root :
+    ok(r.indexOf(root + '/scripts/backlog.js start --id 9999') !== -1,
+      `${tag}a : root ${root.length}c — la commande start porte le chemin plugin ENTIER`);
+    ok(/bascule via \/model avant de démarrer si besoin\.$/.test(r),
+      `${tag}b : root ${root.length}c — la préconisation de modèle (lot B6) SURVIT (c'est la ligne que l'ancien cap 400 rognait)`);
+    ok(!r.endsWith('…') && r.length <= messages.BACKLOG_RESUME_CAP,
+      `${tag}c : root ${root.length}c — aucune troncature dure, message sous le cap (len=${r.length})`);
+    // …parce que c'est le SCOPE qui absorbe le dépassement (confort, redonné par le backlog).
+    const scopeShown = (r.match(/S+/) || [''])[0].length;
+    ok(scopeShown > 0 && scopeShown < 100,
+      `${tag}d : root ${root.length}c — le scope a été rogné (${scopeShown}/100 c. affichés) au lieu de couper la fin du message`);
   }
 
   // Repli install manuelle : sans CLAUDE_PLUGIN_ROOT, le chemin ~/.claude/promptimizer DOIT

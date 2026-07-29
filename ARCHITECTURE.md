@@ -1394,7 +1394,13 @@ manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string r
   un absolu pour l'accès fs : ici la valeur est une commande à copier dans un shell. Un oubli ne
   casse rien visiblement — il propose juste une commande inexistante en canal plugin —, d'où le
   garde-fou générique en test (section B128 : balayage de tous les exports de `messages.js` sous
-  `CLAUDE_PLUGIN_ROOT`).
+  `CLAUDE_PLUGIN_ROOT`). **Corollaire sur les caps de message** (lot #129) : un chemin plugin est
+  absolu et de longueur **non bornable** (nom d'utilisateur, nom de marketplace) — un message
+  injecté qui en contient un ne peut donc pas s'appuyer sur un plafond fixe « les nudges
+  secondaires seront rognés d'abord ». `backlogResumeMessage` rogne le **champ de confort**
+  (le `scope`, redonné par le backlog) pour rester sous le cap, et ne coupe la fin du message
+  qu'en filet de dernier recours ; sans ça la ligne perdue était la préconisation de modèle
+  (lot B6). Règle à reprendre pour tout message plafonné qui embarque un chemin.
 - **Garde-fou `REQUIRED_COMMANDS`** (`build-plugin.js`, v1.1.4) : liste EXPLICITE des commandes
   que le plugin doit porter ; le build **échoue** (exit 1, message nommant la commande + marche
   à suivre) si l'une manque du dossier assemblé. À éditer consciemment quand on ajoute/retire une
