@@ -5,8 +5,11 @@ desktop** (macOS). Il s'installe une fois, s'active automatiquement sur tous les
 poursuit trois objectifs :
 
 1. **Économie de contexte** — alerte sur l'occupation réelle du contexte (tokens) par paliers,
-   et sur le **coût du dernier tour** (tour à +50k tokens, invalidations de cache), via un
-   message visible **non bloquant** et **non réinjecté** dans le contexte du modèle.
+   sur le **coût du dernier tour** (tour à +50k tokens, invalidations de cache) et sur le
+   **nombre de tours** de la session (rappel à 12, prescription de session fraîche à 20 —
+   le coût croît en tours^1,66 à ^1,98), via un message visible **non bloquant** et **non
+   réinjecté** dans le contexte du modèle ; seule la prescription de tours est aussi injectée
+   au prompt suivant, parce qu'un message non réinjecté ne fait pas agir Claude.
 2. **Clôture propre des lots** — rappelle vérification ciblée + `CHANGELOG` + commit + handoff ;
    le handoff est écrit dans `.vibe-agent/handoff.md` (auto à chaque fin de tour, riche via
    `/fresh-session`) et **injecté automatiquement au démarrage de la session suivante**.
@@ -175,6 +178,17 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   lot** — commit intermédiaire + `/fresh-session`, le lot reste ouvert et le handoff le reprend —
   avec l'occupation courante et ce que coûterait une compaction en regard. Clé absente ou valeur
   aberrante → seuil historique inchangé.
+- **Budget de tours par session** (actif par défaut) : l'occupation ne dit pas tout — une session
+  peut rester à basse occupation et coûter cher quand même, parce que le coût croît en
+  **tours^1,66 à ^1,98** (mesuré : scinder une session en deux coûte ~37 à 49 % de moins à travail
+  égal). À **12 tours**, un rappel ⚠ visible invite à viser un point de commit ; à **20 tours**, PMZ
+  **prescrit** la session fraîche (⛔, hors plafond de l'arbitre) et **injecte la consigne à Claude**
+  au prompt suivant — amener le lot à un point de commit, puis proposer la clôture. Rappel ensuite
+  tous les **+10 tours** : une session marathon ne devient jamais muette. Les deux seuils se
+  déplacent dans `.vibe-agent/rules.yaml`, bloc `budget:` :
+  `warn_after_session_turns: 12` et `recommend_fresh_session_after_turns: 20` (3 à 500 ; hors bornes
+  → défaut). Pour l'éteindre, une clé et une seule — `turn_budget: off` : aucun nombre ne peut
+  désactiver un garde-fou par accident de frappe.
 - **Budget de la verify de clôture** (réglable par projet) : la commande `verify` du lot est
   rejouée par `/close-batch` et par `backlog.js done` avec un délai de **300 s** par défaut. Une
   suite qui dépasse ce budget est rendue « non terminée dans le délai » et le verdict `timeout`

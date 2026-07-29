@@ -177,6 +177,73 @@ function occupancyPromptMessage(occ, bucket) {
   ].join('\n');
 }
 
+// ---------------------------------------------------------------------------------------
+// BUDGET DE TOURS PAR SESSION (lot #124). Trois messages pour deux canaux : rappel puis
+// prescription en `systemMessage` (visibles utilisateur, donc chiffrables sans coût de cache),
+// et une injection COURTE en `additionalContext` — la seule qui agisse sur le comportement de
+// Claude, le systemMessage n'étant pas réinjecté au modèle.
+//
+// L'argument est chiffré, pas moral : le coût d'une session croît en tours^e avec e mesuré
+// entre 1,66 et 1,98 (régression log-log du dépôt sur ses propres sessions, cf. la loi
+// d'échelle décrite dans ARCHITECTURE.md). Scinder une session de T tours en deux sessions
+// de T/2 coûte donc 2^(1−e) fois le prix d'origine, soit un gain de 1 − 2^(1−e). La fourchette
+// est CALCULÉE ici, jamais recopiée à la main : changer un exposant met le message à jour.
+const TURN_SCALING_MIN = 1.66;
+const TURN_SCALING_MAX = 1.98;
+function turnSplitGainRange() {
+  const gain = (e) => Math.round((1 - Math.pow(2, 1 - e)) * 100);
+  return { lo: gain(TURN_SCALING_MIN), hi: gain(TURN_SCALING_MAX) };
+}
+function turnScalingLine() {
+  const g = turnSplitGainRange();
+  return `Loi mesurée sur ce type de session : le coût croît en tours^${String(TURN_SCALING_MIN).replace('.', ',')} à ^${String(TURN_SCALING_MAX).replace('.', ',')} — scinder une session en deux la fait coûter ~${g.lo} à ${g.hi} % de moins à travail égal.`;
+}
+
+// Rappel ⚠ au premier seuil (défaut 12 tours) : la session commence à coûter, mais rien
+// n'est encore perdu — on vise un point de commit, on n'interrompt pas.
+function turnBudgetWarnMessage(tb) {
+  return withSeverity(SEV.WARN, [
+    `Session à ${tb.turnCount} tours (rappel posé à ${tb.warn}).`,
+    turnScalingLine(),
+    `Amène le lot vers un point de commit : à ${tb.prescribe} tours, la session fraîche devient la bonne option.`,
+  ]);
+}
+
+// Prescription ⛔ au second seuil (défaut 20 tours), puis tous les +step tours. Même
+// grammaire que la prescription de zone rouge (#71/#112) : sévérité maximale, clôture
+// possible EN MILIEU DE LOT, jamais un simple constat. Émise en coda hors arbitre par stop.js.
+function turnBudgetPrescriptionMessage(tb, lot) {
+  const half = Math.max(1, Math.round(tb.turnCount / 2));
+  const lines = [
+    `BUDGET DE TOURS dépassé : ${tb.turnCount} tours dans cette session (seuil ${tb.prescribe}).`,
+    turnScalingLine(),
+    `Concrètement : deux sessions de ~${half} tours au lieu d'une de ${tb.turnCount}.`,
+  ];
+  if (lot && lot.title) {
+    lines.push(
+      `Lot « ${lot.title} » EN COURS — ne l'étire pas ici : commit intermédiaire + /fresh-session (le lot reste ouvert, le handoff le reprend). Déjà bouclé → /close-batch.`,
+    );
+  } else {
+    lines.push(
+      "Lot fini → /close-batch. Sinon → commit intermédiaire + /fresh-session : repart d'un handoff court, sans perte.",
+    );
+  }
+  if (tb.floating) lines.push(`Rappel tous les +${tb.step} tours tant que la session dure (prochain à ${tb.next}).`);
+  return withSeverity(SEV.ALERT, lines);
+}
+
+// Injection UserPromptSubmit au seuil de prescription (coûte du contexte à chaque fois) :
+// donc COURTE, 1×/palier, hors grammaire de sévérité (pas de glyphe — comme
+// occupancyPromptMessage). C'est le seul canal qui puisse faire agir Claude : formulée en
+// consigne d'action, pas en constat.
+function turnBudgetPromptMessage(tb) {
+  return [
+    `Session à ${tb.turnCount} tours (budget ${tb.prescribe}) — au-delà, chaque tour repaye tout le contexte accumulé.`,
+    "Amène le lot en cours à un point de commit maintenant, puis propose la clôture via la question à choix (OK / Non) : /close-batch si le lot est bouclé, sinon commit intermédiaire + /fresh-session. N'ouvre pas de nouveau chantier dans cette session.",
+  ].join('\n');
+}
+// ---------------------------------------------------------------------------------------
+
 function fmtK(n) {
   const v = Math.abs(n || 0);
   return v >= 1000 ? `${Math.round(v / 1000)}k` : `${Math.round(v)}`;
@@ -654,6 +721,8 @@ function rtkStartupLine(status) {
 module.exports = {
   MSG_ACTIF, MSG_ACTIF_SLIM, MSG_NON_INIT, MSG_LECTURE, MSG_CLOTURE, MSG_HANDOFF, MSG_LARGE, MSG_INIT_BEFORE_CODE,
   occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, redZonePrescriptionMessage, sessionTitleMessage, autoInitMessage,
+  turnBudgetWarnMessage, turnBudgetPrescriptionMessage, turnBudgetPromptMessage,
+  turnSplitGainRange, TURN_SCALING_MIN, TURN_SCALING_MAX,
   compactResumeMessage, COMPACT_RESUME_CAP, backlogResumeMessage, largeWithPlanMessage,
   costlyTurnMessage, driftMessage, loopingCommandMessage, gitDebtMessage, claudeMdMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,

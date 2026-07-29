@@ -18,9 +18,11 @@ const { loadSessionState, saveSessionState } = require('../lib/state');
 const { loadBacklog, currentLot, progress } = require('../lib/backlog');
 const {
   MSG_LARGE, MSG_INIT_BEFORE_CODE, autoInitMessage, largeWithPlanMessage, occupancyPromptMessage,
-  sessionTitleMessage, modelMismatchMessage,
+  sessionTitleMessage, modelMismatchMessage, turnBudgetPromptMessage,
 } = require('../lib/messages');
 const occupancy = require('../lib/occupancy');
+const turnstats = require('../lib/turnstats');
+const turnbudget = require('../lib/turnbudget');
 const { readLastModel, modelsDiffer, hintResolvableClaude } = require('../lib/modelwatch');
 
 const OCC_PROMPT_THRESHOLD = 500000;
@@ -131,6 +133,22 @@ function main() {
     }
   } catch (_) {
     /* fail-open : pas de nudge occupation ce tour */
+  }
+
+  // BUDGET DE TOURS (lot #124) — canal DÉCISIF. Le Stop rappelle et prescrit dans un
+  // `systemMessage`, visible par l'utilisateur mais JAMAIS réinjecté au modèle : Claude ne le
+  // lit pas et continue donc à étirer la session. L'injection ici est le seul levier qui agisse
+  // sur son comportement. Volontairement limitée au palier de PRESCRIPTION (pas au simple
+  // rappel) : chaque injection coûte du contexte, on ne la paye qu'au moment où l'action
+  // demandée change (amener le lot à un point de commit, proposer la clôture).
+  // Anti-spam PROPRE au canal (état 'turnbudget-prompt', cf. turnbudget.CHANNELS) : le Stop du
+  // même tour ne doit pas consommer le palier de celui-ci. Compteur lu SANS incrémenter
+  // (turnstats.readTurnCount) — il n'avance qu'au Stop.
+  try {
+    const tb = turnbudget.evaluate(root, sid, turnstats.readTurnCount(sid), 'prompt');
+    if (tb && tb.stage === 'prescribe') parts.push(turnBudgetPromptMessage(tb));
+  } catch (_) {
+    /* fail-open : pas d'injection de budget ce tour */
   }
 
   saveSessionState(root, st);

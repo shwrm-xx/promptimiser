@@ -24,6 +24,7 @@ const subagentcost = require('../lib/subagentcost');
 const occupancy = require('../lib/occupancy');
 const { readLastModel } = require('../lib/modelwatch');
 const turnstats = require('../lib/turnstats');
+const turnbudget = require('../lib/turnbudget');
 const loopwatch = require('../lib/loopwatch');
 const gitdebt = require('../lib/gitdebt');
 const claudemd = require('../lib/claudemd');
@@ -35,6 +36,7 @@ const {
   costlyTurnMessage, driftMessage, loopingCommandMessage, gitDebtMessage, claudeMdMessage, bustIntraMessage, pauseTtlMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
   closureWithDraftMessage, closureCardMessage, freshSessionCodaMessage,
+  turnBudgetWarnMessage, turnBudgetPrescriptionMessage,
 } = require('../lib/messages');
 
 // Un commit est-il tombé DEPUIS le démarrage du lot ? (lot #108) Sert d'armement de l'auto-clôture
@@ -334,6 +336,32 @@ function main() {
     writeAutoHandoff(root, sid);
   }
 
+  // (d) BUDGET DE TOURS (lot #124) — le signal que l'occupation ne donne pas : une session peut
+  // rester à basse occupation et coûter cher quand même, le coût croissant en tours^1,66 à ^1,98
+  // (cf. lib/turnbudget.js). Évalué ICI, en toute fin de tour, pour deux raisons : le compteur
+  // vient d'être incrémenté par computeTurn (a3), et la branche clôture ci-dessus a déjà pu poser
+  // sa propre coda de session fraîche — auquel cas on se TAIT (le lot est clos, la reco est déjà
+  // là ; prescrire deux fois la même action serait du bruit). Fonctionne hors repo : les défauts
+  // sont codés en dur et `rules` retombe dessus quand root est null.
+  // Deux niveaux, deux canaux : rappel ⚠ dans `parts` (c'est un constat, il se soumet à
+  // l'arbitre) ; prescription ⛔ en CODA hors arbitre, comme la zone rouge — une prescription
+  // unique ne se met pas en concurrence avec les diagnostics du tour.
+  let turnCoda = null;
+  if (!coda) {
+    try {
+      const tb = turnbudget.evaluate(root, sid, turn ? turn.turnCount : null, 'stop');
+      if (tb && tb.stage === 'warn') {
+        parts.push(turnBudgetWarnMessage(tb));
+      } else if (tb) {
+        let tbLot = null;
+        if (root) {
+          try { tbLot = currentLot(loadBacklog(root)); } catch (_) { tbLot = null; }
+        }
+        turnCoda = turnBudgetPrescriptionMessage(tb, tbLot);
+      }
+    } catch (_) { /* fail-open : pas de budget de tours ce tour, jamais de blocage */ }
+  }
+
   // Arbitre de tour (#57) : plafonne le nombre de nudges concaténés, priorité à la sévérité
   // (via le glyphe de tête, sans re-parser la prose). Ordre de lecture d'origine préservé.
   const shown = arbitrate(parts);
@@ -342,6 +370,9 @@ function main() {
   // — repartir en session fraîche maintenant — n'est pas du bruit et ne se met pas en concurrence
   // avec lui. Toujours en dernier : c'est l'action qui clôt le bloc.
   if (coda) shown.push(coda);
+  // Coda de budget de tours (#124) : même statut hors plafond, exclusive de la précédente par
+  // construction (`if (!coda)` plus haut) — jamais deux prescriptions de session fraîche d'affilée.
+  if (turnCoda) shown.push(turnCoda);
   if (shown.length) return systemMessage(shown.join('\n\n'));
   return passThrough();
 }

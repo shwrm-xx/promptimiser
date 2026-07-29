@@ -2,6 +2,51 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-29 — Budget de tours par session (lot #124, epic Sessions courtes)
+
+PMZ mesurait le coût de session par l'**occupation en tokens** et avait explicitement écarté le
+compteur de tours. Les mesures du dépôt sur lui-même ont retourné cette décision : l'occupation
+médiane reste basse (~125k, ~15 % de la borne — la borne ne mord donc quasiment jamais) alors que
+le coût croît en **tours^1,66 à ^1,98**. Le nombre de tours est désormais un garde-fou de plein
+droit, **actif par défaut**, à côté de l'occupation.
+
+- **`promptimizer/lib/turnbudget.js`** (nouveau) : traduit le `turnCount` que `turnstats`
+  persistait déjà **depuis le lot #8 sans que rien ne le lise** en palier franchi. Deux seuils —
+  exactement les clés que la spec d'origine portait mortes dans `rules.yaml` :
+  `budget.warn_after_session_turns` (défaut **12**) et
+  `budget.recommend_fresh_session_after_turns` (défaut **20**), lues par `lib/rules.js`, bornes
+  3–500 — puis rappel **flottant tous les +10 tours**. Défauts **codés en dur** : `rules.yaml` ne
+  les allume pas, il les déplace. Palier monotone persisté, avec **un état par canal**
+  (`<sha1>-turnbudget`, `<sha1>-turnbudget-prompt`) : sans cette séparation, le premier hook du
+  tour à franchir le seuil consommerait l'anti-spam de l'autre. Extinction par une clé **non
+  numérique** (`turn_budget: off`) : `readNumber` traitant une valeur hors bornes comme absente,
+  aucun nombre — `0` compris — ne peut éteindre le garde-fou par accident de frappe.
+- **`promptimizer/hooks/stop.js`** : rappel ⚠ dans les nudges arbitrés au 1er seuil ; prescription
+  ⛔ en **coda hors arbitre** au 2nd (nomme le lot en cours, propose commit intermédiaire +
+  `/fresh-session`). Évalué en toute fin de tour et **muet si la coda de clôture est déjà posée** —
+  le lot vient d'être clos, la reco de session fraîche y est déjà.
+- **`promptimizer/hooks/user-prompt-submit.js`** : injection `additionalContext` au **seul palier
+  de prescription**, 1×/palier. C'est le canal **décisif** — un `systemMessage` est visible par
+  l'utilisateur mais jamais réinjecté au modèle, donc Claude ne le lit pas et continue d'étirer la
+  session. Compteur lu **sans incrément** (`turnstats.readTurnCount`, nouveau) : il n'avance qu'au
+  Stop.
+- **`promptimizer/lib/messages.js`** : trois messages, argument chiffré **calculé** et non recopié
+  (`turnSplitGainRange` : coût ∝ tours^e → scinder coûte 2^(1−e) fois le prix, soit ~37 à 49 % de
+  moins). Changer un exposant met les messages à jour.
+- **Doc** : décision `ARCHITECTURE.md` révisée en « occupation-tokens **ET** compteur de tours »
+  (ce qui restait vrai, ce que la mesure a démenti, pourquoi les deux signaux cohabitent) ;
+  `templates/rules.yaml` perd son commentaire « et non un compteur de tours » et documente les
+  trois clés, livrées commentées mais **défauts actifs** ; `README.md` décrit le garde-fou.
+- Vérifié : `node test/run-tests.js` → **2120 OK · 0 échec** (66 assertions nouvelles). Bout-en-bout
+  en bac à sable : franchissement 12 → rappel, 20 → prescription, 30 → rappel flottant, silence en
+  dessous et au rejeu ; prescription **survivant à un tour saturé** (émise en coda) ; injection UPS
+  au bon palier et 1× seulement ; deux canaux parlant au même palier ; `turn_budget: off` silencieux
+  à 41 tours ; `rules.yaml` corrompu → exit 0 **et défauts appliqués** (le garde-fou ne s'éteint
+  pas) ; gabarit d'init → budget actif sans rien décommenter. Build plugin rejoué (`turnbudget.js`
+  bien embarqué).
+- Non vérifié : le comportement réel de Claude face à l'injection (dépend du modèle) ; le
+  rechargement du plugin sur cette machine reste à faire pour observer le garde-fou en session.
+
 ## 2026-07-29 — Dashboard : ouverture en artefact (lot #123, epic Dashboard usage)
 
 `/pmz:dashboard` publiait uniquement `.vibe-agent/dashboard.html`, à ouvrir soi-même dans un

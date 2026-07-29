@@ -179,6 +179,18 @@ function computeTurn(transcriptPath, sid) {
   };
 }
 
+// Compteur de tours de la session, en LECTURE SEULE (lot #124). `computeTurn` l'incrémente
+// et le persiste au Stop ; le budget de tours a besoin de le consulter depuis un AUTRE hook
+// (UserPromptSubmit) sans rien incrémenter — sans quoi le compteur avancerait de deux crans
+// par tour. Renvoie 0 si l'état est absent/illisible (fail-open : pas de palier inventé).
+function readTurnCount(sessionId) {
+  try {
+    return loadTurnState(sessionId).turnCount;
+  } catch (_) {
+    return 0;
+  }
+}
+
 // Détecteur de dérive (#62). Lit l'historique persisté par computeTurn (donc à
 // appeler APRÈS lui, une fois le tour courant écrit) et cherche une tendance sur
 // les DRIFT_WINDOW derniers tours EXPLOITABLES (delta ET hitRate connus). On compare
@@ -232,7 +244,7 @@ function evaluateDrift(sid) {
 }
 
 module.exports = {
-  computeTurn, evaluateDrift,
+  computeTurn, evaluateDrift, readTurnCount,
   // Primitives de scan exposées pour lib/subagentcost (lot #119) : le coût des tours délégués se
   // lit dans d'AUTRES fichiers que le transcript de session, mais avec exactement la même méthode
   // (offset persisté + parsing des lignes `usage`) — la dupliquer la ferait dériver.

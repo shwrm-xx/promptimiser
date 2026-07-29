@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "next_id": 124,
+  "next_id": 127,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-29T11:49:22.988Z",
+  "updated_at": "2026-07-29T12:20:18.091Z",
   "lots": [
     {
       "id": 1,
@@ -3501,6 +3501,97 @@
       "depends_on": [
         122
       ],
+      "session_owner": null
+    },
+    {
+      "id": 124,
+      "title": "Budget de tours par session",
+      "scope": "fait quand : node test/run-tests.js vert avec la nouvelle section ; en sandbox, un transcript simulé franchissant 12 puis 20 tours produit rappel puis prescription au Stop et l'injection UserPromptSubmit, silence en dessous et au rejeu",
+      "status": "in_progress",
+      "model_hint": "opus",
+      "effort_hint": "high",
+      "epic": "Sessions courtes",
+      "verify": "node test/run-tests.js",
+      "us": null,
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "closed_verify": null,
+      "cost_tokens": 96795,
+      "cost_turns": 1,
+      "cost_subagent_tokens": 37276,
+      "closed_avg_cost_per_turn": null,
+      "started_at": "2026-07-29T12:17:38.797Z",
+      "lot_number": null,
+      "note": null,
+      "session_touches": 2,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null,
+      "integrations": {
+        "command_optimizer": {
+          "snapshot_start": {
+            "commands": 1,
+            "delivered_tokens": 4
+          }
+        }
+      }
+    },
+    {
+      "id": 125,
+      "title": "Frein sur la sortie relue",
+      "scope": "fait quand : tests verts — nudge Stop déclenché au seuil de sortie cumulée, silence en dessous, 1 fois par session, fail-open",
+      "status": "todo",
+      "model_hint": "sonnet",
+      "effort_hint": "medium",
+      "epic": "Sessions courtes",
+      "verify": "node test/run-tests.js",
+      "us": null,
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "closed_verify": null,
+      "cost_tokens": 0,
+      "cost_turns": 0,
+      "cost_subagent_tokens": 0,
+      "closed_avg_cost_per_turn": null,
+      "started_at": null,
+      "lot_number": null,
+      "note": null,
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [
+        124
+      ],
+      "session_owner": null
+    },
+    {
+      "id": 126,
+      "title": "Scope rédige les US",
+      "scope": "fait quand : node test/run-tests.js vert ; scope.md sans consigne « à remplir à la main », flux rédaction→validation→écriture explicite",
+      "status": "todo",
+      "model_hint": "sonnet",
+      "effort_hint": "medium",
+      "epic": "Sessions courtes",
+      "verify": "node test/run-tests.js",
+      "us": null,
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "closed_verify": null,
+      "cost_tokens": 0,
+      "cost_turns": 0,
+      "cost_subagent_tokens": 0,
+      "closed_avg_cost_per_turn": null,
+      "started_at": null,
+      "lot_number": null,
+      "note": null,
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
       "session_owner": null
     }
   ]

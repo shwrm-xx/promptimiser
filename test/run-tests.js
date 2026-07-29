@@ -449,6 +449,8 @@ section('Grammaire de sévérité : lib/severity.js + glyphes des fabriques visi
   ok(!glyphs.test(messages.MSG_HANDOFF), 'frontière : MSG_HANDOFF (injecté) sans glyphe');
   ok(!glyphs.test(messages.occupancyPromptMessage(520000, 3)), 'frontière : occupancyPromptMessage (injecté) sans glyphe');
   ok(!glyphs.test(messages.modelMismatchMessage({ title: 'L', model_hint: 'opus' }, 'sonnet')), 'frontière : modelMismatchMessage (injecté) sans glyphe');
+  ok(!glyphs.test(messages.turnBudgetPromptMessage({ turnCount: 20, warn: 12, prescribe: 20, step: 10, next: 30 })),
+    'frontière : turnBudgetPromptMessage (injecté) sans glyphe');
   // closureProof sans rien à dire -> null (non-régression, consommé par OpenCode)
   ok(messages.closureProofMessage(null, false) === null, 'closureProof : rien à dire -> null (préservé)');
 }
@@ -8766,6 +8768,243 @@ section('Borne de verify de clôture : défaut relevé + réglage par projet (lo
 
   if (savedEnv === undefined) delete process.env.PMZ_VERIFY_CLOSE_MS;
   else process.env.PMZ_VERIFY_CLOSE_MS = savedEnv;
+}
+
+// ============ B124. BUDGET DE TOURS PAR SESSION (lot #124) ============
+section('Budget de tours : seuils 12/20 actifs par défaut, deux canaux, anti-spam monotone (lot #124)');
+{
+  const turnbudget = require(path.join(PKG, 'lib', 'turnbudget'));
+  const turnstats = require(path.join(PKG, 'lib', 'turnstats'));
+
+  // Repo sandbox minimal, rules.yaml au contenu choisi (gabarit du lot #112).
+  function repo124(name, rulesBody) {
+    const dir = path.join(SANDBOX, 'b124-' + name);
+    fs.mkdirSync(path.join(dir, '.vibe-agent'), { recursive: true });
+    execFileSync('git', ['init', '-q', dir]);
+    if (rulesBody != null) fs.writeFileSync(path.join(dir, '.vibe-agent', 'rules.yaml'), rulesBody);
+    return dir;
+  }
+  // Amorce le compteur de tours d'une session SANS jouer N fois le hook : on écrit l'état que
+  // turnstats persiste (offset absent -> pas de baseline, donc aucune alerte de tour parasite).
+  function seedTurns(sid, turnCount) {
+    fs.writeFileSync(occupancy.stateFileFor(sid, 'turns.json'), JSON.stringify({ turnCount }));
+  }
+  const sys124 = (r) => { try { return JSON.parse(r.out).systemMessage || ''; } catch (_) { return ''; } };
+  const ctx124 = (r) => { try { return JSON.parse(r.out).hookSpecificOutput.additionalContext || ''; } catch (_) { return ''; } };
+  // Transcript à occupation BASSE : aucun palier d'occupation ni zone rouge ne doit se mêler
+  // des assertions de budget de tours.
+  const t124 = writeTranscript('b124.jsonl', ['{"type":"user"}', usageLine(40000, 10000, 0, 500)]);
+
+  // --- B124-1. Seuils : défauts ACTIFS codés en dur, rules.yaml ne fait que les déplacer ---
+  const rNone124 = repo124('sans-rules', null);
+  const dflt = turnbudget.resolveThresholds(rNone124);
+  ok(dflt.warn === 12 && dflt.prescribe === 20, 'B124-1 : sans rules.yaml -> défauts actifs 12/20');
+  ok(turnbudget.resolveThresholds(null).warn === 12, 'B124-1 : hors repo (root null) -> défauts, jamais d\'erreur');
+  const rSet = repo124('seuils', 'budget:\n  warn_after_session_turns: 5\n  recommend_fresh_session_after_turns: 8\n');
+  const set124 = turnbudget.resolveThresholds(rSet);
+  ok(set124.warn === 5 && set124.prescribe === 8, 'B124-1 : les deux clés de la spec sont exécutables');
+  const rHalf = repo124('demi', 'budget:\n  warn_after_session_turns: 6\n');
+  ok(turnbudget.resolveThresholds(rHalf).warn === 6 && turnbudget.resolveThresholds(rHalf).prescribe === 20,
+    'B124-1 : une seule clé posée -> l\'autre garde son défaut');
+  for (const [nom, body] of [
+    ['0 (hors bornes)', 'budget:\n  warn_after_session_turns: 0\n'],
+    ['négatif', 'budget:\n  warn_after_session_turns: -3\n'],
+    ['au-delà de 500', 'budget:\n  warn_after_session_turns: 5000\n'],
+    ['non numérique', 'budget:\n  warn_after_session_turns: beaucoup\n'],
+  ]) {
+    ok(turnbudget.resolveThresholds(repo124('bad-' + nom.replace(/[^a-z]+/gi, '-'), body)).warn === 12,
+      `B124-1 : ${nom} -> clé ignorée, défaut gardé (jamais de garde-fou éteint par accident)`);
+  }
+
+  // --- B124-2. Désactivation : explicite, non numérique, et seule voie possible ---
+  ok(turnbudget.disabledFor(repo124('off', 'budget:\n  turn_budget: off\n')) === true,
+    'B124-2 : turn_budget: off éteint le budget de tours');
+  for (const v of ['false', 'no', 'none', 'disabled', '0', 'OFF']) {
+    ok(turnbudget.disabledFor(repo124('off-' + v, `budget:\n  turn_budget: ${v}\n`)) === true,
+      `B124-2 : turn_budget: ${v} reconnu comme extinction`);
+  }
+  ok(turnbudget.disabledFor(repo124('on', 'budget:\n  turn_budget: on\n')) === false,
+    'B124-2 : une valeur non reconnue laisse le garde-fou ACTIF (fail-open côté sûreté)');
+  ok(turnbudget.disabledFor(rNone124) === false && turnbudget.disabledFor(null) === false,
+    'B124-2 : rien de configuré / hors repo -> budget actif');
+
+  // --- B124-3. Paliers : rappel, prescription, puis flottant tous les +10 ---
+  ok(turnbudget.levelFor(11, 12, 20) === 0 && turnbudget.levelFor(12, 12, 20) === 1,
+    'B124-3 : palier 1 au franchissement du seuil de rappel (12), pas avant');
+  ok(turnbudget.levelFor(19, 12, 20) === 1 && turnbudget.levelFor(20, 12, 20) === 2,
+    'B124-3 : palier 2 au seuil de prescription (20)');
+  ok(turnbudget.levelFor(29, 12, 20) === 2 && turnbudget.levelFor(30, 12, 20) === 3 && turnbudget.levelFor(40, 12, 20) === 4,
+    'B124-3 : au-delà, palier flottant tous les +10 tours (30, 40, …)');
+  ok(turnbudget.levelFor(25, 30, 20) === 2,
+    'B124-3 : warn >= prescribe (config incohérente) -> la prescription prime, intervalle de rappel vide');
+  ok(turnbudget.nextThreshold(1, 20) === 20 && turnbudget.nextThreshold(2, 20) === 30 && turnbudget.nextThreshold(3, 20) === 40,
+    'B124-3 : prochain palier annoncé cohérent avec le pas flottant');
+
+  // --- B124-4. evaluate : anti-spam monotone, canaux indépendants, fail-open ---
+  const v1 = turnbudget.evaluate(rNone124, 'b124-e', 12, 'stop');
+  ok(v1 && v1.stage === 'warn' && v1.turnCount === 12 && v1.prescribe === 20,
+    'B124-4 : 1er franchissement -> verdict warn chiffré');
+  ok(turnbudget.evaluate(rNone124, 'b124-e', 13, 'stop') === null,
+    'B124-4 : anti-spam monotone -> même palier, silence au tour suivant');
+  const v2 = turnbudget.evaluate(rNone124, 'b124-e', 20, 'stop');
+  ok(v2 && v2.stage === 'prescribe' && v2.floating === false && v2.next === 30,
+    'B124-4 : montée de palier -> prescription (et prochain rappel annoncé à 30)');
+  ok(turnbudget.evaluate(rNone124, 'b124-e', 25, 'stop') === null, 'B124-4 : silence entre 20 et 30');
+  const v3 = turnbudget.evaluate(rNone124, 'b124-e', 30, 'stop');
+  ok(v3 && v3.stage === 'prescribe' && v3.floating === true && v3.next === 40,
+    'B124-4 : palier flottant -> nouvelle prescription, marquée flottante');
+  // Canal 'prompt' : état DÉDIÉ — le canal 'stop' vient de consommer les paliers 1 à 3, le
+  // canal injecté doit malgré tout pouvoir parler (sans quoi un seul des deux hooks sortirait).
+  const vp = turnbudget.evaluate(rNone124, 'b124-e', 30, 'prompt');
+  ok(vp && vp.stage === 'prescribe', 'B124-4 : anti-spam PAR CANAL (le Stop ne consomme pas le palier de l\'injection)');
+  ok(occupancy.stateFileFor('b124-e', turnbudget.CHANNELS.stop) !== occupancy.stateFileFor('b124-e', turnbudget.CHANNELS.prompt),
+    'B124-4 : deux fichiers d\'état distincts pour les deux canaux');
+  ok(turnbudget.evaluate(rNone124, null, 30, 'stop') === null, 'B124-4 : sans session_id -> null (pas d\'état partagé)');
+  ok(turnbudget.evaluate(rNone124, 'b124-z', 0, 'stop') === null && turnbudget.evaluate(rNone124, 'b124-z', null, 'stop') === null,
+    'B124-4 : compteur absent ou nul -> null');
+  ok(turnbudget.evaluate(repo124('eval-off', 'budget:\n  turn_budget: off\n'), 'b124-off', 99, 'stop') === null,
+    'B124-4 : budget éteint -> silence même très haut');
+  let threw124 = false;
+  try { turnbudget.evaluate(repo124('eval-corrompu', ':::\n\tbudget: [\n  warn_after_session_turns\n'), 'b124-c', 25, 'stop'); }
+  catch (_) { threw124 = true; }
+  ok(!threw124, 'B124-4 : rules.yaml corrompu -> aucune exception (fail-open)');
+
+  // --- B124-5. readTurnCount : lecture SANS incrément (le compteur n'avance qu'au Stop) ---
+  seedTurns('b124-read', 7);
+  ok(turnstats.readTurnCount('b124-read') === 7 && turnstats.readTurnCount('b124-read') === 7,
+    'B124-5 : readTurnCount lit sans incrémenter (deux lectures, même valeur)');
+  ok(turnstats.readTurnCount('b124-jamais-vue') === 0, 'B124-5 : session inconnue -> 0 (aucun palier inventé)');
+
+  // --- B124-6. Messages : chiffrés, gain CALCULÉ, grammaire de sévérité respectée ---
+  const g124 = messages.turnSplitGainRange();
+  ok(g124.lo === 37 && g124.hi === 49,
+    'B124-6 : gain de scission calculé depuis les exposants mesurés (1,66 -> 37 %, 1,98 -> 49 %)');
+  const mWarn124 = messages.turnBudgetWarnMessage({ turnCount: 12, warn: 12, prescribe: 20, step: 10, next: 20 });
+  ok(mWarn124.startsWith('⚠') && /12 tours/.test(mWarn124) && /20 tours/.test(mWarn124),
+    'B124-6 : rappel -> WARN (⚠), cite le tour courant et le seuil suivant');
+  ok(/tours\^1,66 à \^1,98/.test(mWarn124) && /37 à 49 %/.test(mWarn124),
+    'B124-6 : rappel -> argument de la loi d\'échelle chiffré');
+  const mPres124 = messages.turnBudgetPrescriptionMessage(
+    { turnCount: 20, warn: 12, prescribe: 20, step: 10, next: 30, floating: false });
+  ok(mPres124.startsWith('⛔') && /BUDGET DE TOURS/.test(mPres124),
+    'B124-6 : prescription -> sévérité maximale (⛔), en-tête propre');
+  ok(/deux sessions de ~10 tours/.test(mPres124) && /\/close-batch/.test(mPres124) && /\/fresh-session/.test(mPres124),
+    'B124-6 : prescription -> scission chiffrée + les deux issues nommées');
+  ok(!/Rappel tous les/.test(mPres124), 'B124-6 : pas de mention flottante au premier franchissement');
+  const mPresLot = messages.turnBudgetPrescriptionMessage(
+    { turnCount: 30, warn: 12, prescribe: 20, step: 10, next: 40, floating: true }, { title: 'Budget de tours' });
+  ok(/Budget de tours/.test(mPresLot) && /EN COURS/.test(mPresLot) && /commit intermédiaire/.test(mPresLot),
+    'B124-6 : lot en cours nommé -> clôture proposée EN MILIEU DE LOT');
+  ok(/Rappel tous les \+10 tours/.test(mPresLot) && /prochain à 40/.test(mPresLot),
+    'B124-6 : palier flottant -> prochain rappel annoncé');
+  const mPrompt124 = messages.turnBudgetPromptMessage({ turnCount: 20, warn: 12, prescribe: 20, step: 10, next: 30 });
+  ok(/point de commit/.test(mPrompt124) && /question à choix/.test(mPrompt124),
+    'B124-6 : injection -> consigne d\'ACTION (point de commit + question de clôture)');
+  ok(mPrompt124.split('\n').length <= 2, 'B124-6 : injection courte (<= 2 lignes : elle coûte du contexte)');
+
+  // --- B124-7. Bout-en-bout stop.js : franchissements réels, silence en dessous et au rejeu ---
+  const rLive124 = repo124('live', null);
+  seedTurns('b124-sous', 5);
+  const sSous = runHook('stop.js', { session_id: 'b124-sous', cwd: rLive124, transcript_path: t124 });
+  ok(sSous.code === 0 && !/tours/.test(sys124(sSous)),
+    'B124-7 : 6 tours -> silence total (non-régression sous le seuil)');
+
+  seedTurns('b124-warn', 11);
+  const sWarn = runHook('stop.js', { session_id: 'b124-warn', cwd: rLive124, transcript_path: t124 });
+  ok(sWarn.code === 0 && /Session à 12 tours/.test(sys124(sWarn)),
+    'B124-7 : franchissement du 1er seuil -> rappel au Stop');
+  const sWarn2 = runHook('stop.js', { session_id: 'b124-warn', cwd: rLive124, transcript_path: t124 });
+  ok(sWarn2.code === 0 && !/Session à 13 tours/.test(sys124(sWarn2)),
+    'B124-7 : anti-spam bout-en-bout -> pas de 2e rappel au tour suivant');
+
+  seedTurns('b124-pres', 19);
+  const sPres = runHook('stop.js', { session_id: 'b124-pres', cwd: rLive124, transcript_path: t124 });
+  ok(sPres.code === 0 && /BUDGET DE TOURS dépassé : 20 tours/.test(sys124(sPres)),
+    'B124-7 : franchissement du 2nd seuil -> prescription au Stop');
+  ok(/⛔/.test(sys124(sPres)), 'B124-7 : la prescription sort bien en sévérité maximale');
+  const sPres2 = runHook('stop.js', { session_id: 'b124-pres', cwd: rLive124, transcript_path: t124 });
+  ok(sPres2.code === 0 && !/BUDGET DE TOURS/.test(sys124(sPres2)),
+    'B124-7 : pas de 2e prescription avant le palier flottant');
+  seedTurns('b124-pres', 29);
+  const sPres3 = runHook('stop.js', { session_id: 'b124-pres', cwd: rLive124, transcript_path: t124 });
+  ok(sPres3.code === 0 && /BUDGET DE TOURS dépassé : 30 tours/.test(sys124(sPres3)),
+    'B124-7 : palier flottant +10 -> la session marathon ne devient pas muette');
+
+  // Coda HORS arbitre : la prescription survit à un tour saturé de nudges (plafond 3).
+  // Trois nudges concurrents faciles à provoquer : palier d'occupation + zone rouge + tour coûteux.
+  const tSat = writeTranscript('b124-sat.jsonl', ['{"type":"user"}',
+    JSON.stringify({ type: 'assistant', message: { model: 'claude-haiku-4-5', usage: { input_tokens: 190000, output_tokens: 900 } } })]);
+  seedTurns('b124-sat', 19);
+  const sSat = runHook('stop.js', { session_id: 'b124-sat', cwd: rLive124, transcript_path: tSat });
+  ok(sSat.code === 0 && /BUDGET DE TOURS/.test(sys124(sSat)) && /ZONE ROUGE/.test(sys124(sSat)),
+    'B124-7 : prescription émise en CODA -> jamais évincée par le plafond de l\'arbitre');
+
+  // Lot in_progress : la prescription le nomme et propose le commit intermédiaire.
+  const rLot124 = repo124('live-lot', null);
+  fs.writeFileSync(path.join(rLot124, '.vibe-agent', 'backlog.json'), JSON.stringify({
+    version: 1, lots: [{ id: 1, title: 'Lot à moitié fait', status: 'in_progress' }],
+  }));
+  seedTurns('b124-lot', 19);
+  const sLot124 = runHook('stop.js', { session_id: 'b124-lot', cwd: rLot124, transcript_path: t124 });
+  ok(sLot124.code === 0 && /Lot à moitié fait/.test(sys124(sLot124)) && /commit intermédiaire/.test(sys124(sLot124)),
+    'B124-7 : lot en cours -> clôture prescrite EN MILIEU DE LOT, lot nommé');
+
+  // Override projet, extinction explicite, rules corrompu : bout-en-bout.
+  const rTight = repo124('live-tight', 'budget:\n  warn_after_session_turns: 3\n  recommend_fresh_session_after_turns: 4\n');
+  seedTurns('b124-tight', 3);
+  const sTight = runHook('stop.js', { session_id: 'b124-tight', cwd: rTight, transcript_path: t124 });
+  ok(sTight.code === 0 && /BUDGET DE TOURS dépassé : 4 tours/.test(sys124(sTight)),
+    'B124-7 : seuils de rules.yaml appliqués live (4 tours suffisent quand le projet le dit)');
+  const rOff124 = repo124('live-off', 'budget:\n  turn_budget: off\n');
+  seedTurns('b124-live-off', 40);
+  const sOff124 = runHook('stop.js', { session_id: 'b124-live-off', cwd: rOff124, transcript_path: t124 });
+  ok(sOff124.code === 0 && !/BUDGET DE TOURS/.test(sys124(sOff124)) && !/Session à 41 tours/.test(sys124(sOff124)),
+    'B124-7 : turn_budget: off -> silence complet à 41 tours');
+  const rBroken124 = repo124('live-corrompu', ':::\n\tbudget: [\n  warn_after_session_turns\n');
+  seedTurns('b124-broken', 19);
+  const sBroken124 = runHook('stop.js', { session_id: 'b124-broken', cwd: rBroken124, transcript_path: t124 });
+  ok(sBroken124.code === 0 && /BUDGET DE TOURS dépassé : 20 tours/.test(sys124(sBroken124)),
+    'B124-7 : rules.yaml corrompu -> exit 0 et défauts appliqués (le garde-fou ne s\'éteint pas)');
+
+  // --- B124-8. Bout-en-bout user-prompt-submit.js : le canal qui agit sur Claude ---
+  seedTurns('b124-ups-sous', 15);
+  const uSous = runHook('user-prompt-submit.js',
+    { session_id: 'b124-ups-sous', cwd: rLive124, prompt: 'question anodine', transcript_path: t124 });
+  ok(uSous.code === 0 && !/budget/i.test(ctx124(uSous)),
+    'B124-8 : sous le seuil de prescription -> aucune injection (le rappel seul ne coûte pas de contexte)');
+
+  seedTurns('b124-ups', 22);
+  const uOn = runHook('user-prompt-submit.js',
+    { session_id: 'b124-ups', cwd: rLive124, prompt: 'question anodine', transcript_path: t124 });
+  ok(uOn.code === 0 && /Session à 22 tours/.test(ctx124(uOn)) && /point de commit/.test(ctx124(uOn)),
+    'B124-8 : au palier de prescription -> consigne injectée dans additionalContext');
+  const uOn2 = runHook('user-prompt-submit.js',
+    { session_id: 'b124-ups', cwd: rLive124, prompt: 'et ensuite ?', transcript_path: t124 });
+  ok(uOn2.code === 0 && !/point de commit/.test(ctx124(uOn2)),
+    'B124-8 : 1×/palier -> le prompt suivant ne repaye pas l\'injection');
+  // Le Stop du même tour ne doit pas avoir consommé le palier de l'injection (états séparés).
+  seedTurns('b124-both', 19);
+  runHook('stop.js', { session_id: 'b124-both', cwd: rLive124, transcript_path: t124 });
+  const uBoth = runHook('user-prompt-submit.js',
+    { session_id: 'b124-both', cwd: rLive124, prompt: 'suite', transcript_path: t124 });
+  ok(uBoth.code === 0 && /point de commit/.test(ctx124(uBoth)),
+    'B124-8 : les deux canaux parlent au même palier (anti-spam indépendants)');
+  seedTurns('b124-ups-off', 40);
+  const uOff = runHook('user-prompt-submit.js',
+    { session_id: 'b124-ups-off', cwd: rOff124, prompt: 'question', transcript_path: t124 });
+  ok(uOff.code === 0 && !/point de commit/.test(ctx124(uOff)),
+    'B124-8 : turn_budget: off -> aucune injection non plus');
+
+  // --- B124-9. Gabarit : surface documentée, et défauts ACTIFS sans rien décommenter ---
+  const tpl124 = fs.readFileSync(path.join(PKG, 'templates', 'rules.yaml'), 'utf8');
+  ok(/warn_after_session_turns/.test(tpl124) && /recommend_fresh_session_after_turns/.test(tpl124) && /turn_budget/.test(tpl124),
+    'B124-9 : le gabarit documente les deux seuils ET l\'interrupteur');
+  ok(!/et non un compteur de tours/.test(tpl124),
+    'B124-9 : le commentaire « pas un compteur de tours » périmé est retiré (décision révisée)');
+  const rTpl124 = repo124('gabarit', tpl124);
+  const tplSeuils = turnbudget.resolveThresholds(rTpl124);
+  ok(tplSeuils.warn === 12 && tplSeuils.prescribe === 20 && turnbudget.disabledFor(rTpl124) === false,
+    'B124-9 : projet initialisé au gabarit -> budget ACTIF aux défauts (clés commentées, rien à décommenter)');
 }
 
 // ============================ RÉSUMÉ ============================

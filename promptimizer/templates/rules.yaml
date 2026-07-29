@@ -4,11 +4,24 @@ agent:
   secondary_objective: close_batches_cleanly
 
 budget:
-  # Le vrai signal de coût est l'occupation du contexte en TOKENS — paliers dans
-  # lib/occupancy.js (150k/300k/500k/750k puis +250k) — et non un compteur de tours.
+  # DEUX signaux de coût cohabitent, ils ne mesurent pas la même chose : l'occupation du
+  # contexte en TOKENS (paliers dans lib/occupancy.js : 150k/300k/500k/750k puis +250k) dit
+  # la saturation ; le nombre de TOURS dit le coût cumulé — et c'est lui qui commande, le coût
+  # croissant en tours^1,66 à ^1,98 (mesuré, cf. lib/turnbudget.js).
   # Seuls les scalaires NUMÉRIQUES de ce bloc sont exécutables (lib/rules.js, lecteur
   # stdlib volontairement borné) ; le reste du fichier est lu par le modèle, pas par du code.
   max_repeated_reads_per_file: 1   # documentaire : relecture complète d'un fichier inchangé = gaspillage
+
+  # BUDGET DE TOURS (lot #124) — ACTIF PAR DÉFAUT : ces clés ne l'allument pas, elles le
+  # déplacent (défauts codés en dur, comme les paliers d'occupation). Au 1er seuil le Stop
+  # rappelle (⚠) ; au 2nd il prescrit la session fraîche (⛔) ET le hook UserPromptSubmit
+  # injecte la consigne à Claude, puis rappel tous les +10 tours.
+  # Bornes acceptées : 3 à 500 ; hors bornes -> clé ignorée, défaut gardé.
+  # warn_after_session_turns: 12             # défaut : 12 tours
+  # recommend_fresh_session_after_turns: 20  # défaut : 20 tours
+  # Éteindre le budget de tours : AUCUN nombre ne le peut (0 est hors bornes, donc ignoré, donc
+  # retour au défaut). Une seule clé le fait, explicitement — off | false | no | none | disabled :
+  # turn_budget: off
 
   # BORNE D'OCCUPATION (lot #112) — au franchissement, le hook Stop prescrit la clôture,
   # y compris EN MILIEU DE LOT (commit intermédiaire + /fresh-session), avec l'occupation
