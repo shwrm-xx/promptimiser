@@ -117,3 +117,4 @@
 #0112 | 2026-07-28 | 4e2abe0 | epic:Économie de contexte | verify:inconnu | fiche:oui | Borne d'occupation
 #0113 | 2026-07-29 | 5006aa7 | epic:Économie de contexte | verify:inconnu | fiche:oui | Diagnostic de session enrichi
 #0114 | 2026-07-28 | 3c881c3 | epic:Économie de contexte | verify:inconnu | fiche:non | Commande /pmz:dashboard
+#0118 | 2026-07-29 | aa419fa | epic:Bridge RTK | verify:inconnu | fiche:non | Clivage d'état plugin/manuel : un enable qui n'active rien
