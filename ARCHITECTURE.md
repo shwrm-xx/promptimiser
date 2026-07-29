@@ -1128,6 +1128,30 @@ fausserait les assertions sur le repli manuel). **Découplage `pmzDir()` / `stat
 qui est remplacé à chaque update du plugin, sinon l'état serait effacé. Repli manuel des deux :
 `~/.claude/promptimizer[/state]` (inchangé).
 
+**Clivage d'état plugin/manuel** (lot #118, epic Bridge RTK) : un script mutant l'état persisté
+peut être lancé **« à la main »** — terminal nu, hors session Claude Code — auquel cas
+`CLAUDE_PLUGIN_ROOT`/`CLAUDE_PLUGIN_DATA` sont **absents du process**, même sur une machine où le
+plugin PMZ est installé et actif. `stateDir()` y retombe alors sur le chemin manuel
+(`~/.claude/promptimizer/state`) alors que les hooks du plugin, eux, tournant avec l'env posé par
+le harness, visent `CLAUDE_PLUGIN_DATA/state` — deux fichiers différents : un `enable` écrit là où
+personne ne lit (symptôme observé : « un enable qui n'active rien »). Le chemin réel de
+`CLAUDE_PLUGIN_DATA` n'est **jamais reconstruit** en son absence (aucun format garanti côté
+harness au-delà de l'env, cf. D1) — `claude-dir.js` expose donc `stateDirDivergenceRisk()` :
+détecte le plugin installé sur disque (mêmes signaux que `doctor.js`, `enabledPlugins` de
+`settings.json` ou `plugins/installed_plugins.json`, dupliqués volontairement — `lib/` ne dépend
+pas d'`install/`) **indépendamment** de l'env du process courant, et signale un risque quand ce
+dernier ne tourne pas dans le contexte plugin. `rtk-status.js`/`scripts/rtk.js` l'exploitent :
+`status` affiche l'alerte, `enable` **refuse** plutôt que d'écrire un état mort.
+
+Audit des AUTRES appelants de `stateDir()` (mêmes symptômes possibles ?) : **aucun** ne partage ce
+clivage. `lib/occupancy.js` et `lib/rtk-metrics.js` ne sont écrits/lus que depuis des hooks (env
+harness toujours correct) ou des commandes slash exécutées **en session** (même contexte shell que
+le hook, `CLAUDE_PLUGIN_DATA` y est donc posée en plugin) — aucun chemin d'écriture « à la main »
+n'existe pour ces deux-là. `install/merge-settings.js` n'écrit sous `STATE_DIR` que le sidecar de
+prise de relais `context-guard.py` — mécanisme **exclusif au canal manuel** (impossible en plugin,
+cf. D1) et relu uniquement par `merge-settings.js` lui-même : pas de second lecteur susceptible de
+diverger.
+
 `merge-settings.js` : parse strict (échec → **abort**), backup horodaté vérifié (suffixe `-N`
 anti-collision, perms 0600), fusion **append-only par event** taguée (idempotente). La purge
 reconnaît les tags **courant + hérités** (`PMZ_TAGS`) → un renommage du paquet ne laisse pas de

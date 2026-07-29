@@ -3431,6 +3431,56 @@ section('claude-dir — mode plugin (découplage CLAUDE_PLUGIN_ROOT / CLAUDE_PLU
   if (savedCfg === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = savedCfg;
 }
 
+section('claude-dir — risque de divergence stateDir() : enable "à la main" hors contexte plugin (lot #118)');
+{
+  const cdir = require(path.join(PKG, 'lib', 'claude-dir.js'));
+  const savedRoot = process.env.CLAUDE_PLUGIN_ROOT;
+  const savedData = process.env.CLAUDE_PLUGIN_DATA;
+  const savedCfg = process.env.CLAUDE_CONFIG_DIR;
+  delete process.env.CLAUDE_PLUGIN_ROOT;
+  delete process.env.CLAUDE_PLUGIN_DATA;
+
+  const fakeCfg = path.join(SANDBOX, 'divergence-claude-dir');
+  fs.mkdirSync(fakeCfg, { recursive: true });
+  process.env.CLAUDE_CONFIG_DIR = fakeCfg;
+
+  // 1. Aucun signal plugin (settings.json propre, pas d'installed_plugins.json) → pas de risque :
+  //    canal manuel légitime, aucune divergence possible.
+  fs.writeFileSync(path.join(fakeCfg, 'settings.json'), JSON.stringify({ hooks: {} }, null, 2));
+  ok(cdir.pluginInstalledOnDisk() === false, 'DIVERGENCE: aucun signal plugin → pluginInstalledOnDisk=false');
+  ok(cdir.stateDirDivergenceRisk() === false, 'DIVERGENCE: canal manuel propre → aucun risque signalé');
+
+  // 2. Signal 1 : enabledPlugins de settings.json référence pmz, mais CE process ne tourne PAS
+  //    dans le contexte plugin (CLAUDE_PLUGIN_ROOT absent) → risque détecté.
+  fs.writeFileSync(path.join(fakeCfg, 'settings.json'),
+    JSON.stringify({ hooks: {}, enabledPlugins: { 'pmz@pmz-local': true } }, null, 2));
+  ok(cdir.pluginInstalledOnDisk() === true, 'DIVERGENCE: enabledPlugins référence pmz → pluginInstalledOnDisk=true');
+  ok(cdir.isPluginContext() === false, 'DIVERGENCE: CLAUDE_PLUGIN_ROOT absent → isPluginContext=false');
+  ok(cdir.stateDirDivergenceRisk() === true,
+    'DIVERGENCE: plugin installé (enabledPlugins) + hors contexte plugin → risque signalé');
+
+  // 3. Signal 2 : installed_plugins.json référence pmz (settings.json propre par ailleurs).
+  fs.writeFileSync(path.join(fakeCfg, 'settings.json'), JSON.stringify({ hooks: {} }, null, 2));
+  fs.mkdirSync(path.join(fakeCfg, 'plugins'), { recursive: true });
+  fs.writeFileSync(path.join(fakeCfg, 'plugins', 'installed_plugins.json'), JSON.stringify({
+    plugins: { 'pmz@pmz-local': [{ installPath: '/some/cache/path', version: '2.0.1' }] },
+  }, null, 2));
+  ok(cdir.stateDirDivergenceRisk() === true,
+    'DIVERGENCE: installed_plugins.json référence pmz → risque signalé (2e signal indépendant)');
+
+  // 4. CLAUDE_PLUGIN_ROOT posée (contexte plugin réel) → plus de risque, même plugin détecté sur
+  //    disque : ce process EST le plugin, stateDir() vise correctement CLAUDE_PLUGIN_DATA.
+  process.env.CLAUDE_PLUGIN_ROOT = path.join(SANDBOX, 'divergence-plugin-root');
+  ok(cdir.stateDirDivergenceRisk() === false,
+    'DIVERGENCE: CLAUDE_PLUGIN_ROOT posée → contexte plugin réel, aucun risque');
+  delete process.env.CLAUDE_PLUGIN_ROOT;
+
+  // Restaure l'env.
+  if (savedRoot === undefined) delete process.env.CLAUDE_PLUGIN_ROOT; else process.env.CLAUDE_PLUGIN_ROOT = savedRoot;
+  if (savedData === undefined) delete process.env.CLAUDE_PLUGIN_DATA; else process.env.CLAUDE_PLUGIN_DATA = savedData;
+  if (savedCfg === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = savedCfg;
+}
+
 // ============================ P. INSTALLEUR NODE (lot B) ============================
 section('install.js — bout-en-bout cross-platform (bac à sable, source sans .git)');
 {
@@ -6688,6 +6738,47 @@ section('Bridge RTK — statut, activation persistée, conflits sur 3 canaux (lo
   // découplés par claude-dir.js (déjà couvert par la section claude-dir dédiée) --
   ok(typeof rtkStatus.stateFile() === 'string' && rtkStatus.stateFile().length > 0,
     'DOUBLE CANAL: stateFile() résout un chemin quel que soit le canal d\'install (repose sur claude-dir.stateDir())');
+
+  // -- Divergence stateDir() : un enable "à la main" hors contexte plugin (lot #118) --
+  {
+    // PMZ_STATE_DIR est posée globalement pour TOUTE la suite (ligne ~24) : override explicite
+    // qui neutralise toujours le risque (l'appelant sait ce qu'il fait) → jamais de faux positif
+    // dans les AUTRES tests CLI de cette section, qui héritent tous de process.env via runNode.
+    ok(rtkStatus.stateDivergenceRisk() === false,
+      'DIVERGENCE: PMZ_STATE_DIR posée (override explicite, comme dans toute la suite) → jamais de risque');
+
+    // Sous-process avec PMZ_STATE_DIR EXPLICITEMENT vidée (runNode hérite sinon la valeur globale
+    // de la suite via Object.assign({}, process.env, env) — '' est falsy, donc réellement absente
+    // du point de vue de rtk-status.js/claude-dir.js), settings.json avec enabledPlugins pmz, et
+    // aucune CLAUDE_PLUGIN_ROOT héritée (le process de test ne la pose jamais durablement) →
+    // risque détecté : `status` l'affiche, `enable` refuse au lieu d'écrire un état mort.
+    const divClaudeDir = path.join(SANDBOX, 'rtk-claude-dir-divergence');
+    fs.mkdirSync(divClaudeDir, { recursive: true });
+    fs.writeFileSync(path.join(divClaudeDir, 'settings.json'),
+      JSON.stringify({ hooks: {}, enabledPlugins: { 'pmz@pmz-local': true } }, null, 2));
+    const divEnv = {
+      PATH: rtkDir + path.delimiter + process.env.PATH, RTK_TEST_MODE: 'rewrite',
+      CLAUDE_CONFIG_DIR: divClaudeDir, PMZ_STATE_DIR: '',
+    };
+    const rStatus = runNode(RTK_CLI, ['status', '--cwd', rtkRoot], divEnv);
+    ok(rStatus.code === 0 && /Risque de divergence d'état/.test(rStatus.out),
+      'DIVERGENCE: CLI status affiche l\'alerte quand le plugin est installé mais l\'invocation tourne hors contexte plugin');
+
+    const rEnable = runNode(RTK_CLI, ['enable', '--cwd', rtkRoot], divEnv);
+    ok(rEnable.code === 0 && /Refus/.test(rEnable.out),
+      'DIVERGENCE: CLI enable refuse (état qui n\'activerait rien pour les hooks du plugin)');
+
+    // Contrôle négatif : settings.json propre (aucun plugin détecté sur disque) → même sans
+    // CLAUDE_PLUGIN_ROOT, aucune alerte (canal manuel légitime) — enable fonctionne normalement.
+    const cleanClaudeDir = path.join(SANDBOX, 'rtk-claude-dir-divergence-clean');
+    fs.mkdirSync(cleanClaudeDir, { recursive: true });
+    fs.writeFileSync(path.join(cleanClaudeDir, 'settings.json'), JSON.stringify({ hooks: {} }, null, 2));
+    const cleanEnv = Object.assign({}, divEnv, { CLAUDE_CONFIG_DIR: cleanClaudeDir });
+    const rCleanEnable = runNode(RTK_CLI, ['enable', '--cwd', rtkRoot], cleanEnv);
+    ok(rCleanEnable.code === 0 && /activé/.test(rCleanEnable.out) && !/Risque de divergence/.test(rCleanEnable.out),
+      'DIVERGENCE: canal manuel propre (pas de plugin détecté) → aucune fausse alerte, enable accepté');
+    rtkStatus.writeEnableState(false);
+  }
 }
 
 // ============================ RTK3. MÉTROLOGIE HONNÊTE DES GAINS (lot #83) ============================

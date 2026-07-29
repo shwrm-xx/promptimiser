@@ -2,6 +2,38 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-29 — « Clivage d'état plugin/manuel : un enable qui n'active rien » (epic « Bridge RTK », backlog #118)
+
+Un `/pmz:rtk enable` lancé « à la main » (terminal nu, hors session Claude Code) n'a aucun moyen de
+voir `CLAUDE_PLUGIN_ROOT`/`CLAUDE_PLUGIN_DATA` (posées par le harness, jamais par un shell nu) —
+même sur une machine où le plugin PMZ est installé. `stateDir()` retombe alors sur le chemin manuel
+tandis que les hooks du plugin, eux, ciblent `CLAUDE_PLUGIN_DATA/state` : deux fichiers d'état
+distincts, l'activation écrite ne produit aucun effet observable par les hooks.
+
+- **`claude-dir.js`** expose `pluginInstalledOnDisk()` (détection du plugin **indépendante** de
+  l'env du process courant — mêmes signaux que `doctor.js` : `enabledPlugins` de `settings.json` ou
+  `plugins/installed_plugins.json`, dupliqués volontairement, `lib/` ne dépend pas d'`install/`),
+  `isPluginContext()` et `stateDirDivergenceRisk()` (plugin installé + hors contexte plugin). Le
+  chemin réel de `CLAUDE_PLUGIN_DATA` n'est **jamais reconstruit** en son absence — aucun format
+  garanti côté harness (cf. D1) : mieux vaut alerter que d'écrire en silence un état mort.
+- **`rtk-status.js`** : `computeStatus()` porte désormais `stateDivergenceRisk`/`stateFile` (`false`
+  sous l'override explicite `PMZ_STATE_DIR`, jamais de faux positif en test).
+- **`scripts/rtk.js`** : `status` affiche l'alerte explicite (chemin concerné + remédiation —
+  relancer depuis une session avec le plugin actif) ; `enable` **refuse** au lieu d'écrire un état
+  que les hooks ne liront jamais.
+- **Audit des autres appelants de `stateDir()`** (même clivage possible ?) : `lib/occupancy.js` et
+  `lib/rtk-metrics.js` ne sont jamais écrits/lus « à la main » (uniquement hooks + commandes slash
+  en session, même contexte shell que le harness) — aucun clivage. Le sidecar de prise de relais
+  `context-guard.py` (`install/merge-settings.js`) est exclusif au canal manuel (impossible en
+  plugin, cf. D1) et n'a qu'un seul lecteur (lui-même) — aucun second canal susceptible de diverger.
+- Fichiers touchés : `promptimizer/lib/claude-dir.js`, `promptimizer/lib/rtk-status.js`,
+  `promptimizer/scripts/rtk.js`, `test/run-tests.js` (nouvelle section dédiée + assertions dans la
+  section RTK2 existante), `ARCHITECTURE.md`.
+- Vérifié : `node test/run-tests.js` → **1937 OK / 0 échec**. Bac à sable : detection positive
+  (`enabledPlugins`/`installed_plugins.json` référençant `pmz`, hors `CLAUDE_PLUGIN_ROOT`) → alerte
+  affichée + `enable` refusé ; contrôle négatif (canal manuel propre, aucun plugin détecté) →
+  aucune fausse alerte, `enable` fonctionne normalement.
+
 ## 2026-07-29 — « Diagnostic de session enrichi » (epic « Économie de contexte », backlog #113)
 
 Quatrième lot de l'epic, débloqué par #112. `/pmz:budget` chiffrait déjà l'occupation et le

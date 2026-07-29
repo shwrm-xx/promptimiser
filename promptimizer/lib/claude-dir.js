@@ -14,6 +14,7 @@
 //
 // Fonctions (call-time, sensibles à l'env) plutôt que constantes : un test peut poser
 // CLAUDE_CONFIG_DIR puis appeler sans recharger le module. Fail-open : jamais de throw.
+const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
@@ -47,4 +48,49 @@ function stateDir() {
 function hooksDir() { return path.join(pmzDir(), 'hooks'); }
 function settingsPath() { return path.join(claudeDir(), 'settings.json'); }
 
-module.exports = { claudeDir, pmzDir, stateDir, hooksDir, settingsPath };
+// true si CE process tourne dans le contexte plugin (env posé par le harness). false pour un
+// script lancé "à la main" (terminal nu, hors session Claude Code) même sur une machine où le
+// plugin PMZ est par ailleurs installé.
+function isPluginContext() {
+  const root = process.env.CLAUDE_PLUGIN_ROOT;
+  return !!(root && root.trim());
+}
+
+// Détecte le plugin INSTALLÉ sur la machine, indépendamment de l'env du process courant — mêmes
+// signaux que install/doctor.js (enabledPlugins de settings.json, installed_plugins.json),
+// dupliqués volontairement ici : lib/ ne dépend pas d'install/. Lecture de fichier seule.
+function pluginInstalledOnDisk() {
+  try {
+    const data = JSON.parse(fs.readFileSync(settingsPath(), 'utf8'));
+    const ep = data && data.enabledPlugins;
+    if (ep && Object.keys(ep).some((k) => k.split('@')[0] === 'pmz' && ep[k] === true)) return true;
+  } catch (_) { /* absent/illisible -> pas de signal */ }
+  try {
+    const raw = fs.readFileSync(path.join(claudeDir(), 'plugins', 'installed_plugins.json'), 'utf8');
+    const data = JSON.parse(raw);
+    const plugins = data && data.plugins;
+    if (plugins && Object.keys(plugins).some((k) => k.split('@')[0] === 'pmz')) return true;
+  } catch (_) { /* absent/illisible */ }
+  return false;
+}
+
+// Risque de divergence de stateDir() : le plugin est installé sur la machine mais CE process ne
+// tourne pas dans son contexte (CLAUDE_PLUGIN_ROOT/DATA absents) -> stateDir() va retomber sur le
+// chemin manuel alors que les hooks du plugin, eux, liront CLAUDE_PLUGIN_DATA/state au runtime.
+// Le chemin réel de CLAUDE_PLUGIN_DATA n'est JAMAIS reconstruit ici (aucun format garanti côté
+// harness au-delà de l'env — cf. docs/decisions/D1-plugin-go-nogo.md) : mieux vaut signaler le
+// risque que d'écrire en silence dans un dossier que les hooks ne liront jamais (lot #118).
+function stateDirDivergenceRisk() {
+  return !isPluginContext() && pluginInstalledOnDisk();
+}
+
+module.exports = {
+  claudeDir,
+  pmzDir,
+  stateDir,
+  hooksDir,
+  settingsPath,
+  isPluginContext,
+  pluginInstalledOnDisk,
+  stateDirDivergenceRisk,
+};

@@ -48,6 +48,9 @@ function printStatus(status) {
   lines.push(`Binaire rtk : ${status.binary || 'introuvable'}`);
   lines.push(`Bridge PMZ : ${status.bridgeEnabled ? 'actif' : 'inactif'}`);
   if (status.neutralized) lines.push('⚠ Bridge neutralisé automatiquement (conflit détecté sur un état précédemment actif).');
+  if (status.stateDivergenceRisk) {
+    lines.push(`⚠ Risque de divergence d'état : le plugin PMZ est installé sur cette machine mais cette invocation tourne HORS contexte plugin (CLAUDE_PLUGIN_ROOT/DATA absents). L'état lu/écrit ici (${status.stateFile}) peut différer de celui que liront les hooks du plugin en session — relance cette commande via /pmz:rtk depuis une session Claude Code avec le plugin actif.`);
+  }
   lines.push('');
   const rem = remediation(status);
   if (rem.length) {
@@ -71,6 +74,11 @@ function cmdStatus() {
 
 function cmdEnable() {
   const status = rtk.computeStatus({ root: root() });
+  if (status.stateDivergenceRisk) {
+    printStatus(status);
+    process.stdout.write("\nRefus : activer ici écrirait un état que les hooks du plugin ne liront jamais — relance depuis une session Claude Code (canal plugin actif).\n");
+    return;
+  }
   if (status.state === 'conflict') {
     printStatus(status);
     process.stdout.write("\nRefus : conflit non résolu — résous-le (`/pmz:rtk migrate` ou manuellement) avant d'activer.\n");

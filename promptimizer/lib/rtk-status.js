@@ -24,6 +24,13 @@ function stateFile() {
   return path.join(stateDir(), 'rtk-state.json');
 }
 
+// Risque de divergence (lot #118) : jamais signalé sous un override explicite PMZ_STATE_DIR
+// (tests / usage assumé), sinon délégué à claude-dir.js (seul détenteur des signaux plugin).
+function stateDivergenceRisk() {
+  if (process.env.PMZ_STATE_DIR) return false;
+  return cdir.stateDirDivergenceRisk();
+}
+
 function readEnableState() {
   return readJson(stateFile(), { enabled: false });
 }
@@ -184,11 +191,14 @@ function computeStatus(opts) {
     bridgeEnabled: conflict ? false : wasEnabled,
     neutralized,
     channels: { claude, opencode, codex },
+    stateDivergenceRisk: stateDivergenceRisk(),
+    stateFile: stateFile(),
   };
 }
 
 module.exports = {
   stateFile,
+  stateDivergenceRisk,
   readEnableState,
   writeEnableState,
   isBridgeEnabled,
