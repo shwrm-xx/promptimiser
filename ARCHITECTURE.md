@@ -674,6 +674,16 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   d'`--allow-no-gate`. Un lot sans pointeur `us` n'est pas concerné (aucune régression sur le cas
   majoritaire) ; un fichier illisible est traité comme « pas de vérification possible », pas
   comme un refus (`checkUsStructure` retourne `null`, fail-silent).
+- **`/pmz:scope` rédige l'US, ne la laisse plus « à remplir à la main »** (lot #126, epic
+  « Sessions courtes ») : jusqu'ici, un lot dont l'US restait à créer se voyait poser le
+  gabarit vierge (`us --id <id> --new`) sans que son contenu ne soit jamais rédigé par la
+  commande — le gabarit portait littéralement la consigne « à remplir à la main », reportant la
+  rédaction hors du flux de découpe. `commands/scope.md` demande désormais de **rédiger** le
+  contenu (récit, critères d'acceptation, hors-périmètre) dès l'étape 1, de le faire **valider**
+  dans la même question que le découpage (étape 2), puis de l'**écrire explicitement** (Edit)
+  dans le fichier posé par `--new` à l'étape 4 — le gabarit n'est jamais laissé vide. Pas de
+  changement côté `lib/backlog.js`/CLI : `us --new` continue de poser le gabarit brut (utile
+  hors flux `/scope`), seul le prompt `/pmz:scope` change de comportement.
 - **Pointeur `us` dans la fiche d'archive** (lot #103, epic « US & Jira ») : fait remonter `us`
   (#101) jusqu'à la seule surface de clôture qui l'ignorait — deux lignes (en-tête + section
   « Liens ») dans `ficheSkeleton` (`lib/archive.js`, tier 1, lot #95), toujours **conditionnel** :

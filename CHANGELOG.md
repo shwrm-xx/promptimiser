@@ -2,6 +2,23 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-29 — `/pmz:scope` rédige les US (lot #126, epic Sessions courtes)
+
+Jusqu'ici, une US à créer se voyait poser un gabarit vierge (`us --id <id> --new`) portant
+littéralement la consigne « à remplir à la main » — la rédaction sortait du flux de découpe et
+finissait souvent oubliée. `/pmz:scope` rédige désormais le contenu (récit, critères
+d'acceptation, hors-périmètre) dès l'étape 1, le fait valider dans la même question que le
+découpage (étape 2), puis l'écrit explicitement dans le fichier posé par `--new` (étape 4) — le
+gabarit n'est plus jamais laissé vide.
+
+- **`promptimizer/commands/scope.md`** : étapes 1/2/4 mises à jour (rédaction → validation →
+  écriture explicite), suppression de la consigne « à remplir à la main ». Aucun changement côté
+  `lib/backlog.js`/CLI : `us --new` continue de poser le gabarit brut, seul le prompt change.
+- Vérifié : `node test/run-tests.js` → **2157 OK · 0 échec** (fichier prompt, aucun test dédié —
+  la commande `us --new`/`createUsFile` sous-jacente reste couverte inchangée).
+- Non vérifié : le comportement réel de Claude face à la nouvelle consigne (mesurable seulement
+  en session réelle de `/pmz:scope`).
+
 ## 2026-07-29 — Frein sur la sortie relue (lot #125, epic Sessions courtes)
 
 Le budget de tours (lot #124) mesure le **nombre** de tours, pas ce qu'ils **coûtent** à relire.
