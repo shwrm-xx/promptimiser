@@ -97,6 +97,11 @@ try {
 }
 
 log('');
-log('Marketplace publique attendue (dépôt public + push effectué) :');
-log('  claude plugin marketplace add <owner>/<repo>@' + BRANCH);
+log('Canal recommandé — catalogue committé sur main (.claude-plugin/marketplace.json), qui');
+log('déclare le plugin en source git-subdir vers cette branche. Rien d\'autre à faire :');
+log('  claude plugin marketplace add <owner>/<repo>');
 log('  claude plugin install pmz@' + MARKETPLACE_NAME);
+log('');
+log('Fallback (ajouter la branche elle-même — même nom de marketplace, donc remplace le canal');
+log('main chez l\'utilisateur ; noter la syntaxe « #ref », et NON « @ref ») :');
+log('  claude plugin marketplace add https://github.com/<owner>/<repo>.git#' + BRANCH);

@@ -1,0 +1,31 @@
+{
+  "name": "pmz-marketplace",
+  "owner": {
+    "name": "Marwan",
+    "url": "https://github.com/shwrm-xx"
+  },
+  "metadata": {
+    "description": "Marketplace publique Promptimizer (gouvernance de session vibecoding)."
+  },
+  "plugins": [
+    {
+      "name": "pmz",
+      "displayName": "Promptimizer",
+      "description": "Promptimizer — gouvernance de session vibecoding (Claude Code) : réduit la relecture de contexte, force une clôture propre des lots, injecte les handoffs entre sessions.",
+      "author": {
+        "name": "Marwan"
+      },
+      "homepage": "https://github.com/shwrm-xx/promptimiser",
+      "repository": "https://github.com/shwrm-xx/promptimiser",
+      "license": "MIT",
+      "category": "workflow",
+      "keywords": ["session", "contexte", "tokens", "handoff", "gouvernance", "vibecoding"],
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/shwrm-xx/promptimiser.git",
+        "path": "promptimizer",
+        "ref": "plugin-release"
+      }
+    }
+  ]
+}

@@ -2,6 +2,40 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-29 — Dépôt ajoutable en marketplace (lot #127, epic Diffusion plugin)
+
+`claude plugin marketplace add shwrm-xx/promptimiser` échouait : Claude Code cherche
+`.claude-plugin/marketplace.json` **à la racine du dépôt**, sur la branche par défaut, et le
+dépôt n'en avait pas — le catalogue n'existait que sur la branche d'artefact `plugin-release`
+(figée en v2.0.1 alors que `main` était en 2.4.0), annoncée par une syntaxe qui **n'existe pas**
+côté Claude Code (`owner/repo@branche` ; la vraie forme est `URL.git#ref`). Le catalogue est
+désormais committé sur `main` et déclare le plugin en source `git-subdir` vers la branche : le
+dépôt nu s'ajoute en une commande, sans qu'aucun artefact de build n'entre dans `main`.
+
+- **`.claude-plugin/marketplace.json`** (nouveau, racine) : marketplace `pmz-marketplace`, une
+  entrée `pmz`, source `git-subdir` (`url` = dépôt, `path` = `promptimizer`,
+  `ref` = `plugin-release`). L'indirection par la branche est **nécessaire** : un plugin est copié
+  dans un cache à l'install et ne peut référencer aucun fichier hors de son dossier, or
+  `skills/promptimizer/` vit hors de `promptimizer/` et les chemins `~/.claude/promptimizer` ne
+  sont réécrits en `${CLAUDE_PLUGIN_ROOT}` qu'au build. Pas de champ `version` dans l'entrée :
+  la version reste tenue par `VERSION` → `plugin.json`, une seule source de vérité, donc rien à
+  retoucher sur `main` à chaque release.
+- **`promptimizer/install/publish-plugin.js`** : message final corrigé — il annonçait
+  `marketplace add <owner>/<repo>@plugin-release` (syntaxe inexistante). Il pointe maintenant le
+  canal `main` et, en fallback, la forme réelle `https://…/repo.git#plugin-release`. Aucun
+  changement de logique de publication.
+- **`README.md`** : canal GitHub public réécrit (commande unique côté utilisateur, rôle du
+  catalogue vs celui de la branche) ; corrigé au passage un exemple `extraKnownMarketplaces` faux
+  (`{"source":"git","repo":…}` → `{"source":"url","url":…}`).
+- **`ARCHITECTURE.md`** : section « Diffusion tiers » — décision du catalogue committé + les
+  trois contraintes vérifiées contre la doc officielle (emplacement racine, `#ref` et non `@ref`,
+  plugin copié en cache), et la coexistence assumée des deux catalogues homonymes (Claude Code
+  n'enregistre qu'une marketplace par nom : ajouter l'un remplace l'autre).
+- Vérifié : `claude plugin validate .` → **Validation passed** (CLI 2.1.215) ;
+  `node test/run-tests.js` → **2175 OK · 0 échec** (nouvelle section B127, 18 assertions :
+  emplacement, cohérence catalogue ↔ `plugin.json`, absence de `version`, forme de la source,
+  non-régression de la syntaxe `@plugin-release` dans la doc et le script).
+
 ## 2026-07-29 — `/pmz:scope` rédige les US (lot #126, epic Sessions courtes)
 
 Jusqu'ici, une US à créer se voyait poser un gabarit vierge (`us --id <id> --new`) portant

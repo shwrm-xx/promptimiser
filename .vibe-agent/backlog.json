@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "next_id": 127,
+  "next_id": 128,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-29T14:20:24.866Z",
+  "updated_at": "2026-07-29T15:53:25.843Z",
   "lots": [
     {
       "id": 1,
@@ -3585,6 +3585,46 @@
       "perimeter": [],
       "depends_on": [],
       "session_owner": null
+    },
+    {
+      "id": 127,
+      "title": "Dépôt ajoutable en marketplace",
+      "scope": ".claude-plugin/marketplace.json, README.md, ARCHITECTURE.md, promptimizer/install/publish-plugin.js, test/run-tests.js",
+      "status": "in_progress",
+      "model_hint": "sonnet",
+      "effort_hint": "medium",
+      "epic": "Diffusion plugin",
+      "verify": "node test/run-tests.js",
+      "us": null,
+      "closed_commit": null,
+      "closed_at": null,
+      "closed_session_id": null,
+      "closed_occupancy": null,
+      "closed_verify": null,
+      "cost_tokens": 0,
+      "cost_turns": 0,
+      "cost_subagent_tokens": 0,
+      "closed_avg_cost_per_turn": null,
+      "started_at": "2026-07-29T15:53:25.835Z",
+      "lot_number": null,
+      "note": null,
+      "session_touches": 0,
+      "perimeter": [],
+      "depends_on": [],
+      "session_owner": null,
+      "integrations": {
+        "command_optimizer": {
+          "snapshot_start": {
+            "commands": 1,
+            "delivered_tokens": 4
+          },
+          "rtk_gain_start": {
+            "raw_tokens": 0,
+            "delivered_tokens": 0,
+            "commands": 0
+          }
+        }
+      }
     }
   ]
 }

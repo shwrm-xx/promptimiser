@@ -1473,9 +1473,32 @@ manifeste alignée sur `VERSION`, `marketplace.json` locale à **source string r
   (`marketplace add owner/repo` lit sans authentification). `install/publish-plugin.js` assemble
   `dist/marketplace/` (via `build-plugin.js`) et le pousse **seul** sur la branche orpheline
   `plugin-release` (aucun historique partagé avec `main` ; push uniquement si `--push` explicite).
-  Côté utilisateur : `claude plugin marketplace add shwrm-xx/promptimiser@plugin-release` puis
-  `claude plugin install pmz@pmz-marketplace`. Même mécanique `extraKnownMarketplaces` (source
-  `github`) pour éviter le `marketplace add` par poste.
+  Même mécanique `extraKnownMarketplaces` (source `github`) pour éviter le `marketplace add` par poste.
+- **Catalogue committé à la racine de `main` (lot #127)** : `.claude-plugin/marketplace.json` —
+  seul fichier du canal plugin versionné sur `main`, et **jamais** un artefact de build : il ne
+  contient que des métadonnées + une source `git-subdir`
+  (`url` = dépôt, `path` = `promptimizer`, `ref` = `plugin-release`). Conséquence : le dépôt nu est
+  ajoutable en une commande (`claude plugin marketplace add shwrm-xx/promptimiser` puis
+  `claude plugin install pmz@pmz-marketplace`), pendant que `main` reste le miroir plat source
+  intact. Trois points **vérifiés contre la doc officielle**, à ne pas régresser :
+  - le fichier doit être **à la racine du dépôt** (`marketplace add owner/repo` ne le cherche pas
+    ailleurs, et sur la **branche par défaut** seulement) ;
+  - une branche s'ajoute avec l'URL git complète et **`#ref`**, jamais `owner/repo@ref` (syntaxe
+    inexistante — c'était l'erreur affichée par `publish-plugin.js` et la doc jusqu'au lot #127) ;
+  - le plugin est **copié dans un cache** à l'install : un plugin ne peut pas référencer de fichier
+    hors de son propre dossier. C'est pourquoi `main` n'est pas installable *tel quel*
+    (`skills/promptimizer/` vit hors de `promptimizer/`, et les chemins `~/.claude/promptimizer` ne
+    sont réécrits en `${CLAUDE_PLUGIN_ROOT}` qu'au build) — d'où l'indirection vers la branche
+    d'artefact plutôt qu'une source relative `./promptimizer`.
+  L'entrée marketplace **ne porte pas de `version`** : la version vient du `plugin.json` de la
+  branche (aligné sur `VERSION` par `build-plugin.js`), une seule source de vérité. Le catalogue de
+  `main` n'a donc rien à retoucher à chaque release. `test/run-tests.js` garde la cohérence
+  catalogue ↔ `plugin.json` (name/description/license/homepage/repository) et la forme de la source.
+- **Deux entrées, un seul nom** : la branche `plugin-release` porte aussi un
+  `.claude-plugin/marketplace.json` (nommé `pmz-marketplace`, comme celui de `main`) — fallback
+  historique conservé. Claude Code n'enregistre qu'une marketplace par nom : ajouter l'un
+  **remplace** l'autre côté utilisateur. Volontaire (deux chemins vers la même marketplace), canal
+  recommandé = `main`.
 - **Windows non testé réel dans ce lot** : pas de machine Windows disponible dans l'environnement
   d'exécution de ce tour ; les wrappers (`bin/pmz-hook`) et la résolution de chemins
   (`claude-dir.js`) restent donc vérifiés seulement par lecture de code + tests unitaires

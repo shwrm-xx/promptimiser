@@ -9139,6 +9139,59 @@ section('Frein sur la sortie relue : nudge 1×/session sur la sortie cumulée + 
     'B125-7 : projet initialisé au gabarit -> frein ACTIF aux défauts (clés commentées, rien à décommenter)');
 }
 
+// ==========================================================================
+// B127. Catalogue marketplace committé à la racine (canal GitHub public)
+// ==========================================================================
+// Le seul fichier du canal plugin versionné sur main. Purement statique : on lit le dépôt,
+// aucun bac à sable. Garde-fous : emplacement, cohérence avec plugin.json, source unique de
+// vérité pour la version, forme de la source, et non-régression de la syntaxe d'ajout.
+section('B127 — catalogue marketplace (racine du dépôt)');
+{
+  const catalogPath = path.join(REPO, '.claude-plugin', 'marketplace.json');
+  ok(fs.existsSync(catalogPath),
+    'B127-1 : .claude-plugin/marketplace.json présent à la RACINE du dépôt (seul emplacement lu par `marketplace add owner/repo`)');
+
+  let cat = null;
+  try { cat = JSON.parse(fs.readFileSync(catalogPath, 'utf8')); } catch (_) { /* cat reste null */ }
+  ok(cat !== null, 'B127-1 : catalogue = JSON valide');
+
+  if (cat) {
+    ok(cat.name === 'pmz-marketplace', 'B127-2 : nom de marketplace = pmz-marketplace (pilote `install pmz@<nom>`)');
+    ok(cat.owner && typeof cat.owner.name === 'string' && cat.owner.name.length > 0,
+      'B127-2 : owner.name présent (champ requis par le schéma)');
+    ok(Array.isArray(cat.plugins) && cat.plugins.length === 1,
+      'B127-2 : exactement une entrée plugin');
+
+    const entry = (cat.plugins || [])[0] || {};
+    const manifest = JSON.parse(fs.readFileSync(path.join(PKG, '.claude-plugin', 'plugin.json'), 'utf8'));
+
+    ok(entry.name === manifest.name,
+      'B127-3 : entrée.name === plugin.json.name (un écart change le namespace des commandes /pmz:*)');
+    for (const f of ['description', 'license', 'homepage', 'repository']) {
+      ok(entry[f] === manifest[f], `B127-3 : entrée.${f} cohérente avec plugin.json (pas de dérive du catalogue)`);
+    }
+
+    ok(!('version' in entry),
+      'B127-4 : l\'entrée ne porte PAS de version — source unique = VERSION -> plugin.json (sinon release à deux endroits)');
+
+    const src = entry.source || {};
+    ok(src.source === 'git-subdir',
+      'B127-5 : source git-subdir (une source relative ./promptimizer serait cassée : skill hors du dossier plugin + chemins non réécrits)');
+    ok(src.path === 'promptimizer', 'B127-5 : source.path === promptimizer (racine du plugin sur la branche d\'artefact)');
+    ok(src.ref === 'plugin-release', 'B127-5 : source.ref === plugin-release (branche produite par publish-plugin.js)');
+    ok(typeof src.url === 'string' && /^https:\/\/.+\.git$/.test(src.url),
+      'B127-5 : source.url = URL https complète en .git (le shorthand owner/repo clone en SSH par défaut)');
+  }
+
+  // Non-régression : la syntaxe `owner/repo@branche` n'existe pas côté Claude Code (c'est
+  // l'URL complète + `#ref`). Elle était annoncée par publish-plugin.js et la doc avant #127.
+  for (const rel of ['README.md', 'ARCHITECTURE.md', path.join('promptimizer', 'install', 'publish-plugin.js')]) {
+    const body = fs.readFileSync(path.join(REPO, rel), 'utf8');
+    ok(!/@plugin-release/.test(body),
+      `B127-6 : ${rel} n'annonce plus la syntaxe inexistante « @plugin-release » (c'est « .git#plugin-release »)`);
+  }
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

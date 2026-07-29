@@ -71,30 +71,42 @@ pas à relancer `marketplace add` à la main, référencer la marketplace dans `
 {
   "extraKnownMarketplaces": {
     "pmz-interne": {
-      "source": { "source": "git", "repo": "https://exemple-git-interne/pmz-marketplace.git" }
+      "source": { "source": "url", "url": "https://exemple-git-interne/pmz-marketplace.git" }
     }
   }
 }
 ```
 
-(`source` peut aussi être `"github"` ou un chemin local — cf. doc officielle marketplace Claude
-Code.)
+(`source` peut aussi être `"github"` — champ `repo` en `owner/repo` — ou un chemin local, cf. doc
+officielle marketplace Claude Code.)
 
-**Canal GitHub public.** Prérequis : le dépôt doit être **public** (la commande
-`marketplace add owner/repo` de Claude Code lit le dépôt sans authentification). Côté mainteneur,
-publier l'artefact de build sur la branche orpheline `plugin-release` :
+**Canal GitHub public.** Le catalogue est committé à la racine du dépôt
+(`.claude-plugin/marketplace.json`, branche `main`) ; il ne contient **aucun** artefact de build :
+il déclare le plugin en source `git-subdir` pointant le dossier `promptimizer/` de la branche
+`plugin-release`. Côté utilisateur final, une seule commande à retenir :
+
+```
+claude plugin marketplace add shwrm-xx/promptimiser
+claude plugin install pmz@pmz-marketplace
+```
+
+Prérequis : le dépôt doit être **public** (`marketplace add owner/repo` lit le dépôt sans
+authentification). Côté mainteneur, publier l'artefact de build à chaque release :
 
 ```
 node promptimizer/install/publish-plugin.js --push
 ```
 
-(le script assemble `dist/marketplace/` via `build-plugin.js` puis pousse son contenu seul sur
-`plugin-release` — la branche ne partage aucun historique avec `main`). Côté utilisateur final :
+(le script assemble `dist/marketplace/` via `build-plugin.js` puis pousse son contenu seul sur la
+branche orpheline `plugin-release` — aucun historique partagé avec `main`). Le catalogue de `main`
+n'a pas à être retouché : il suit la branche, et Claude Code sert la nouvelle version dès que
+`plugin.json` change de `version` (donc dès que `VERSION` est bumpée).
 
-```
-claude plugin marketplace add shwrm-xx/promptimiser@plugin-release
-claude plugin install pmz@pmz-marketplace
-```
+La branche `plugin-release` porte aussi son propre `.claude-plugin/marketplace.json` (fallback
+historique : `marketplace add https://github.com/shwrm-xx/promptimiser.git#plugin-release`). Les
+deux portent le **même nom** `pmz-marketplace` : ce sont deux chemins vers la même marketplace, et
+Claude Code n'en enregistre qu'une par nom — ajouter l'un remplace l'autre. Canal recommandé :
+`main`.
 
 Les deux canaux (manuel / plugin) sont détaillés dans [ARCHITECTURE.md](ARCHITECTURE.md) ; le
 verdict de faisabilité dans [docs/decisions/D1-plugin-go-nogo.md](docs/decisions/D1-plugin-go-nogo.md).
