@@ -130,3 +130,4 @@
 #0125 | 2026-07-29 | 90302b9 | epic:Sessions courtes | verify:inconnu | fiche:oui | Frein sur la sortie relue
 #0126 | 2026-07-29 | 58c8829 | epic:Sessions courtes | verify:inconnu | fiche:oui | Scope rédige les US
 #0128 | 2026-07-29 | edff444 | epic:Diffusion plugin | verify:inconnu | fiche:non | Chemins d'aide plugin-conscients dans messages.js
+#0129 | 2026-07-29 | e1a1981 | epic:Diffusion plugin | verify:inconnu | fiche:non | Préconisation de modèle non rognée par le cap du resume
