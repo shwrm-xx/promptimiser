@@ -60,9 +60,13 @@ function tok(n) {
   if (v >= 1000) return Math.round(n / 1000) + 'k';
   return String(Math.round(n));
 }
-function usd(n) {
+// Conversion d'affichage $ → € au taux statique de lib/metrics.js (seul point d'édition du
+// taux). Le calcul de coût reste en USD partout dans metrics.js ; cette fonction ne fait
+// QUE mettre en forme pour la page.
+function eur(n) {
   if (n == null || !Number.isFinite(n)) return '—';
-  return '$' + fr(n >= 100 ? n.toFixed(0) : n.toFixed(2));
+  const v = n * m.USD_TO_EUR;
+  return fr(v >= 100 ? v.toFixed(0) : v.toFixed(2)) + ' €';
 }
 function pct(x) {
   if (x == null || !Number.isFinite(x)) return '—';
@@ -112,9 +116,9 @@ function loadTemplate() {
   return { tpl: FALLBACK_TPL, fallback: true };
 }
 
-// Substitution par FONCTION de remplacement, jamais par chaîne : les valeurs contiennent des
-// « $ » (montants) et `String.replace` interpréterait `$&`, `$'`, `$1`… comme des références.
-// Tout jeton non fourni est effacé plutôt que laissé visible dans la page.
+// Substitution par FONCTION de remplacement, jamais par chaîne : une valeur (chemin, identifiant
+// de session…) peut contenir un « $ » que `String.replace` interpréterait comme `$&`, `$'`,
+// `$1`… Tout jeton non fourni est effacé plutôt que laissé visible dans la page.
 function render(tpl, map) {
   return tpl.replace(/\{\{([A-Z_]+)\}\}/g, (_all, key) => (map[key] == null ? '' : String(map[key])));
 }
@@ -175,14 +179,14 @@ function costSection(w) {
   const c = w.cost;
   const scale = c.total > 0 ? c.total : 1;
   const rows = [
-    barRow('lecture de cache', usd(c.cacheRead), c.cacheRead / scale, 's1'),
-    barRow('sortie', usd(c.output), c.output / scale, 's2'),
-    barRow('écriture de cache', usd(c.cacheWrite), c.cacheWrite / scale, 's3'),
-    barRow('entrée', usd(c.input), c.input / scale, 's4'),
+    barRow('lecture de cache', eur(c.cacheRead), c.cacheRead / scale, 's1'),
+    barRow('sortie', eur(c.output), c.output / scale, 's2'),
+    barRow('écriture de cache', eur(c.cacheWrite), c.cacheWrite / scale, 's3'),
+    barRow('entrée', eur(c.input), c.input / scale, 's4'),
   ].join('');
-  const tiers = Object.keys(m.PRICES).map((t) => `${t} ${usd(m.PRICES[t].cacheRead)}/M en lecture de cache`).join(' · ');
+  const tiers = Object.keys(m.PRICES).map((t) => `${t} ${eur(m.PRICES[t].cacheRead)}/M en lecture de cache`).join(' · ');
   return card('Décomposition du coût', `<div class="pmz-rows">${rows}</div>` +
-    `<p class="pmz-note">Total ${usd(c.total)} sur la fenêtre, soit ${usd(w.turns > 0 ? c.total / w.turns : null)} par tour ` +
+    `<p class="pmz-note">Total ${eur(c.total)} sur la fenêtre, soit ${eur(w.turns > 0 ? c.total / w.turns : null)} par tour ` +
     `sur ${int(w.turns)} tours. Tarifs par palier de modèle&nbsp;: ${esc(tiers)}.</p>` +
     `<p class="pmz-caveat"><strong>Le coût d'écriture de cache est un plancher</strong>, pas une mesure : ` +
     `il est facturé ici au tarif 5 minutes (× 1,25 de l'entrée). Une session en TTL 1 heure paie × 2, ` +
@@ -299,7 +303,7 @@ function recommendations(w) {
   if (w.scaling && w.scaling.exponent > 1) {
     const g = splitGain(w.scaling.exponent);
     push(w.cost.total * g,
-      `Scinder les sessions en deux : ${minus(g)} sur le coût, ${usd(w.cost.total * g)} sur la fenêtre`,
+      `Scinder les sessions en deux : ${minus(g)} sur le coût, ${eur(w.cost.total * g)} sur la fenêtre`,
       `Le coût mesuré croît en tours<sup>${dec(w.scaling.exponent)}</sup> (r² ${dec(w.scaling.r2)}, n=${int(w.scaling.n)} sessions ` +
       `de ${int(w.scaling.minTurns)} tours ou plus) : deux sessions de T/2 tours coûtent ${minus(g)} par rapport à une de T. ` +
       `Concrètement : clore le lot puis repartir en session fraîche au lieu de laisser courir.`);
@@ -307,28 +311,28 @@ function recommendations(w) {
 
   // 2. Réduire le préfixe : le seul poste dont la réduction se paie à CHAQUE tour.
   push(postCost(s.prefix) * 0.25,
-    `Alléger le préfixe : ${usd(postCost(s.prefix))} de lecture de cache aujourd'hui, ${usd(postCost(s.prefix) * 0.25)} récupérables à −25 %`,
+    `Alléger le préfixe : ${eur(postCost(s.prefix))} de lecture de cache aujourd'hui, ${eur(postCost(s.prefix) * 0.25)} récupérables à −25 %`,
     `Le préfixe médian pèse ${tok(w.prefix.median)} et il est rejoué à chaque tour — ${pct(s.prefix)} de la lecture de cache${hedge}. ` +
     `Leviers : CLAUDE.md plus court, skills et serveurs MCP non utilisés désactivés, injections de hook resserrées. ` +
     `C'est le seul poste dont une coupe se paie sur les ${int(w.turns)} tours de la fenêtre.`);
 
   // 3. Sortie de l'IA : le contre-intuitif de l'epic — relire moins de fichiers ne suffit pas.
   push(postCost(s.output) * 0.2,
-    `Raccourcir la sortie : ${usd(postCost(s.output))} de relecture, ${usd(postCost(s.output) * 0.2)} récupérables à −20 %`,
+    `Raccourcir la sortie : ${eur(postCost(s.output))} de relecture, ${eur(postCost(s.output) * 0.2)} récupérables à −20 %`,
     `La sortie de l'IA elle-même représente ${pct(s.output)} de la lecture de cache${hedge} — ${tok(b.output)} relus. ` +
     `Chaque token produit est repayé à tous les tours suivants. Leviers : diffs au lieu de fichiers réécrits, ` +
     `pas de récapitulatif de code déjà écrit, raisonnement étendu réservé aux décisions.`);
 
   // 4. Résultats d'outils : le levier « relire moins », vrai mais rarement le premier.
   push(postCost(s.toolResults) * 0.3,
-    `Cibler les lectures : ${usd(postCost(s.toolResults))} de résultats d'outils relus, ${usd(postCost(s.toolResults) * 0.3)} récupérables à −30 %`,
+    `Cibler les lectures : ${eur(postCost(s.toolResults))} de résultats d'outils relus, ${eur(postCost(s.toolResults) * 0.3)} récupérables à −30 %`,
     `Les résultats d'outils pèsent ${pct(s.toolResults)} de la lecture de cache${hedge} (${tok(b.toolResults)}). ` +
     `Leviers : git grep / git diff avant tout Read complet, lectures partielles (offset/limit), ` +
     `sous-agent pour les explorations larges (son contexte ne pèse pas sur la session principale).`);
 
   // 5. Prompts et injections relus.
   push(postCost(s.prompts) * 0.25,
-    `Resserrer prompts et injections : ${usd(postCost(s.prompts))} relus, ${usd(postCost(s.prompts) * 0.25)} récupérables à −25 %`,
+    `Resserrer prompts et injections : ${eur(postCost(s.prompts))} relus, ${eur(postCost(s.prompts) * 0.25)} récupérables à −25 %`,
     `Prompts utilisateur et injections (dont celles de PMZ lui-même) pèsent ${pct(s.prompts)} de la lecture de cache${hedge}. ` +
     `Leviers : handoff court en session fraîche, pas de re-collage de contexte déjà présent, protocole injecté en version « slim ».`);
 
@@ -338,10 +342,10 @@ function recommendations(w) {
     const perTurn = w.cost.total / w.turns;
     const turnsToP90 = w.occupancy.p90 / w.accretion.median;
     push(perTurn * Math.max(0, turnsToP90 / 2),
-      `Clore avant ~${int(turnsToP90)} tours : au-delà, chaque tour coûte plus de ${usd(perTurn)}`,
+      `Clore avant ~${int(turnsToP90)} tours : au-delà, chaque tour coûte plus de ${eur(perTurn)}`,
       `À ${dec(w.accretion.median, 0)} tokens/tour d'accrétion médiane, l'occupation atteint le p90 observé ` +
       `(${tok(w.occupancy.p90)}) vers le tour ${int(turnsToP90)}. Le coût par tour croît avec l'occupation : ` +
-      `${usd(perTurn)} en moyenne sur la fenêtre, davantage en fin de session.`);
+      `${eur(perTurn)} en moyenne sur la fenêtre, davantage en fin de session.`);
   }
 
   cand.sort((a, z) => z.gain - a.gain);
@@ -371,7 +375,7 @@ function recosSection(w) {
 
 function sessionsSection(w, top) {
   const rows = w.sessions.slice().sort((a, b) => b.cost.total - a.cost.total).slice(0, top).map((s) =>
-    `<tr><td>${esc(s.sessionId.slice(0, 8))}</td><td>${int(s.turns)}</td><td>${usd(s.cost.total)}</td>` +
+    `<tr><td>${esc(s.sessionId.slice(0, 8))}</td><td>${int(s.turns)}</td><td>${eur(s.cost.total)}</td>` +
     `<td>${tok(s.prefix)}</td><td>${tok(s.occupancy.median)}</td><td>${tok(s.occupancy.p90)}</td>` +
     `<td>${s.accretion == null ? '—' : dec(s.accretion, 0)}</td><td>${pct(s.cacheHitRate)}</td>` +
     `<td>${esc(s.tier)}</td></tr>`).join('');
@@ -433,6 +437,8 @@ function footerHtml(w, cwd, version) {
     `Page <strong>autonome</strong> : aucune requête réseau, aucun script, aucune police distante. ` +
       `Thème par variables CSS (clair, sombre système, ou forçage <code>data-theme</code> sur la racine).`,
     `Le coût d'<strong>écriture de cache est un plancher</strong> (tarif 5 minutes ; le TTL 1 heure n'est pas exposé par les transcripts).`,
+    `Montants convertis en euros au taux fixe <strong>1 $ = ${fr(String(m.USD_TO_EUR))} €</strong> (relevé statique, ` +
+      `à éditer dans <code>promptimizer/lib/metrics.js</code> — même statut que les tarifs par palier).`,
     `La décomposition publie toujours son <strong>contrôle de validité</strong> ; au-delà de ${fr(String(RATIO_WARN))} ` +
       `ses quatre chiffres sont des <strong>plafonds</strong>, pas des parts.`,
     `Aucune donnée ne quitte le poste : la page est un fichier local, produit depuis ` +
@@ -458,12 +464,13 @@ function buildHtml(w, cwd, opts) {
       `Rien n'a échoué : le moteur exprime l'absence de mesure en valeur, et la page est produite quand même.</p>`)
       + rtkGainLotsSection(root);
   } else {
+    const totalTokens = w.totals.input + w.totals.cacheWrite + w.totals.cacheRead + w.totals.output;
     subtitle = `Projet <code>${esc(cwd)}</code> · ${int(w.count)} session${w.count > 1 ? 's' : ''} · ` +
-      `${int(w.turns)} tours · ${usd(w.cost.total)} · généré le ${esc(frDate(Date.now()))}`;
+      `${int(w.turns)} tours · ${eur(w.cost.total)} (${tok(totalTokens)} tokens) · généré le ${esc(frDate(Date.now()))}`;
     const k = w.scaling ? dec(w.scaling.exponent) : '—';
     const kpis = '<div class="pmz-kpis">' + [
       kpi('occupation médiane', tok(w.occupancy.median), `p90 ${tok(w.occupancy.p90)} · max ${tok(w.occupancy.max)}`),
-      kpi('coût de la fenêtre', usd(w.cost.total), `${usd(w.turns > 0 ? w.cost.total / w.turns : null)} par tour`),
+      kpi('coût de la fenêtre', eur(w.cost.total), `${tok(totalTokens)} tokens · ${eur(w.turns > 0 ? w.cost.total / w.turns : null)} par tour`),
       kpi('accrétion médiane', w.accretion.median == null ? '—' : dec(w.accretion.median, 0), 'tokens par tour'),
       kpi('loi d\'échelle', 'tours^' + k, w.scaling ? `r² ${dec(w.scaling.r2)} · n=${int(w.scaling.n)}` : 'pas assez de sessions longues'),
     ].join('') + '</div>';
@@ -492,6 +499,9 @@ function summary(w, out, written) {
     count: w.ok ? w.count : 0,
     turns: w.ok ? w.turns : 0,
     cost: w.ok ? w.cost.total : null,
+    costEur: w.ok ? w.cost.total * m.USD_TO_EUR : null,
+    tokensTotal: w.ok ? w.totals.input + w.totals.cacheWrite + w.totals.cacheRead + w.totals.output : null,
+    usdToEur: m.USD_TO_EUR,
     occupancy: w.ok ? w.occupancy : null,
     accretion: w.ok ? w.accretion.median : null,
     scalingExponent: w.ok && w.scaling ? w.scaling.exponent : null,
@@ -543,7 +553,7 @@ function main() {
     lines.push(`Statut : ${reasonText(w.reason)} — la page affiche ce statut.`);
   } else {
     const b = w.cacheReadBreakdown;
-    lines.push(`${w.count} session${w.count > 1 ? 's' : ''} · ${w.turns} tours · ${usd(w.cost.total)}`);
+    lines.push(`${w.count} session${w.count > 1 ? 's' : ''} · ${w.turns} tours · ${eur(w.cost.total)}`);
     lines.push(`- occupation : médiane ${tok(w.occupancy.median)} · p90 ${tok(w.occupancy.p90)} · max ${tok(w.occupancy.max)}`);
     lines.push(`- accrétion : ${w.accretion.median == null ? '—' : dec(w.accretion.median, 0) + ' tokens/tour'}`);
     lines.push(`- loi d'échelle : ${w.scaling ? 'coût ∝ tours^' + dec(w.scaling.exponent) : '— (pas assez de sessions longues)'}`);

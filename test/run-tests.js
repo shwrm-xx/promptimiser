@@ -7879,9 +7879,23 @@ section('Tableau de bord — HTML autonome, thémable, sans requête réseau');
     'D114-2 : loi d\'échelle avec son exposant, son r² et son n');
   const dRecos = /<ol class="pmz-recos">([\s\S]*?)<\/ol>/.exec(H);
   ok(dRecos && (dRecos[1].match(/<li>/g) || []).length === 3, 'D114-2 : exactement 3 recommandations');
-  ok(dRecos && /\$\d/.test(dRecos[1]), 'D114-2 : recommandations chiffrées (montants en $)');
+  ok(dRecos && /\d[\s\S]{0,2}€/.test(dRecos[1]), 'D114-2 : recommandations chiffrées (montants en €)');
   ok(/Sessions les plus chères/.test(H) && (H.match(/<tbody>[\s\S]*?<\/tbody>/) || [''])[0].split('<tr>').length === 5,
     'D114-2 : palmarès des 4 sessions de la fenêtre');
+
+  // --- D121-1. Coût en euros (lot #121) : plus aucun montant en $, taux affiché, tokens en regard ---
+  ok(!/\$\d/.test(H), 'D121-1 : plus aucun montant en dollars dans la page');
+  ok(/\d[\s\S]{0,2}€/.test(H), 'D121-1 : montants affichés en euros');
+  ok(new RegExp('1 \\$ = ' + String(metricsD.USD_TO_EUR).replace(',', '\\,').replace('.', ',') + ' €').test(H),
+    'D121-1 : taux de conversion statique annoncé au footer');
+  ok(/\(\d[\s\S]{0,4}\s(?:k|M|Md)?\s*tokens\)/.test(H) || /tokens · \d/.test(H),
+    'D121-1 : équivalent tokens affiché à côté du coût');
+  const dJsonEur = runNode(DASH, ['--cwd', DCWD, '--sessions', '10', '--json', '--out', path.join(DDIR, 'eur.html')], dEnv);
+  let dJe = null;
+  try { dJe = JSON.parse(dJsonEur.out); } catch (_) {}
+  ok(dJe && typeof dJe.cost === 'number' && typeof dJe.costEur === 'number' &&
+     Math.abs(dJe.costEur - dJe.cost * metricsD.USD_TO_EUR) < 0.001 && typeof dJe.tokensTotal === 'number',
+    'D121-1 : --json conserve le coût USD brut et ajoute costEur + tokensTotal');
 
   // --- D114-3. Autonomie : aucune requête réseau possible ---
   ok(NET.every((re) => !re.test(H)), 'D114-3 : aucun vecteur de requête réseau (CDN, script, police, image, fetch)');

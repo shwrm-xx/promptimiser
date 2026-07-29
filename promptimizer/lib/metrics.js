@@ -41,6 +41,11 @@ const PRICES = {
   haiku: { input: 1, cacheWrite: 1.25, cacheRead: 0.1, output: 5 },
 };
 
+// Taux de conversion d'AFFICHAGE $ → € — snapshot statique, à éditer ICI uniquement (même statut
+// que PRICES ci-dessus). Les calculs de coût internes restent en USD partout dans ce fichier ;
+// seule la couche d'affichage (dashboard.js) convertit, pour ne jamais dupliquer le taux.
+const USD_TO_EUR = 0.92; // relevé 2026-07
+
 // Palier de repli quand `message.model` est absent ou inconnu : sonnet (tarif médian).
 // Facturer un modèle inconnu au tarif opus gonflerait artificiellement les vieilles sessions.
 const DEFAULT_TIER = 'sonnet';
@@ -526,7 +531,7 @@ function analyzeWindow(cwd, opts) {
 }
 
 module.exports = {
-  CHARS_PER_TOKEN, PRICES, DEFAULT_TIER, MIN_TURNS_FOR_SCALING, MARGINAL_ALERT_RATIO,
+  CHARS_PER_TOKEN, PRICES, USD_TO_EUR, DEFAULT_TIER, MIN_TURNS_FOR_SCALING, MARGINAL_ALERT_RATIO,
   tierForModel, priceFor,
   projectSlug, transcriptDir, listTranscripts,
   forEachLine, median, percentile, slopeByIndex, logLogFit, blockChars,

@@ -2,6 +2,23 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-29 — Coût du dashboard en euros (et tokens) (lot #121, epic Dashboard usage)
+
+Le tableau de bord `/dashboard` affichait tous ses montants en **dollars** (KPI, décomposition du
+coût, recommandations chiffrées, table des sessions), alors que le destinataire raisonne en euros.
+
+- **`lib/metrics.js`** : constante exportée `USD_TO_EUR` (snapshot statique, même statut éditorial
+  que `PRICES`) — seul point d'édition du taux de conversion d'affichage. Les calculs de coût
+  internes restent en USD partout dans ce fichier.
+- **`scripts/dashboard.js`** : `usd()` remplacée par `eur(n)` (conversion + format FR, symbole
+  après le montant) sur tous les points d'affichage monétaire — header, KPI, décomposition du
+  coût, recommandations, table des sessions. Équivalent **tokens** affiché à côté du coût total
+  (compteurs déjà présents dans `analyzeWindow()`, aucun nouveau calcul). Réserve du taux ajoutée
+  au footer. Le mode `--json` conserve `cost` en USD brut et ajoute `costEur` / `tokensTotal` /
+  `usdToEur`.
+- **`test/run-tests.js`** (bloc D114 + D121-1) : assertions adaptées à l'euro, plus vérification
+  qu'aucun montant en `$` ne subsiste et que le taux est annoncé.
+
 ## 2026-07-29 — Borne de verify de clôture réglable : fin du faux timeout (lot #120, epic Preuve de clôture fiable)
 
 Le budget de la verify de clôture (`VERIFY_CLOSE_MS` = 120 s) avait été posé quand la suite de ce

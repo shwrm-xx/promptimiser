@@ -225,8 +225,16 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   mesure, le script rend et recommande (3 recos classées par argent récupérable ; celle du découpage
   ne sort que si `k > 1`, sinon elle serait une reco inventée). Rendu par substitution de jetons
   `{{TITLE}}`/`{{SUBTITLE}}`/`{{BODY}}`/`{{FOOTER}}` — même mécanique que `templates/us-template.md`
-  dans `lib/backlog.js`, mais avec une **fonction** de remplacement et jamais une chaîne : les
-  valeurs contiennent des « $ » que `String.replace` interpréterait comme des références.
+  dans `lib/backlog.js`, mais avec une **fonction** de remplacement et jamais une chaîne : une
+  valeur (chemin, identifiant de session…) peut contenir un « $ » que `String.replace`
+  interpréterait comme une référence.
+  Montants affichés **en euros** (lot #121) : `USD_TO_EUR` de `lib/metrics.js` — snapshot statique,
+  même statut éditorial que `PRICES` — convertit à l'affichage uniquement ; tout calcul de coût
+  interne à `lib/metrics.js` reste en USD, la couche `dashboard.js` (fonction `eur()`) est seule à
+  convertir, pour ne jamais dupliquer le taux. Équivalent tokens affiché à côté du coût total
+  (compteurs déjà présents dans `analyzeWindow()`, aucun nouveau calcul). Le mode `--json` conserve
+  `cost` en USD brut (rétrocompatibilité d'un consommateur existant) et ajoute `costEur` /
+  `tokensTotal` / `usdToEur`.
   Trois contraintes portées par le rendu, pas par le moteur : **autonomie** (aucune requête réseau
   possible — ni CDN, police distante, script, `url()`, image ; favicon `data:,` pour neutraliser
   jusqu'à `/favicon.ico` : ouvrir une mesure locale ne doit pas pouvoir faire sortir une donnée de

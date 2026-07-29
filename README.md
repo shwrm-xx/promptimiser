@@ -280,10 +280,13 @@ Claude Code ne journalise pas le system prompt ni les schémas d'outils dans le 
 `/dashboard` génère `.vibe-agent/dashboard.html`, un tableau de bord **autonome** de l'économie de
 contexte du projet : occupation (médiane / p90 / max) et préfixe, décomposition du coût (cache-read
 en 4 postes), accrétion tokens/tour, loi d'échelle `coût ∝ tours^k`, et **3 recommandations
-chiffrées** classées par argent récupérable. La page ne fait **aucune requête réseau** et suit le
-thème clair/sombre du système. Options : `--sessions N` (défaut 20), `--all`, `--out <chemin>`,
-`--stdout`, `--json`. Mesure **hors bande** (balayage complet des transcripts) : à la demande
-uniquement, jamais depuis un hook — d'où une commande et non un nudge.
+chiffrées** classées par argent récupérable. Les montants s'affichent **en euros** (taux $→€
+statique de `lib/metrics.js`, réserve rappelée au footer), avec l'équivalent en tokens à côté ;
+le mode `--json` conserve le coût USD brut (`cost`) et ajoute `costEur`/`tokensTotal`. La page ne
+fait **aucune requête réseau** et suit le thème clair/sombre du système. Options : `--sessions N`
+(défaut 20), `--all`, `--out <chemin>`, `--stdout`, `--json`. Mesure **hors bande** (balayage
+complet des transcripts) : à la demande uniquement, jamais depuis un hook — d'où une commande et
+non un nudge.
 
 Chaque auto-clôture de lot émet **une seule carte** : lot clos, avancement du plan, coût réel du
 lot, durée, relectures évitées, lot suivant — et, à la clôture du **dernier lot d'une epic**, le

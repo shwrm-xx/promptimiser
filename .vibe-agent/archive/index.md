@@ -123,3 +123,4 @@
 #0118 | 2026-07-29 | aa419fa | epic:Bridge RTK | verify:inconnu | fiche:non | Clivage d'état plugin/manuel : un enable qui n'active rien
 #0119 | 2026-07-29 | b38d49d | epic:Économie de contexte | verify:inconnu | fiche:oui | Coût par lot en mode vague (imputation aveugle)
 #0120 | 2026-07-29 | b11821b | epic:Preuve de clôture fiable | verify:inconnu | fiche:oui | Borne de verify de clôture réglable (fin du faux timeout)
+#0121 | 2026-07-29 | e1fb064 | epic:Dashboard usage | verify:inconnu | fiche:non | Coût en euros (et tokens)
