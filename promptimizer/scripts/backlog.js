@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const { gitRoot, runVerify } = require('../lib/project');
-const { VERIFY_CLOSE_MS } = require('../lib/timeouts');
+const { resolveVerifyCloseMs } = require('../lib/timeouts');
 const { parseCwd } = require('../lib/cli');
 const backlog = require('../lib/backlog');
 const reint = require('../lib/reintegrate');
@@ -716,9 +716,10 @@ function main() {
     //   - `--verify-verdict <ok|failed|timeout|none>` : verdict DÉJÀ obtenu (c'est ce que
     //     /close-batch injecte : il vient d'exécuter le verify, le relancer ici serait payer
     //     deux fois la même preuve) ;
-    //   - à défaut, on exécute la commande `verify` du lot ici même (délai large VERIFY_CLOSE_MS,
-    //     comme /close-batch : ce n'est pas un hook). `--no-verify` coupe l'exécution — le champ
-    //     reste alors null, comme avant, jamais un verdict inventé.
+    //   - à défaut, on exécute la commande `verify` du lot ici même (délai large résolu par
+    //     projet, `resolveVerifyCloseMs` — même budget que /close-batch : ce n'est pas un hook).
+    //     `--no-verify` coupe l'exécution — le champ reste alors null, comme avant, jamais un
+    //     verdict inventé.
     // Non bloquant par choix : en CLI la clôture est un acte délibéré (le refus doux sur ÉCHEC est
     // déjà porté par /close-batch). Un verdict rouge est PERSISTÉ et ANNONCÉ, pas escamoté.
     const verdictFlag = flag('verify-verdict');
@@ -733,7 +734,7 @@ function main() {
     } else if (preDone && preDone.status !== 'done' && !process.argv.includes('--no-verify')) {
       if (!preDone.verify) verdict = 'none';
       else {
-        const v = runVerify(root, preDone.verify, VERIFY_CLOSE_MS);
+        const v = runVerify(root, preDone.verify, resolveVerifyCloseMs(root));
         verdict = v.ok ? 'ok' : (v.timedOut ? 'timeout' : 'failed');
         if (verdict === 'failed') verifyTail = v.tail ? `\n  ${v.tail}` : '';
       }
@@ -742,7 +743,7 @@ function main() {
     if (!lot) return out(`Lot #${id} introuvable.`);
     const posted = verdict ? backlog.setClosedVerify(root, lot.id, verdict) : null;
     const proof = posted
-      ? ` — verify : ${verdict}${verdict === 'failed' ? ' ⚠️ échec PERSISTÉ (closed_verify), à corriger' : ''}${verdict === 'timeout' ? ' ⚠️ non terminée dans le délai — ce n\'est PAS une preuve de réussite' : ''}`
+      ? ` — verify : ${verdict}${verdict === 'failed' ? ' ⚠️ échec PERSISTÉ (closed_verify), à corriger' : ''}${verdict === 'timeout' ? ' ⚠️ non terminée dans le délai — ce n\'est PAS une preuve de réussite (suite longue ? pose `verify_close_ms` sous `budget:` dans .vibe-agent/rules.yaml)' : ''}`
       : (verdict ? ` — verify : ${verdict} (verdict non persisté : déjà posé)` : '');
     return out(`Lot #${lot.id} « ${lot.title} » clos${lot.closed_commit ? ` (commit ${lot.closed_commit})` : ''}.${proof}${verifyTail}`);
   }

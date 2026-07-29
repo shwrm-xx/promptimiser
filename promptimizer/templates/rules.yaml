@@ -20,6 +20,14 @@ budget:
   # red_zone_tokens: 350000   # borne absolue en tokens
   # red_zone_ratio: 0.35      # ou : fraction de la fenêtre du modèle (0 < r <= 1)
 
+  # BUDGET DE LA VERIFY DE CLÔTURE (lot #120) — délai laissé à la commande `verify` du lot
+  # quand elle est rejouée par /close-batch ou par `backlog.js done` (jamais par un hook :
+  # l'auto-clôture garde son délai court, non réglable). Sans cette clé : 300 s.
+  # À poser si la suite du dépôt s'en approche : une suite verte qui dépasse le budget est
+  # rendue « timeout » et PERSISTÉE telle quelle (closed_verify), donc une preuve de clôture
+  # faussée. Bornes acceptées : 1000 à 3600000 ms ; hors bornes -> clé ignorée, défaut gardé.
+  # verify_close_ms: 600000   # 10 min
+
 context_policy:
   prefer:
     - git_status

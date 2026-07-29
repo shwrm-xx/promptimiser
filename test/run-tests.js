@@ -1913,10 +1913,13 @@ section('backlog — verify + closed_occupancy (lot #29)');
     'V67 : timeout → toujours distingué d\'un échec réel');
   backlogLib.dropLot(repo, lotSlow.id);
 
-  // V67c. sans override d'env, le délai par défaut reste 120 s (l'override est test-only)
+  // V67c. sans override d'env, le délai par défaut vaut 300 s (l'override est test-only).
+  // Relevé de 120 s à 300 s au lot #120 : la suite maison est passée à ~130 s (1997 tests) et
+  // l'ancien défaut rendait « timeout » sur une suite verte. Ce test verrouille le défaut ;
+  // la borne PAR PROJET vit dans la section #120 (budget.verify_close_ms de rules.yaml).
   const rTimeouts = runNode('-e', ['console.log(require(' +
-    JSON.stringify(path.join(PKG, 'lib', 'timeouts.js')) + ').VERIFY_CLOSE_MS)']);
-  ok(/^120000\s*$/.test(rTimeouts.out), 'V67 : VERIFY_CLOSE_MS par défaut inchangé (120000 ms)');
+    JSON.stringify(path.join(PKG, 'lib', 'timeouts.js')) + ').VERIFY_CLOSE_MS)'], { PMZ_VERIFY_CLOSE_MS: '' });
+  ok(/^300000\s*$/.test(rTimeouts.out), 'V67 : VERIFY_CLOSE_MS par défaut = 300000 ms (relevé au lot #120)');
 
   // V8. close-batch : pas de verify posée → pas de ligne Verify, comportement inchangé
   const lotNone = backlogLib.addLot(repo, 'Lot sans verify posee', null, 'sonnet');
@@ -8524,6 +8527,106 @@ section('Coût par lot en mode vague — tours délégués, imputation nominativ
     'V7 : /close-batch injecte --verify-verdict dans la commande de clôture proposée');
   ok(/dont ~3k délégués à des sous-agents/.test(rCB.out),
     'V7 : /close-batch expose la part déléguée du coût (trailer PMZ-Cost)');
+}
+
+// ============ Borne de verify de clôture réglable par projet (lot #120) ============
+section('Borne de verify de clôture : défaut relevé + réglage par projet (lot #120)');
+{
+  const timeouts = require(path.join(PKG, 'lib', 'timeouts'));
+  const DEF = timeouts.VERIFY_CLOSE_DEFAULT_MS;
+
+  // L'override d'env est test-only et gagne sur tout : on le neutralise pour la durée du bloc
+  // (et on le restaure ensuite) pour que ces tests soient déterministes même si la suite est
+  // lancée dans un shell où il traîne.
+  const savedEnv = process.env.PMZ_VERIFY_CLOSE_MS;
+  delete process.env.PMZ_VERIFY_CLOSE_MS;
+
+  function repo120(name, rulesBody) {
+    const dir = path.join(SANDBOX, 'b120-' + name);
+    fs.mkdirSync(path.join(dir, '.vibe-agent'), { recursive: true });
+    execFileSync('git', ['init', '-q', dir]);
+    if (rulesBody != null) fs.writeFileSync(path.join(dir, '.vibe-agent', 'rules.yaml'), rulesBody);
+    return dir;
+  }
+
+  // --- B120-1. Défaut : la marge sur la suite maison (~130 s) est le point du lot ---
+  ok(DEF === 300000, 'B120-1 : défaut = 300 s (l\'ancien 120 s était passé sous les ~130 s de la suite)');
+  ok(timeouts.VERIFY_CLOSE_MS === DEF, 'B120-1 : sans env, VERIFY_CLOSE_MS = défaut');
+  ok(timeouts.resolveVerifyCloseMs(null) === DEF, 'B120-1 : root absent -> défaut (jamais d\'exception)');
+  ok(timeouts.resolveVerifyCloseMs(repo120('sans-rules')) === DEF,
+    'B120-1 : pas de rules.yaml -> défaut (fail-open)');
+
+  // --- B120-2. Borne lue dans rules.yaml, bloc budget: ---
+  ok(timeouts.resolveVerifyCloseMs(repo120('pose', 'budget:\n  verify_close_ms: 600000\n')) === 600000,
+    'B120-2 : budget.verify_close_ms -> borne du projet');
+  ok(timeouts.resolveVerifyCloseMs(repo120('pose-cmt',
+    'budget:\n  verify_close_ms: 240000   # suite longue\n')) === 240000,
+    'B120-2 : commentaire de fin de ligne toléré (lecteur rules.js)');
+
+  // --- B120-3. Valeur aberrante ou mal placée -> défaut, jamais de rabotage silencieux ---
+  for (const [label, body] of [
+    ['sous la borne basse (500 ms)', 'budget:\n  verify_close_ms: 500\n'],
+    ['au-delà d\'une heure', 'budget:\n  verify_close_ms: 7200000\n'],
+    ['négatif', 'budget:\n  verify_close_ms: -1\n'],
+    ['non numérique', 'budget:\n  verify_close_ms: longtemps\n'],
+    ['dans un autre bloc', 'agent:\n  verify_close_ms: 600000\n'],
+    ['fichier corrompu', ':::\n\tbudget: [\n  verify_close_ms\n'],
+  ]) {
+    const r = repo120('ko-' + label.replace(/[^a-z0-9]+/gi, '-'), body);
+    let threw = false;
+    let val = null;
+    try { val = timeouts.resolveVerifyCloseMs(r); } catch (_) { threw = true; }
+    ok(!threw && val === DEF, `B120-3 : ${label} -> défaut gardé (fail-open, pas d'exception)`);
+  }
+  ok(timeouts.VERIFY_CLOSE_MIN_MS === 1000 && timeouts.VERIFY_CLOSE_MAX_MS === 3600000,
+    'B120-3 : bornes de plausibilité exposées (1 s … 1 h)');
+
+  // --- B120-4. Précédence : env (test-only) > rules.yaml > défaut ---
+  const rPrec = repo120('precedence', 'budget:\n  verify_close_ms: 600000\n');
+  process.env.PMZ_VERIFY_CLOSE_MS = '1234';
+  ok(timeouts.resolveVerifyCloseMs(rPrec) === 1234, 'B120-4 : l\'override d\'env gagne sur rules.yaml');
+  delete process.env.PMZ_VERIFY_CLOSE_MS;
+  ok(timeouts.resolveVerifyCloseMs(rPrec) === 600000, 'B120-4 : env retiré -> retour à la borne du projet');
+
+  // --- B120-5. Câblage réel : la borne du projet mord dans /close-batch, SANS aucun env ---
+  // Le bug du lot #119 était exactement l'inverse (borne non réglable, timeout sur suite verte) :
+  // on prouve ici que rules.yaml est bien consulté par le chemin de clôture, pas seulement par
+  // la lib. Borne courte + verify qui dort 5 s -> branche timeout en ~1 s.
+  const repoCB120 = repo120('close-batch', 'budget:\n  verify_close_ms: 1000\n');
+  fs.writeFileSync(path.join(repoCB120, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoCB120, 'add', '.']);
+  execFileSync('git', ['-C', repoCB120, 'commit', '-q', '-m', 'init']);
+  const slowCmd = `${JSON.stringify(process.execPath)} -e "setTimeout(function(){}, 5000)"`;
+  const lotSlow120 = backlogLib.addLot(repoCB120, 'Lot suite lente', null, 'opus', null, slowCmd);
+  backlogLib.startLot(repoCB120, lotSlow120.id);
+  const rCB120 = runNode(path.join(PKG, 'scripts', 'close-batch.js'), ['--cwd', repoCB120],
+    { PMZ_VERIFY_CLOSE_MS: '' });
+  ok(rCB120.code === 0 && /non terminée dans le délai \(1 s\)/.test(rCB120.out),
+    'B120-5 : /close-batch applique la borne de rules.yaml (1 s), sans override d\'env');
+  ok(/verify_close_ms/.test(rCB120.out),
+    'B120-5 : le message de timeout nomme la clé à poser (la borne se découvre sans lire le code)');
+  ok(/--verify-verdict timeout/.test(rCB120.out),
+    'B120-5 : verdict machine cohérent avec la borne appliquée (#119)');
+
+  // --- B120-6. Même câblage dans `backlog.js done` (chemin qui PERSISTE closed_verify) ---
+  const rDone120 = runNode(BKLG, ['done', '--cwd', repoCB120, '--id', String(lotSlow120.id)],
+    { PMZ_VERIFY_CLOSE_MS: '' });
+  const lotAfter120 = backlogLib.loadBacklog(repoCB120).lots.find((l) => l.id === lotSlow120.id);
+  ok(lotAfter120 && lotAfter120.closed_verify === 'timeout',
+    'B120-6 : `done` sans --verify-verdict applique la borne du projet et persiste le verdict');
+  ok(/verify_close_ms/.test(rDone120.out),
+    'B120-6 : le verdict timeout du CLI nomme aussi la clé à poser');
+
+  // --- B120-7. Le gabarit documente la clé, commentée (pas de borne imposée à l'init) ---
+  const tpl120 = fs.readFileSync(path.join(PKG, 'templates', 'rules.yaml'), 'utf8');
+  ok(/verify_close_ms/.test(tpl120), 'B120-7 : templates/rules.yaml documente verify_close_ms');
+  ok(/^\s*#\s*verify_close_ms:/m.test(tpl120),
+    'B120-7 : la clé est COMMENTÉE dans le gabarit (défaut préservé pour tout projet neuf)');
+  ok(timeouts.resolveVerifyCloseMs(repo120('gabarit', tpl120)) === DEF,
+    'B120-7 : un projet initialisé au gabarit garde le défaut');
+
+  if (savedEnv === undefined) delete process.env.PMZ_VERIFY_CLOSE_MS;
+  else process.env.PMZ_VERIFY_CLOSE_MS = savedEnv;
 }
 
 // ============================ RÉSUMÉ ============================

@@ -284,7 +284,8 @@ function main() {
           }
           if (verdict === 'timeout') {
             // Clôture fantôme évitée : le lot reste `in_progress`, annoncé EXPLICITEMENT (jamais
-            // de silence) — /close-batch relance la même preuve avec un délai large (VERIFY_CLOSE_MS).
+            // de silence) — /close-batch relance la même preuve avec un délai large, réglable par
+            // projet (resolveVerifyCloseMs, cf. lib/timeouts.js).
             parts.push(withSeverity(SEV.WARN, [
               `Lot « ${lotToClose.title} » NON clôturé : verify (\`${lotToClose.verify}\`) n'a pas terminé dans le délai court de l'auto-clôture (${Math.round(VERIFY_AUTOCLOSE_MS / 1000)} s).`,
               'Le lot reste en cours (aucune clôture fantôme) — relance la preuve via /close-batch (délai plus large) avant de clore.',

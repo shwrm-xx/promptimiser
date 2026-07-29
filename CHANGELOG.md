@@ -2,6 +2,38 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-29 — Borne de verify de clôture réglable : fin du faux timeout (lot #120, epic Preuve de clôture fiable)
+
+Le budget de la verify de clôture (`VERIFY_CLOSE_MS` = 120 s) avait été posé quand la suite de ce
+dépôt tournait ~35 s. Elle en met **~130 s** au lot #119 (1997 tests, mesuré deux fois) : le budget
+était passé **sous** la durée réelle. `/close-batch` rendait donc « timeout » sur une suite **verte**,
+et depuis le lot #119 `backlog.js done` sans `--verify-verdict` rejoue la même verify avec le même
+budget — il aurait persisté `closed_verify: 'timeout'` au lieu de `'ok'`. La preuve de clôture de
+tous les lots suivants était faussée. L'env `PMZ_VERIFY_CLOSE_MS` n'est pas un contournement : un
+test verrouille le défaut, donc l'exporter casse la suite qu'on cherche à vérifier.
+
+- **`lib/timeouts.js`** : défaut relevé à **300 s** (`VERIFY_CLOSE_DEFAULT_MS`, plus du double du
+  mesuré — une marge sur la croissance de la suite, pas un ajustement au ras) ; commentaire « les
+  nôtres tournent ~35 s » corrigé, avec la raison du relèvement.
+- **`lib/timeouts.js` — `resolveVerifyCloseMs(root)`** : borne **réglable par projet** via
+  `budget.verify_close_ms` de `.vibe-agent/rules.yaml`, sur le modèle exact de la borne
+  d'occupation du lot #112 (lecteur de scalaires `lib/rules.js`, zéro dépendance). Un défaut, même
+  généreux, reste un pari sur la durée de la suite d'autrui. Bornes de plausibilité [1 s, 1 h] ;
+  hors bornes / non numérique / `rules.yaml` absent ou corrompu → **défaut** (fail-open, jamais de
+  rabotage silencieux). Précédence : env test-only > `rules.yaml` > défaut.
+- **`scripts/close-batch.js` et `scripts/backlog.js done`** : résolvent la borne depuis la racine du
+  dépôt au lieu de la constante — les deux chemins qui **persistent** `closed_verify` partagent le
+  même budget. Le message de timeout **nomme la clé** à poser (`verify_close_ms`) : la borne se
+  découvre sans lire le code, là où le faux timeout du lot #119 n'orientait vers rien.
+- **`templates/rules.yaml`** : clé documentée et livrée **commentée** (aucune borne imposée à un
+  projet neuf) ; **`.vibe-agent/rules.yaml`** de ce dépôt pose `verify_close_ms: 600000`.
+- `ARCHITECTURE.md` (contrat de la verify + `rules.yaml` comme surface de réglage unique) et
+  `README.md` mis à jour.
+- Vérifié : `node test/run-tests.js` → **2020 OK, 0 échec** en 2 min 15 s (23 assertions ajoutées, section
+  « lot #120 » : défaut, lecture de la clé, 6 cas aberrants, précédence de l'env, câblage réel de
+  `/close-batch` **et** de `done` sur une borne courte de `rules.yaml` — sans aucun env — et gabarit
+  commenté ; V67c mis à jour sur le nouveau défaut).
+
 ## 2026-07-29 — Coût par lot en mode vague : imputation aveugle réparée (lot #119, epic Économie de contexte)
 
 Quatre trous de la métrologie par lot, tous invisibles en usage normal, tous sources de chiffres

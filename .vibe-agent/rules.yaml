@@ -10,6 +10,9 @@ budget:
   max_handoff_tokens: 800
   max_claude_md_tokens: 1200
   max_agents_md_tokens: 1200
+  # Suite maison : ~130 s au lot #119 (1997 tests) et en croissance continue (~35 s au lot #90).
+  # 10 min laissent de la marge sans faire pendre la clôture indéfiniment (lot #120).
+  verify_close_ms: 600000
 
 context_policy:
   prefer:

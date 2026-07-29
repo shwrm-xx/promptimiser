@@ -175,6 +175,13 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
   lot** — commit intermédiaire + `/fresh-session`, le lot reste ouvert et le handoff le reprend —
   avec l'occupation courante et ce que coûterait une compaction en regard. Clé absente ou valeur
   aberrante → seuil historique inchangé.
+- **Budget de la verify de clôture** (réglable par projet) : la commande `verify` du lot est
+  rejouée par `/close-batch` et par `backlog.js done` avec un délai de **300 s** par défaut. Une
+  suite qui dépasse ce budget est rendue « non terminée dans le délai » et le verdict `timeout`
+  est **persisté** — donc une suite verte finit archivée comme non prouvée. Si la suite du dépôt
+  s'en approche, pose sa propre borne dans `.vibe-agent/rules.yaml`, bloc `budget:` :
+  `verify_close_ms: 600000` (millisecondes, de 1 s à 1 h ; hors bornes → défaut). L'auto-clôture
+  du hook `Stop` garde son délai court, non réglable : c'est un hook, il ne doit jamais pendre.
 - **Occupation déjà haute** : au-delà de 500k tokens, un rappel court (2 lignes) est ajouté au
   prompt suivant (plafonné 1×/palier) ; à la **reprise** d'une session déjà chargée (≥ 300k),
   un message visible (zéro token ajouté au contexte) le signale sans attendre la fin du tour.

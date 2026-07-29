@@ -9,7 +9,7 @@ const { previousSessionId } = require('../lib/state');
 const { modelEffortTag } = require('../lib/backlog');
 const { runVerify, git } = require('../lib/project');
 const archive = require('../lib/archive');
-const { VERIFY_CLOSE_MS } = require('../lib/timeouts');
+const { resolveVerifyCloseMs } = require('../lib/timeouts');
 const { parseCwd } = require('../lib/cli');
 const { fmtK } = require('../lib/messages');
 const rtkMetrics = require('../lib/rtk-metrics');
@@ -139,8 +139,9 @@ const PMZ_BASE = (process.env.CLAUDE_PLUGIN_ROOT || '').trim() || '~/.claude/pro
 // Exécute la commande verify du lot en cours (si posée) AVANT le `done` — preuve de
 // clôture. Jamais bloquant : un échec ne fait qu'ajouter une ligne « à corriger » dans
 // la checklist, la décision de marquer le lot fait reste à l'humain/l'assistant. Timeout
-// large (VERIFY_CLOSE_MS) : /close-batch est piloté par l'assistant, pas dans le budget serré
-// d'un hook. L'ÉCHEC est prononcé UNIQUEMENT sur un exit ≠ 0 réel (runVerify.ok=false && !timedOut) :
+// large, résolu PAR PROJET (`resolveVerifyCloseMs(root)` — `budget.verify_close_ms` de
+// rules.yaml, sinon défaut, lot #120) : /close-batch est piloté par l'assistant, pas dans le
+// budget serré d'un hook. L'ÉCHEC est prononcé UNIQUEMENT sur un exit ≠ 0 réel (runVerify.ok=false && !timedOut) :
 // un dépassement de délai tue l'enfant (status null) et son stdout bufferisé peut contenir des
 // motifs trompeurs (p.ex. la ligne ABORT d'un test négatif volontaire) — ce n'est pas un échec.
 function main() {
@@ -159,13 +160,14 @@ function main() {
   // n'existait qu'ici, dans du texte, et mourait avec la sortie de la commande.
   let verifyEnum = bl && bl.current && bl.current.verify ? null : 'none';
   if (bl && bl.current && bl.current.verify) {
-    const v = runVerify(d.root, bl.current.verify, VERIFY_CLOSE_MS);
+    const budgetMs = resolveVerifyCloseMs(d.root);
+    const v = runVerify(d.root, bl.current.verify, budgetMs);
     verifyVerdict = v.ok ? 'OK' : v.timedOut ? 'timeout' : 'ÉCHEC';
     verifyEnum = v.ok ? 'ok' : v.timedOut ? 'timeout' : 'failed';
     verifyLine = v.ok
       ? `\n- Verify (\`${bl.current.verify}\`) : OK`
       : v.timedOut
-        ? `\n- Verify (\`${bl.current.verify}\`) : non terminée dans le délai (${Math.round(VERIFY_CLOSE_MS / 1000)} s) — verify LOURDE, ne la relance PAS dans ce contexte : délègue-la à un subagent isolé (outil Agent/Task) qui l'exécute au complet et ne renvoie QUE le verdict (OK / ÉCHEC + 5 dernières lignes). Zéro sortie de tests ici (un timeout n'est PAS un échec)`
+        ? `\n- Verify (\`${bl.current.verify}\`) : non terminée dans le délai (${Math.round(budgetMs / 1000)} s) — verify LOURDE, ne la relance PAS dans ce contexte : délègue-la à un subagent isolé (outil Agent/Task) qui l'exécute au complet et ne renvoie QUE le verdict (OK / ÉCHEC + 5 dernières lignes). Zéro sortie de tests ici (un timeout n'est PAS un échec). Si la suite de ce dépôt dépasse durablement ce budget, pose \`verify_close_ms: <ms>\` sous \`budget:\` dans \`.vibe-agent/rules.yaml\` — sinon chaque clôture persistera \`timeout\` sur une suite verte`
         : `\n- Verify (\`${bl.current.verify}\`) : ÉCHEC — refus doux, corriger avant de marquer fait (clôture non bloquée automatiquement) :\n  ${v.tail}\n  Après correction, re-vérifie en subagent isolé (outil Agent/Task) : seul le verdict revient ici, jamais la sortie des tests`;
   }
   const backlogBlock = bl ? `

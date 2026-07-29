@@ -123,6 +123,11 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   (a1) — un appel `gitRoot` déplacé, pas ajouté ; (e) **un seul épisode pour les deux régimes**
   (même fichier d'état `redzone`) : une borne basse consomme l'unique prescription de la session, et
   la zone haute reste couverte par les paliers absolus `BUCKETS` (500k/750k) + la dérive de session.
+- **Second consommateur de `lib/rules.js`** (lot #120) : `budget.verify_close_ms` — budget de la
+  **verify de clôture**, même contrat de lecture (scalaire numérique, bornes traitées comme
+  absence, fail-open). Détail et raison dans la puce « Plan de lots » / verify plus bas ; le
+  point d'architecture ici est que `rules.yaml` reste la **surface de réglage unique** du projet :
+  une deuxième borne n'a introduit ni fichier de config, ni variable d'env de production.
 - **Réinjection post-compact enrichie** (`session-start.js` branche `src === 'compact'` +
   `messages.compactResumeMessage(lot, prog, { todos, skips, decisions })`, lot #72) : après une
   compaction le contexte survit mais a perdu le **plan** ET la **mémoire des relectures déjà
@@ -876,8 +881,19 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   shell de preuve de clôture, posée à l'`add --verify` ou éditée après coup (`backlog.js verify
   --id N --set "…"`) — exécuté par `lib/project.js:runVerify` (helper partagé, ne throw jamais :
   `{ok}` / `{ok:false, timedOut, tail}`). `/close-batch` (`scripts/close-batch.js`) l'appelle avec un
-  timeout **large** (`VERIFY_CLOSE_MS` = 120 s — clôture délibérée pilotée par l'assistant, hors budget
-  serré d'un hook : une vraie suite peut aller au bout) avant d'indiquer le `done`. L'**ÉCHEC** n'est
+  timeout **large** (`resolveVerifyCloseMs(root)`, défaut 300 s — clôture délibérée pilotée par
+  l'assistant, hors budget serré d'un hook : une vraie suite peut aller au bout) avant d'indiquer le
+  `done`. Ce budget est **réglable par projet** (lot #120, modèle du lot #112) : clé
+  `verify_close_ms` du bloc `budget:` de `.vibe-agent/rules.yaml`, lue par `lib/rules.js`, bornée à
+  [1 s, 1 h] — hors bornes / non numérique / fichier absent ⇒ défaut (fail-open, jamais de rabotage
+  silencieux). Précédence : **env `PMZ_VERIFY_CLOSE_MS` (test-only) > `rules.yaml` > défaut**. Le
+  défaut valait 120 s, posé quand la suite maison tournait ~35 s ; elle en met ~130 s au lot #119
+  (1997 tests), si bien que `/close-batch` **rendait « timeout » sur une suite verte** et que
+  `backlog.js done` (depuis le lot #119) persistait `closed_verify: 'timeout'` au lieu de `'ok'` —
+  une preuve de clôture faussée pour tous les lots suivants. D'où les deux mouvements du lot #120 :
+  défaut relevé **avec marge** (plus du double du mesuré) et borne **posable par le dépôt** (ici : 600 s),
+  parce qu'un défaut, même généreux, reste un pari sur la durée de la suite d'autrui. Le message de
+  timeout **nomme la clé** à poser — la borne se découvre sans lire le code. L'**ÉCHEC** n'est
   prononcé que sur un **exit ≠ 0 réel** (`ok:false && !timedOut`), jamais sur un grep de la sortie : un
   dépassement de délai tue l'enfant (`status` null) et son stdout bufferisé peut contenir des motifs
   trompeurs (p.ex. la ligne `ABORT` d'un test négatif volontaire) — il est affiché « non terminée »,
@@ -885,8 +901,10 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   verify *lourde* — la checklist prescrit son exécution en **subagent isolé** (outil Agent/Task,
   seul le verdict OK/ÉCHEC + dernières lignes remonte), jamais une relance à la main : **zéro
   sortie de tests dans le contexte principal**. Même prescription après correction d'un ÉCHEC.
-  `VERIFY_CLOSE_MS` est surchargeable par l'env `PMZ_VERIFY_CLOSE_MS` (test-only, pour couvrir la
-  branche timeout sans attendre 120 s). Refus doux **jamais bloquant** — même en échec la checklist reste
+  L'env `PMZ_VERIFY_CLOSE_MS` reste **test-only** (couvrir la branche timeout sans attendre le délai
+  complet) — ce n'est PAS le contournement d'un budget trop court : un test verrouille le défaut, donc
+  l'exporter casserait la suite qu'on cherche à vérifier ; le réglage durable est `rules.yaml`
+  ci-dessus. Refus doux **jamais bloquant** — même en échec la checklist reste
   exit 0, la décision de clore reste humaine/assistant. À
   l'**auto-clôture** (lot #44), `stop.js` l'exécute aussi mais avec un timeout **court**
   (`VERIFY_AUTOCLOSE_MS` = 2500 ms, borné bien en deçà du watchdog Stop 4,5 s), et depuis le
@@ -916,7 +934,8 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   `--verify-verdict <ok|failed|timeout|none>` persiste un verdict **déjà obtenu** (c'est ce que
   `/close-batch` injecte désormais dans la ligne `done` qu'il propose — il vient d'exécuter la
   `verify`, la relancer coûterait deux fois la même preuve), et à défaut `done` **exécute** la
-  `verify` du lot lui-même (`VERIFY_CLOSE_MS`, ce n'est pas un hook). `--no-verify` coupe
+  `verify` du lot lui-même (même budget réglable `resolveVerifyCloseMs(root)`, ce n'est pas un
+  hook — un budget trop court y faussait donc la preuve tout autant, cf. lot #120). `--no-verify` coupe
   l'exécution et laisse le champ `null` ; une valeur hors énum est **refusée** sans clore le lot.
   Non bloquant par choix (le refus doux sur échec est porté par `/close-batch`) : un verdict rouge
   est **persisté et annoncé**, jamais escamoté. Affiché par `show` et exposé en
