@@ -1,0 +1,745 @@
+#!/usr/bin/env node
+'use strict';
+// Tableau de bord d'économie de contexte (lot #114) — rend en HTML autonome les 5 indicateurs
+// du moteur de mesure (lot #110) pour le projet courant, plus 3 recommandations chiffrées.
+//
+// ORIENTÉ USAGE (lot #122) : la page S'OUVRE sur une synthèse Constat / Garder / Améliorer /
+// Arrêter, suivie de 3 bons points et 3 points d'attention (lib/dashboard-synthesis.js, module
+// pur nourri des mêmes mesures). Les sept blocs d'indicateurs passent au second niveau, dans un
+// `<details>` natif — un pli, pas un script. Les trois surfaces (page, `--json`, texte) rendent
+// la même synthèse dans le même ordre.
+//
+//   node promptimizer/scripts/dashboard.js                  → .vibe-agent/dashboard.html
+//   node promptimizer/scripts/dashboard.js --sessions 40    → fenêtre de 40 sessions
+//   node promptimizer/scripts/dashboard.js --all            → toutes les sessions du projet
+//   node promptimizer/scripts/dashboard.js --out <path>     → autre destination
+//   node promptimizer/scripts/dashboard.js --stdout         → HTML sur la sortie standard
+//   node promptimizer/scripts/dashboard.js --json           → résumé machine (pas de HTML)
+//   node promptimizer/scripts/dashboard.js --cwd <p> --min-turns 20 --top 12
+//
+// APPELANT LÉGITIME : ce script, comme `scripts/metrics.js`, est HORS BANDE — une commande à
+// la demande. Aucun hook ne doit l'appeler : il balaye des transcripts entiers, ce qui est
+// exactement le coût qu'un hook n'a pas le droit de payer.
+//
+// AUTONOMIE DE LA PAGE : zéro requête réseau, par construction — pas de CDN, pas de police
+// distante, pas de `<script>`, pas de `url()` en CSS, et un `<link rel="icon" href="data:,">`
+// qui neutralise la seule requête que le navigateur ferait de lui-même (/favicon.ico).
+// Le thème passe intégralement par des variables CSS (clair, sombre système, forçage
+// `data-theme`) — aucune couleur en dur dans le balisage produit ici.
+//
+// Fail-open absolu : exit 0 systématique. Transcript absent, illisible, gabarit manquant →
+// la page est quand même écrite, avec son statut affiché.
+const fs = require('fs');
+const path = require('path');
+const m = require('../lib/metrics');
+const project = require('../lib/project');
+const { readVersion } = require('../lib/version');
+const { parseCwd } = require('../lib/cli');
+const backlog = require('../lib/backlog');
+const rtkMetrics = require('../lib/rtk-metrics');
+const occupancyLib = require('../lib/occupancy');
+const synthesis = require('../lib/dashboard-synthesis');
+
+// ============================ ARGUMENTS ============================
+
+function flag(name) { return process.argv.indexOf('--' + name) !== -1; }
+function opt(name, fallback) {
+  const i = process.argv.indexOf('--' + name);
+  if (i !== -1 && process.argv[i + 1] && process.argv[i + 1].indexOf('--') !== 0) return process.argv[i + 1];
+  return fallback;
+}
+function num(name, fallback) {
+  const v = parseInt(opt(name, ''), 10);
+  return Number.isFinite(v) && v > 0 ? v : fallback;
+}
+
+// Seuil du contrôle de validité de la décomposition, IDENTIQUE à celui de scripts/metrics.js.
+// Au-delà, les parts ne sont plus des parts : ce sont des plafonds (cf. DÉCLASSEMENT ci-dessous).
+const RATIO_WARN = 1.15;
+
+// ============================ FORMATAGE ============================
+
+function fr(s) { return String(s).replace('.', ','); }
+function tok(n) {
+  if (n == null || !Number.isFinite(n)) return '—';
+  const v = Math.abs(n);
+  if (v >= 1e9) return fr((n / 1e9).toFixed(2)) + ' Md';
+  if (v >= 1e6) return fr((n / 1e6).toFixed(2)) + ' M';
+  if (v >= 1000) return Math.round(n / 1000) + 'k';
+  return String(Math.round(n));
+}
+// Conversion d'affichage $ → € au taux statique de lib/metrics.js (seul point d'édition du
+// taux). Le calcul de coût reste en USD partout dans metrics.js ; cette fonction ne fait
+// QUE mettre en forme pour la page.
+function eur(n) {
+  if (n == null || !Number.isFinite(n)) return '—';
+  const v = n * m.USD_TO_EUR;
+  return fr(v >= 100 ? v.toFixed(0) : v.toFixed(2)) + ' €';
+}
+function pct(x) {
+  if (x == null || !Number.isFinite(x)) return '—';
+  return fr((x * 100).toFixed(1)) + ' %';
+}
+function dec(x, d) {
+  if (x == null || !Number.isFinite(x)) return '—';
+  return fr(x.toFixed(d == null ? 2 : d));
+}
+function int(x) {
+  if (x == null || !Number.isFinite(x)) return '—';
+  return String(Math.round(x));
+}
+// Signe moins typographique : un « -12 % » se lit mal collé à un pourcentage de gain.
+function minus(x) { return '−' + pct(x).replace('-', ''); }
+
+function frDate(ms) {
+  const d = new Date(ms);
+  const p = (n) => (n < 10 ? '0' : '') + n;
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} à ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// ============================ GABARIT ============================
+
+const TPL_FILE = path.join(__dirname, '..', 'templates', 'dashboard.html');
+
+// Gabarit de secours : si `templates/dashboard.html` est absent (install partielle), la page
+// doit quand même sortir. Volontairement minimal, mais toujours thémable et sans réseau.
+const FALLBACK_TPL = [
+  '<!doctype html>', '<html lang="fr">', '<head>', '<meta charset="utf-8">',
+  '<meta name="viewport" content="width=device-width, initial-scale=1">',
+  '<title>{{TITLE}}</title>', '<link rel="icon" href="data:,">',
+  '<style>:root{--pmz-bg:#f6f5f2;--pmz-text:#1a1a18;--pmz-muted:#6a6862;--pmz-border:#dedcd5;--pmz-surface:#fff}',
+  '@media (prefers-color-scheme:dark){:root{--pmz-bg:#16171a;--pmz-text:#ecebe7;--pmz-muted:#9c9a94;--pmz-border:#34373d;--pmz-surface:#1e2024}}',
+  'body{margin:0;padding:24px;background:var(--pmz-bg);color:var(--pmz-text);font:15px/1.5 system-ui,sans-serif}',
+  'section{background:var(--pmz-surface);border:1px solid var(--pmz-border);border-radius:8px;padding:14px;margin-bottom:14px}',
+  'details{border:1px solid var(--pmz-border);border-radius:8px;padding:10px 14px;margin-bottom:14px}',
+  'summary{cursor:pointer;font-weight:600}ul{padding-left:1.1em}',
+  '.s-label{font-weight:700;font-size:.75rem;text-transform:uppercase;color:var(--pmz-muted)}',
+  '.sig-detail{color:var(--pmz-muted);font-size:.85rem}',
+  'footer{color:var(--pmz-muted);font-size:.8rem}</style>',
+  '</head>', '<body>', '<h1>{{TITLE}}</h1>', '<p>{{SUBTITLE}}</p>', '{{BODY}}',
+  '<footer>{{FOOTER}}</footer>', '</body>', '</html>', '',
+].join('\n');
+
+function loadTemplate() {
+  try {
+    const raw = fs.readFileSync(TPL_FILE, 'utf8');
+    if (raw && raw.indexOf('{{BODY}}') !== -1) return { tpl: raw, fallback: false };
+  } catch (_) { /* gabarit absent ou illisible : on retombe sur le secours */ }
+  return { tpl: FALLBACK_TPL, fallback: true };
+}
+
+// Substitution par FONCTION de remplacement, jamais par chaîne : une valeur (chemin, identifiant
+// de session…) peut contenir un « $ » que `String.replace` interpréterait comme `$&`, `$'`,
+// `$1`… Tout jeton non fourni est effacé plutôt que laissé visible dans la page.
+function render(tpl, map) {
+  return tpl.replace(/\{\{([A-Z_]+)\}\}/g, (_all, key) => (map[key] == null ? '' : String(map[key])));
+}
+
+// Échappement systématique de TOUTE valeur venant du disque (chemins, identifiants de session,
+// noms de modèle) : un transcript est une donnée, pas du balisage.
+// L'apostrophe n'est PAS échappée, volontairement : tous les attributs produits ici sont entre
+// guillemets doubles (déjà échappés en &quot;), donc une apostrophe ne peut pas s'en échapper —
+// alors que la convertir en &#39; hacherait chaque apostrophe d'une interface en français.
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Fragment HTML → texte brut, pour les surfaces non graphiques (`--json`, sortie texte).
+// `<sup>` devient « ^ » AVANT le retrait des balises : sans ça, « tours<sup>1,15</sup> » se
+// lirait « tours1,15 », c'est-à-dire un nombre, pas un exposant.
+function plainText(s) {
+  return String(s == null ? '' : s).replace(/<sup>/g, '^').replace(/<[^>]+>/g, '');
+}
+
+// Largeur de barre bornée à [0,100] et arrondie : une valeur hors bornes déborderait du rail.
+function width(x) {
+  const v = Number.isFinite(x) ? x * 100 : 0;
+  return Math.max(0, Math.min(100, Math.round(v * 10) / 10));
+}
+
+// ============================ FRAGMENTS HTML ============================
+
+function kpi(label, value, hint) {
+  return `<div class="pmz-kpi"><div class="k-label">${esc(label)}</div>` +
+    `<div class="k-value">${value}</div><div class="k-hint">${hint || ''}</div></div>`;
+}
+
+function barRow(label, value, ratio, series) {
+  return `<div class="r-label">${esc(label)}</div>` +
+    `<div class="pmz-track"><div class="pmz-fill${series ? ' ' + series : ''}" style="width:${width(ratio)}%"></div></div>` +
+    `<div class="r-value">${value}</div>`;
+}
+
+function card(title, inner) {
+  return `<section class="pmz-card"><h2>${esc(title)}</h2>${inner}</section>`;
+}
+
+// ============================ SECTIONS ============================
+
+function occupancySection(w) {
+  const o = w.occupancy;
+  const scale = o.max > 0 ? o.max : 1;
+  const rows = [
+    barRow('médiane', tok(o.median), o.median / scale, 's1'),
+    barRow('p90', tok(o.p90), o.p90 / scale, 's1'),
+    barRow('max', tok(o.max), 1, 's1'),
+    barRow('préfixe (médian)', tok(w.prefix.median), w.prefix.median / scale, 's3'),
+  ].join('');
+  return card('Occupation du contexte', `<div class="pmz-rows">${rows}</div>` +
+    `<p class="pmz-note">Taille de prompt par tour, en tokens (entrée + écriture de cache + lecture de cache). ` +
+    `Médiane et p90 sont des médianes des médianes/p90 par session — une session de 300 tours n'écrase pas dix sessions courtes. ` +
+    `Le <strong>préfixe</strong> est le plancher payé à chaque tour avant toute conversation ` +
+    `(système, définitions d'outils, CLAUDE.md, skills, injections de hook) : de ${tok(w.prefix.min)} à ${tok(w.prefix.max)} selon la session.</p>`);
+}
+
+function costSection(w) {
+  const c = w.cost;
+  const scale = c.total > 0 ? c.total : 1;
+  const rows = [
+    barRow('lecture de cache', eur(c.cacheRead), c.cacheRead / scale, 's1'),
+    barRow('sortie', eur(c.output), c.output / scale, 's2'),
+    barRow('écriture de cache', eur(c.cacheWrite), c.cacheWrite / scale, 's3'),
+    barRow('entrée', eur(c.input), c.input / scale, 's4'),
+  ].join('');
+  const tiers = Object.keys(m.PRICES).map((t) => `${t} ${eur(m.PRICES[t].cacheRead)}/M en lecture de cache`).join(' · ');
+  return card('Décomposition du coût', `<div class="pmz-rows">${rows}</div>` +
+    `<p class="pmz-note">Total ${eur(c.total)} sur la fenêtre, soit ${eur(w.turns > 0 ? c.total / w.turns : null)} par tour ` +
+    `sur ${int(w.turns)} tours. Tarifs par palier de modèle&nbsp;: ${esc(tiers)}.</p>` +
+    `<p class="pmz-caveat"><strong>Le coût d'écriture de cache est un plancher</strong>, pas une mesure : ` +
+    `il est facturé ici au tarif 5 minutes (× 1,25 de l'entrée). Une session en TTL 1 heure paie × 2, ` +
+    `et les transcripts n'exposent pas le TTL de façon fiable. Les trois autres postes sont exacts.</p>`);
+}
+
+// DÉCLASSEMENT DES PARTS EN PLAFONDS. Le modèle de décomposition suppose que tout token émis
+// reste relu à chaque tour suivant. Deux faits le violent : la compaction (le contexte a été
+// tronqué) et le raisonnement étendu (le thinking est compté dans `output_tokens` mais n'est
+// PAS rejoué au tour suivant). Quand le contrôle somme/réel dépasse 1,15, la somme surestime :
+// les parts deviennent des PLAFONDS, et la page doit le dire — jamais un chiffre de
+// décomposition sans son ratio de contrôle à côté.
+function breakdownSection(w) {
+  const b = w.cacheReadBreakdown;
+  const s = b.shares || {};
+  const degraded = b.ratio != null && b.ratio > RATIO_WARN;
+  const word = degraded ? 'plafond' : 'part';
+  const POSTS = [
+    ['s1', 'préfixe rejoué à chaque tour', b.prefix, s.prefix],
+    ['s2', "sortie de l'IA relue", b.output, s.output],
+    ['s3', "résultats d'outils relus", b.toolResults, s.toolResults],
+    ['s4', 'prompts et injections relus', b.prompts, s.prompts],
+  ];
+  const stack = POSTS.map(([cls, , , share]) => `<span class="${cls}" style="width:${width(share)}%"></span>`).join('');
+  const legend = POSTS.map(([cls, name, val, share]) =>
+    `<li><span class="pmz-swatch ${cls}"></span><span class="l-name">${esc(name)}</span>` +
+    `<span class="l-val">${tok(val)} · ${word} ${pct(share)}</span></li>`).join('');
+  const badge = b.ratio == null
+    ? '<span class="pmz-badge warn">contrôle indisponible (aucune lecture de cache)</span>'
+    : `<span class="pmz-badge${degraded ? ' warn' : ''}">contrôle ${dec(b.ratio)} — viser ≈ 1,0</span>`;
+  const caveat = degraded
+    ? `<p class="pmz-caveat"><strong>Contrôle ${dec(b.ratio)} &gt; ${fr(String(RATIO_WARN))} : la somme surestime le réel.</strong> ` +
+      `Les quatre chiffres ci-dessus sont donc des <strong>plafonds</strong>, pas des parts mesurées. Deux causes : ` +
+      `compaction en cours de session (le contexte a été tronqué, donc « relu à chaque tour » est faux), ` +
+      `ou raisonnement étendu (le thinking est compté dans la sortie mais n'est pas rejoué au tour suivant).</p>`
+    : `<p class="pmz-note">Contrôle de validité dans la plage attendue : les quatre chiffres se lisent comme des parts.</p>`;
+  return card('Où part la lecture de cache (4 postes)',
+    `<div class="pmz-stack">${stack}</div><ul class="pmz-legend">${legend}</ul>` +
+    `<p class="pmz-note">Somme modélisée ${tok(b.sum)} contre lecture de cache réellement facturée ${tok(b.actual)} &nbsp;${badge}</p>` +
+    caveat +
+    `<p class="pmz-note">Méthode : un token émis au tour <em>i</em> est relu à chaque tour suivant, soit ${'≈'} (T−1)/2 fois ` +
+    `pour un token moyen ; le préfixe, lui, est relu à chaque tour (× T). Les caractères sont convertis en tokens ` +
+    `au ratio ${fr(String(m.CHARS_PER_TOKEN))} caractères/token.</p>`);
+}
+
+function accretionSection(w) {
+  const a = w.accretion;
+  const perSession = w.sessions
+    .filter((x) => x.accretion != null)
+    .sort((x, y) => y.accretion - x.accretion)
+    .slice(0, 5);
+  const scale = perSession.length ? Math.max(1, perSession[0].accretion) : 1;
+  const rows = perSession.map((x) =>
+    barRow(x.sessionId.slice(0, 8), dec(x.accretion, 0) + '/tour', x.accretion / scale, 's2')).join('');
+  const head = a.median == null
+    ? `<p>Accrétion indisponible : aucune session de la fenêtre n'a assez de tours (3 minimum) pour qu'une pente soit une tendance.</p>`
+    : `<p><strong>${dec(a.median, 0)} tokens/tour</strong> en médiane sur ${int(a.n)} session${a.n > 1 ? 's' : ''} — ` +
+      `vitesse à laquelle la session s'alourdit, tour après tour. À ce rythme, l'occupation médiane ` +
+      `(${tok(w.occupancy.median)}) est atteinte en ${int(a.median > 0 ? w.occupancy.median / a.median : null)} tours ` +
+      `et le p90 (${tok(w.occupancy.p90)}) en ${int(a.median > 0 ? w.occupancy.p90 / a.median : null)} tours.</p>`;
+  return card('Accrétion (tokens/tour)', head +
+    (rows ? `<h3>Sessions qui s'alourdissent le plus vite</h3><div class="pmz-rows">${rows}</div>` : '') +
+    `<p class="pmz-note">Pente de la régression linéaire de la taille de prompt sur l'index du tour, par session.</p>`);
+}
+
+// Gain d'un découpage en deux d'une session, sous la loi `coût ∝ tours^k` : deux sessions de
+// T/2 tours coûtent 2·(T/2)^k = 2^(1−k)·T^k, soit un gain de 1 − 0,5^(k−1). k = 1 → 0 (linéaire,
+// aucun intérêt à scinder) ; k = 1,5 → −29 %.
+function splitGain(k) { return 1 - Math.pow(0.5, k - 1); }
+
+function scalingLine(s, label) {
+  if (!s) {
+    return `<li><span class="pmz-swatch s1"></span><span class="l-name">${esc(label)}</span>` +
+      `<span class="l-val">— moins de 3 sessions assez longues</span></li>`;
+  }
+  const gain = s.exponent > 1 ? ` → scinder en deux : ${minus(splitGain(s.exponent))}` : ' → coût linéaire, scinder ne gagne rien';
+  // « proportionnel à » écrit en mots, pas en « ∝ » : le glyphe U+221D manque dans plusieurs
+  // piles de polices système et retombe alors sur un rectangle ou un tiret — « coût - tours »
+  // se lirait comme une soustraction. Le sens du chiffre passe avant l'élégance de la notation.
+  return `<li><span class="pmz-swatch s1"></span><span class="l-name">${esc(label)} : proportionnel à tours<sup>${dec(s.exponent)}</sup>` +
+    `${gain}</span><span class="l-val">r² ${dec(s.r2)} · n=${int(s.n)} ≥ ${int(s.minTurns)} tours</span></li>`;
+}
+
+function scalingSection(w) {
+  const items = [scalingLine(w.scaling, "loi d'échelle du coût"), scalingLine(w.scalingCacheRead, 'loi d\'échelle de la lecture de cache')].join('');
+  return card('Loi d\'échelle — le coût croît en tours^k', `<ul class="pmz-legend">${items}</ul>` +
+    `<p class="pmz-note">Régression log-log du coût (et de la lecture de cache) sur le nombre de tours, ` +
+    `sur les seules sessions d'au moins ${int((w.scaling && w.scaling.minTurns) || m.MIN_TURNS_FOR_SCALING)} tours — ` +
+    `sous ce seuil, le bruit du premier tour domine la pente. <strong>k &gt; 1</strong> signifie qu'une session longue ` +
+    `coûte plus que la somme de deux sessions courtes équivalentes. L'exposant vaut <em>null</em> plutôt qu'inventé ` +
+    `quand moins de 3 sessions qualifient, et il est publié avec son r² et son n : un k régressé sur 3 sessions ` +
+    `ne vaut pas un k régressé sur 100.</p>`);
+}
+
+// ============================ RECOMMANDATIONS CHIFFRÉES ============================
+
+// Chaque candidate porte un GAIN EN DOLLARS estimé sur la fenêtre observée, ce qui permet de
+// les classer par argent et non par intuition. Les 4 postes de la décomposition sont toujours
+// disponibles, donc il y a toujours au moins 4 candidates → toujours 3 recommandations
+// chiffrées. Les taux de réduction (−25 %, −20 %, −30 %) sont des OBJECTIFS d'action, annoncés
+// comme tels : le chiffre exact est le montant que le poste pèse aujourd'hui.
+function recommendations(w) {
+  const b = w.cacheReadBreakdown;
+  const s = b.shares || {};
+  const crCost = w.cost.cacheRead;
+  const degraded = b.ratio != null && b.ratio > RATIO_WARN;
+  const hedge = degraded ? ' (poste déclassé en plafond : contrôle ' + dec(b.ratio) + ')' : '';
+  const postCost = (share) => (share != null && Number.isFinite(share) ? crCost * share : 0);
+  const cand = [];
+
+  const push = (gain, title, detail) => { cand.push({ gain, title, detail }); };
+
+  // 1. Scinder les sessions — souvent le plus gros levier quand k > 1.
+  if (w.scaling && w.scaling.exponent > 1) {
+    const g = splitGain(w.scaling.exponent);
+    push(w.cost.total * g,
+      `Scinder les sessions en deux : ${minus(g)} sur le coût, ${eur(w.cost.total * g)} sur la fenêtre`,
+      `Le coût mesuré croît en tours<sup>${dec(w.scaling.exponent)}</sup> (r² ${dec(w.scaling.r2)}, n=${int(w.scaling.n)} sessions ` +
+      `de ${int(w.scaling.minTurns)} tours ou plus) : deux sessions de T/2 tours coûtent ${minus(g)} par rapport à une de T. ` +
+      `Concrètement : clore le lot puis repartir en session fraîche au lieu de laisser courir.`);
+  }
+
+  // 2. Réduire le préfixe : le seul poste dont la réduction se paie à CHAQUE tour.
+  push(postCost(s.prefix) * 0.25,
+    `Alléger le préfixe : ${eur(postCost(s.prefix))} de lecture de cache aujourd'hui, ${eur(postCost(s.prefix) * 0.25)} récupérables à −25 %`,
+    `Le préfixe médian pèse ${tok(w.prefix.median)} et il est rejoué à chaque tour — ${pct(s.prefix)} de la lecture de cache${hedge}. ` +
+    `Leviers : CLAUDE.md plus court, skills et serveurs MCP non utilisés désactivés, injections de hook resserrées. ` +
+    `C'est le seul poste dont une coupe se paie sur les ${int(w.turns)} tours de la fenêtre.`);
+
+  // 3. Sortie de l'IA : le contre-intuitif de l'epic — relire moins de fichiers ne suffit pas.
+  push(postCost(s.output) * 0.2,
+    `Raccourcir la sortie : ${eur(postCost(s.output))} de relecture, ${eur(postCost(s.output) * 0.2)} récupérables à −20 %`,
+    `La sortie de l'IA elle-même représente ${pct(s.output)} de la lecture de cache${hedge} — ${tok(b.output)} relus. ` +
+    `Chaque token produit est repayé à tous les tours suivants. Leviers : diffs au lieu de fichiers réécrits, ` +
+    `pas de récapitulatif de code déjà écrit, raisonnement étendu réservé aux décisions.`);
+
+  // 4. Résultats d'outils : le levier « relire moins », vrai mais rarement le premier.
+  push(postCost(s.toolResults) * 0.3,
+    `Cibler les lectures : ${eur(postCost(s.toolResults))} de résultats d'outils relus, ${eur(postCost(s.toolResults) * 0.3)} récupérables à −30 %`,
+    `Les résultats d'outils pèsent ${pct(s.toolResults)} de la lecture de cache${hedge} (${tok(b.toolResults)}). ` +
+    `Leviers : git grep / git diff avant tout Read complet, lectures partielles (offset/limit), ` +
+    `sous-agent pour les explorations larges (son contexte ne pèse pas sur la session principale).`);
+
+  // 5. Prompts et injections relus.
+  push(postCost(s.prompts) * 0.25,
+    `Resserrer prompts et injections : ${eur(postCost(s.prompts))} relus, ${eur(postCost(s.prompts) * 0.25)} récupérables à −25 %`,
+    `Prompts utilisateur et injections (dont celles de PMZ lui-même) pèsent ${pct(s.prompts)} de la lecture de cache${hedge}. ` +
+    `Leviers : handoff court en session fraîche, pas de re-collage de contexte déjà présent, protocole injecté en version « slim ».`);
+
+  // 6. Accrétion : convertie en un nombre de tours, pas en dollars — donc classée par le coût
+  // qu'un tour supplémentaire fait payer, pour rester comparable aux autres.
+  if (w.accretion.median != null && w.accretion.median > 0 && w.turns > 0) {
+    const perTurn = w.cost.total / w.turns;
+    const turnsToP90 = w.occupancy.p90 / w.accretion.median;
+    push(perTurn * Math.max(0, turnsToP90 / 2),
+      `Clore avant ~${int(turnsToP90)} tours : au-delà, chaque tour coûte plus de ${eur(perTurn)}`,
+      `À ${dec(w.accretion.median, 0)} tokens/tour d'accrétion médiane, l'occupation atteint le p90 observé ` +
+      `(${tok(w.occupancy.p90)}) vers le tour ${int(turnsToP90)}. Le coût par tour croît avec l'occupation : ` +
+      `${eur(perTurn)} en moyenne sur la fenêtre, davantage en fin de session.`);
+  }
+
+  cand.sort((a, z) => z.gain - a.gain);
+
+  // Garde-fou : la page promet 3 recommandations. Si la fenêtre est trop pauvre pour en
+  // produire 3 chiffrées, on complète par une action de mesure — elle aussi chiffrée.
+  while (cand.length < 3) {
+    cand.push({
+      gain: 0,
+      title: `Élargir la mesure : ${int(w.count)} session${w.count > 1 ? 's' : ''} analysée${w.count > 1 ? 's' : ''}, ${int(w.turns)} tours`,
+      detail: `Trop peu de matière pour chiffrer un levier de plus. Relancer avec <code>--all</code> pour balayer ` +
+        `tous les transcripts du projet (la régression log-log demande 3 sessions de ` +
+        `${int(m.MIN_TURNS_FOR_SCALING)} tours minimum).`,
+    });
+  }
+
+  return cand.slice(0, 3);
+}
+
+function recosSection(w) {
+  const items = recommendations(w).map((r) =>
+    `<li><div class="reco-title">${r.title}</div><div class="reco-detail">${r.detail}</div></li>`).join('');
+  return card('3 recommandations chiffrées', `<ol class="pmz-recos">${items}</ol>` +
+    `<p class="pmz-note">Classées par montant récupérable sur la fenêtre observée. Ce que pèse un poste aujourd'hui ` +
+    `est <strong>mesuré</strong> ; les taux de réduction (−20 %, −25 %, −30 %) sont des <strong>objectifs d'action</strong>, pas des mesures.</p>`);
+}
+
+function sessionsSection(w, top) {
+  const rows = w.sessions.slice().sort((a, b) => b.cost.total - a.cost.total).slice(0, top).map((s) =>
+    `<tr><td>${esc(s.sessionId.slice(0, 8))}</td><td>${int(s.turns)}</td><td>${eur(s.cost.total)}</td>` +
+    `<td>${tok(s.prefix)}</td><td>${tok(s.occupancy.median)}</td><td>${tok(s.occupancy.p90)}</td>` +
+    `<td>${s.accretion == null ? '—' : dec(s.accretion, 0)}</td><td>${pct(s.cacheHitRate)}</td>` +
+    `<td>${esc(s.tier)}</td></tr>`).join('');
+  const skipped = w.skipped && w.skipped.length
+    ? `<p class="pmz-note">${int(w.skipped.length)} transcript(s) écarté(s) : ${esc(w.skipped.map((k) => k.reason).join(', '))}.</p>`
+    : '';
+  return card('Sessions les plus chères',
+    `<div class="pmz-scroll"><table class="pmz-table"><thead><tr><th>session</th><th>tours</th><th>coût</th>` +
+    `<th>préfixe</th><th>occ. médiane</th><th>occ. p90</th><th>accrétion</th><th>cache hit</th><th>palier</th>` +
+    `</tr></thead><tbody>${rows}</tbody></table></div>${skipped}`);
+}
+
+// Gain RTK par lot (lot #117) : source = backlog.json, PAS les transcripts (indépendant de la
+// fenêtre de sessions ci-dessus). Un lot clos sans `integrations.command_optimizer` n'a aucune
+// preuve RTK -> absent de la liste plutôt qu'affiché à zéro (jamais de valeur inventée). Le
+// niveau de preuve (measured/local) est toujours affiché à côté du chiffre, jamais tu.
+function rtkGainLotsSection(root) {
+  let lots;
+  try {
+    lots = backlog.loadBacklog(root).lots
+      .filter((l) => l.status === 'done' && l.integrations && l.integrations.command_optimizer
+        && l.integrations.command_optimizer.evidence)
+      .sort((a, b) => (b.closed_at || '').localeCompare(a.closed_at || ''));
+  } catch (_) {
+    lots = [];
+  }
+  if (!lots.length) {
+    return card('Gain RTK par lot',
+      `<p class="pmz-note">Aucun lot clos avec preuve RTK (compteur local ou mesuré) pour ce projet.</p>`);
+  }
+  const rows = lots.map((l) => {
+    const co = l.integrations.command_optimizer;
+    const lines = rtkMetrics.gainLines(co, tok);
+    const badge = co.evidence === 'measured' ? '<span class="pmz-badge">mesuré</span>' : '<span class="pmz-badge warn">compteur local</span>';
+    const detail = lines.slice(1).join(' · ');
+    return `<tr><td>#${esc(l.id)}</td><td>${esc(l.title || '—')}</td><td>${badge}</td><td>${esc(detail)}</td></tr>`;
+  }).join('');
+  return card('Gain RTK par lot',
+    `<div class="pmz-scroll"><table class="pmz-table"><thead><tr><th>lot</th><th>titre</th>` +
+    `<th>preuve</th><th>chiffres</th></tr></thead><tbody>${rows}</tbody></table></div>` +
+    `<p class="pmz-note"><strong>mesuré</strong> : chiffres issus du contrat RTK lui-même (<code>rtk gain</code>). ` +
+    `<strong>compteur local</strong> : commandes réécrites comptées côté PMZ, économie de sortie non mesurable ici.</p>`);
+}
+
+// ============================ SYNTHÈSE D'OUVERTURE (lot #122) ============================
+
+// Borne d'occupation DU PROJET (lib/occupancy.resolveRedZone) : les signaux d'occupation se
+// lisent en fraction de cette borne, jamais d'un palier absolu — sinon le même chiffre
+// sur-alerterait sur une fenêtre étroite (Haiku) et sous-alerterait sur une large (Opus).
+// Modèle de référence = le palier de tarif dominant de la fenêtre, pondéré par les tours.
+// Borne introuvable → l'option vaut `null` et les signaux d'occupation ne sont pas produits :
+// pas de seuil inventé (même règle que l'exposant `null` de la loi d'échelle).
+function windowRedZone(w, root) {
+  try {
+    const byTier = {};
+    w.sessions.forEach((s) => { byTier[s.tier] = (byTier[s.tier] || 0) + s.turns; });
+    const tier = Object.keys(byTier).sort((a, b) => byTier[b] - byTier[a])[0] || m.DEFAULT_TIER;
+    const rz = occupancyLib.resolveRedZone(root, tier);
+    return rz && rz.tokens > 0 ? rz.tokens : null;
+  } catch (_) { return null; }
+}
+
+// Ce que le cache a évité de payer : les mêmes tokens facturés au tarif d'ENTRÉE. Sommé par
+// session, donc au palier de tarif de la session — les paliers ne sont jamais mélangés. C'est
+// un ordre de grandeur mesuré sur des tokens réels, pas une facture alternative.
+function cacheSavingUsd(w) {
+  try {
+    return w.sessions.reduce((acc, s) => {
+      const p = m.priceFor(s.tier);
+      return acc + (s.totals.cacheRead / 1e6) * (p.input - p.cacheRead);
+    }, 0);
+  } catch (_) { return null; }
+}
+
+// Formateurs injectés dans lib/dashboard-synthesis (module pur) : un seul jeu de règles de mise
+// en forme dans le projet — virgule décimale, tokens abrégés, euros au taux de metrics.js.
+// `esc` en fait partie : la synthèse cite des identifiants de session, qui viennent du disque.
+const FMT = { tok, eur, pct, dec, int, esc };
+
+function buildSynthesis(w, root) {
+  return synthesis.synthesize(w, FMT, {
+    redZoneTokens: windowRedZone(w, root),
+    cacheSavingUsd: cacheSavingUsd(w),
+    ratioWarn: RATIO_WARN,
+    // Le bloc « Améliorer » ne recalcule pas un classement concurrent : il reprend la première
+    // des recommandations déjà classées par montant récupérable.
+    topReco: recommendations(w)[0] || null,
+  });
+}
+
+function synthSection(syn) {
+  const blocks = syn.blocks.map((b) =>
+    `<div class="s-block"><div class="s-label">${esc(b.label)}</div><div class="s-text">${b.text}</div></div>`).join('');
+  return card('Synthèse', `<div class="pmz-synth">${blocks}</div>` +
+    `<p class="pmz-note">Le <strong>constat</strong> est factuel ; <strong>garder</strong>, <strong>améliorer</strong> et ` +
+    `<strong>arrêter</strong> sont dérivés des mêmes mesures, par seuils nommés (aucune donnée nouvelle, aucun ` +
+    `transcript relu pour cette lecture). Le détail chiffré est au second niveau, plus bas.</p>`);
+}
+
+function sigList(items, kind) {
+  return `<ul class="pmz-sig${kind === 'watch' ? ' watch' : ''}">` + items.map((s) =>
+    `<li${s.filler ? ' class="neutral"' : ''}><div class="sig-title">${s.title}</div>` +
+    `<div class="sig-detail">${s.detail}</div></li>`).join('') + '</ul>';
+}
+
+function signalsSection(syn) {
+  return card('3 bons points · 3 points d\'attention',
+    `<div class="pmz-signals">` +
+    `<div><h3>Bons points</h3>${sigList(syn.good, 'good')}</div>` +
+    `<div><h3>Points d'attention</h3>${sigList(syn.watch, 'watch')}</div></div>` +
+    `<p class="pmz-note">Chaque signal porte le chiffre qui l'a déclenché : le seuil est contestable sans lire le code. ` +
+    `Classement par sévérité puis par montant en jeu. Un encadré <strong>neutre</strong> signale une fenêtre trop pauvre ` +
+    `pour un signal de plus — jamais un signal de complaisance.</p>`);
+}
+
+// Second niveau. `<details>` natif : le pli ne coûte pas une ligne de script, ce qui préserve
+// l'autonomie de la page (zéro réseau, zéro `<script>`).
+function detailsBlock(inner) {
+  return `<details class="pmz-more"><summary>Détail technique — indicateurs, méthode, sessions ` +
+    `<span class="s-hint">(la synthèse ci-dessus en est dérivée)</span></summary>` +
+    `<div class="pmz-more-body">${inner}</div></details>`;
+}
+
+// ============================ ASSEMBLAGE ============================
+
+const REASONS = {
+  'no-transcript': 'aucun transcript pour ce projet (jamais ouvert dans Claude Code, ou CLAUDE_CONFIG_DIR déplacé)',
+  'empty-transcript': 'transcript vide',
+  'no-usage': "aucune ligne d'usage exploitable dans les transcripts",
+  'read-error': 'transcript illisible',
+};
+function reasonText(reason) { return REASONS[reason] || 'indéterminé'; }
+
+function footerHtml(w, cwd, version) {
+  const items = [
+    `Mesure <strong>hors bande</strong> : ce tableau de bord est une commande à la demande. Aucun hook ne balaye ` +
+      `les transcripts — c'est précisément le coût de lecture qu'un hook n'a pas le droit de payer.`,
+    `Page <strong>autonome</strong> : aucune requête réseau, aucun script, aucune police distante. ` +
+      `Thème par variables CSS (clair, sombre système, ou forçage <code>data-theme</code> sur la racine).`,
+    `Le coût d'<strong>écriture de cache est un plancher</strong> (tarif 5 minutes ; le TTL 1 heure n'est pas exposé par les transcripts).`,
+    `Montants convertis en euros au taux fixe <strong>1 $ = ${fr(String(m.USD_TO_EUR))} €</strong> (relevé statique, ` +
+      `à éditer dans <code>promptimizer/lib/metrics.js</code> — même statut que les tarifs par palier).`,
+    `La décomposition publie toujours son <strong>contrôle de validité</strong> ; au-delà de ${fr(String(RATIO_WARN))} ` +
+      `ses quatre chiffres sont des <strong>plafonds</strong>, pas des parts.`,
+    `Aucune donnée ne quitte le poste : la page est un fichier local, produit depuis ` +
+      `<code>${esc(w.ok ? w.dir : m.transcriptDir(cwd))}</code>.`,
+  ];
+  return `<p>Promptimizer ${esc(version || '—')} · <code>promptimizer/scripts/dashboard.js</code> ` +
+    `sur le moteur <code>promptimizer/lib/metrics.js</code>.</p><ul><li>${items.join('</li><li>')}</li></ul>`;
+}
+
+// Contenu partagé par le document complet et la variante artefact : UNE SEULE construction,
+// deux rendus. Ne jamais recalculer titre/synthèse/corps séparément pour l'artefact — ce serait
+// le second gabarit divergent que le lot #123 doit éviter.
+function buildContent(w, cwd, opts) {
+  const version = readVersion();
+  const title = 'Économie de contexte — tableau de bord';
+  const root = project.gitRoot(cwd) || cwd;
+  let subtitle;
+  let body;
+
+  if (!w.ok) {
+    subtitle = `Projet <code>${esc(cwd)}</code> · généré le ${esc(frDate(Date.now()))}`;
+    body = card('Mesure indisponible',
+      `<p><strong>Statut : ${esc(reasonText(w.reason))}.</strong></p>` +
+      `<p class="pmz-note">Dossier de transcripts attendu : <code>${esc(w.dir || m.transcriptDir(cwd))}</code>. ` +
+      `Rien n'a échoué : le moteur exprime l'absence de mesure en valeur, et la page est produite quand même.</p>`)
+      + rtkGainLotsSection(root);
+  } else {
+    const totalTokens = w.totals.input + w.totals.cacheWrite + w.totals.cacheRead + w.totals.output;
+    subtitle = `Projet <code>${esc(cwd)}</code> · ${int(w.count)} session${w.count > 1 ? 's' : ''} · ` +
+      `${int(w.turns)} tours · ${eur(w.cost.total)} (${tok(totalTokens)} tokens) · généré le ${esc(frDate(Date.now()))}`;
+    const k = w.scaling ? dec(w.scaling.exponent) : '—';
+    const kpis = '<div class="pmz-kpis">' + [
+      kpi('occupation médiane', tok(w.occupancy.median), `p90 ${tok(w.occupancy.p90)} · max ${tok(w.occupancy.max)}`),
+      kpi('coût de la fenêtre', eur(w.cost.total), `${tok(totalTokens)} tokens · ${eur(w.turns > 0 ? w.cost.total / w.turns : null)} par tour`),
+      kpi('accrétion médiane', w.accretion.median == null ? '—' : dec(w.accretion.median, 0), 'tokens par tour'),
+      kpi('loi d\'échelle', 'tours^' + k, w.scaling ? `r² ${dec(w.scaling.r2)} · n=${int(w.scaling.n)}` : 'pas assez de sessions longues'),
+    ].join('') + '</div>';
+    // La page S'OUVRE sur la synthèse (lot #122) : lecture d'abord, indicateurs ensuite. Tout
+    // ce qui était la page jusqu'ici passe derrière un pli.
+    const syn = buildSynthesis(w, root);
+    body = synthSection(syn) + signalsSection(syn) + detailsBlock(
+      kpis + occupancySection(w) + costSection(w) + breakdownSection(w) +
+      accretionSection(w) + scalingSection(w) + recosSection(w) + sessionsSection(w, opts.top) +
+      rtkGainLotsSection(root));
+  }
+
+  return { title, subtitle, body, footer: footerHtml(w, cwd, version) };
+}
+
+function buildHtml(w, cwd, opts) {
+  const { tpl } = loadTemplate();
+  const c = buildContent(w, cwd, opts);
+  return render(tpl, { TITLE: esc(c.title), SUBTITLE: c.subtitle, BODY: c.body, FOOTER: c.footer });
+}
+
+// Bloc <style> extrait du gabarit complet : source unique de la feuille de style, jamais
+// recopiée. Si le gabarit est absent (secours), le style de repli est déjà minimal et suffit.
+function extractStyle(tpl) {
+  const mtc = /<style>([\s\S]*?)<\/style>/.exec(tpl);
+  return mtc ? mtc[1] : '';
+}
+
+// Variante ARTEFACT (lot #123) : même contenu que `buildHtml`, sans `<!doctype>`/`<html>`/
+// `<head>`/`<body>` — un outil de publication d'artefact (ex. Claude) fournit sa propre coquille
+// et rejette ces balises dans le contenu qu'on lui passe. Toujours zéro requête réseau : même
+// feuille de style, aucun script.
+function buildArtifactHtml(w, cwd, opts) {
+  const { tpl } = loadTemplate();
+  const c = buildContent(w, cwd, opts);
+  const style = extractStyle(tpl);
+  return `<style>${style}</style>\n<div class="pmz-wrap">\n` +
+    `<header class="pmz-head">\n<h1>${esc(c.title)}</h1>\n<p class="pmz-sub">${c.subtitle}</p>\n</header>\n` +
+    `${c.body}\n<footer class="pmz-foot">\n${c.footer}\n</footer>\n</div>\n`;
+}
+
+// Chemin de la variante artefact, dérivé de la destination du document complet : même dossier,
+// suffixe `.artifact.html` — jamais un nom indépendant qui pourrait diverger du fichier principal.
+function artifactOutPath(out) {
+  return /\.html?$/i.test(out) ? out.replace(/\.html?$/i, '.artifact.html') : out + '.artifact.html';
+}
+
+// Résumé machine — pour un appelant qui veut savoir OÙ est la page et ce qu'elle dit, sans
+// parser du HTML. L'échec reste une valeur, jamais un code de sortie.
+function summary(w, out, written, cwd, artifactOut, artifactWritten) {
+  const b = w.ok ? w.cacheReadBreakdown : null;
+  // Le résumé machine dit ce que DIT la page : la synthèse d'ouverture y figure donc au même
+  // titre que les recommandations. Balises retirées (les textes sont des fragments HTML).
+  const syn = w.ok ? buildSynthesis(w, project.gitRoot(cwd) || cwd) : null;
+  const plain = plainText;
+  return {
+    ok: !!w.ok,
+    reason: w.ok ? null : w.reason,
+    out,
+    written,
+    artifactOut,
+    artifactWritten,
+    count: w.ok ? w.count : 0,
+    turns: w.ok ? w.turns : 0,
+    cost: w.ok ? w.cost.total : null,
+    costEur: w.ok ? w.cost.total * m.USD_TO_EUR : null,
+    tokensTotal: w.ok ? w.totals.input + w.totals.cacheWrite + w.totals.cacheRead + w.totals.output : null,
+    usdToEur: m.USD_TO_EUR,
+    occupancy: w.ok ? w.occupancy : null,
+    accretion: w.ok ? w.accretion.median : null,
+    scalingExponent: w.ok && w.scaling ? w.scaling.exponent : null,
+    breakdownRatio: b ? b.ratio : null,
+    breakdownDegraded: !!(b && b.ratio != null && b.ratio > RATIO_WARN),
+    shares: b ? b.shares : null,
+    recommendations: w.ok ? recommendations(w).map((r) => r.title.replace(/<[^>]+>/g, '')) : [],
+    synthesis: syn ? {
+      constat: plain(syn.blocks.find((x) => x.key === 'constat').text),
+      garder: plain(syn.blocks.find((x) => x.key === 'garder').text),
+      ameliorer: plain(syn.blocks.find((x) => x.key === 'ameliorer').text),
+      arreter: plain(syn.blocks.find((x) => x.key === 'arreter').text),
+      good: syn.good.map((s) => plain(s.title)),
+      watch: syn.watch.map((s) => plain(s.title)),
+    } : null,
+  };
+}
+
+function defaultOut(cwd) {
+  const root = project.gitRoot(cwd) || cwd;
+  return path.join(project.vibeDir(root), 'dashboard.html');
+}
+
+function main() {
+  const cwd = parseCwd();
+  const opts = {
+    limit: flag('all') ? 1e9 : num('sessions', 20),
+    minTurns: num('min-turns', m.MIN_TURNS_FOR_SCALING),
+    top: num('top', 10),
+  };
+  const w = m.analyzeWindow(cwd, { limit: opts.limit, minTurns: opts.minTurns });
+  const html = buildHtml(w, cwd, opts);
+
+  if (flag('stdout')) {
+    process.stdout.write(html);
+    return;
+  }
+
+  const out = opt('out', null) || defaultOut(cwd);
+  let written = false;
+  try {
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, html);
+    written = true;
+  } catch (_) { /* disque en lecture seule, chemin invalide : on le dit, on ne casse pas */ }
+
+  // Variante artefact (lot #123) : écrite en plus du document complet, jamais à sa place —
+  // un appelant peut la publier via un outil d'artefact sans jamais lire le fichier complet.
+  const artifactOut = artifactOutPath(out);
+  let artifactWritten = false;
+  try {
+    fs.writeFileSync(artifactOut, buildArtifactHtml(w, cwd, opts));
+    artifactWritten = true;
+  } catch (_) { /* même politique fail-open que le document complet */ }
+
+  if (flag('json')) {
+    process.stdout.write(JSON.stringify(summary(w, out, written, cwd, artifactOut, artifactWritten), null, 2) + '\n');
+    return;
+  }
+
+  const lines = ['## Tableau de bord d\'économie de contexte', ''];
+  if (written) lines.push(`Page écrite : \`${out}\``);
+  else lines.push(`Écriture impossible : \`${out}\` (droits ou chemin). Utilise \`--out <chemin>\` ou \`--stdout\`.`);
+  if (artifactWritten) lines.push(`Variante artefact écrite : \`${artifactOut}\` (à publier en artefact)`);
+  lines.push('');
+  if (!w.ok) {
+    lines.push(`Statut : ${reasonText(w.reason)} — la page affiche ce statut.`);
+  } else {
+    const b = w.cacheReadBreakdown;
+    // Même ordre que la page : la synthèse d'abord, les indicateurs ensuite. Les trois surfaces
+    // (page, --json, texte) disent la même chose, dans le même ordre.
+    const syn = buildSynthesis(w, project.gitRoot(cwd) || cwd);
+    const plain = plainText;
+    lines.push('Synthèse :');
+    syn.blocks.forEach((blk) => lines.push(`- ${blk.label} : ${plain(blk.text)}`));
+    lines.push('');
+    lines.push('3 bons points :');
+    syn.good.forEach((s, i) => lines.push(`${i + 1}. ${plain(s.title)}`));
+    lines.push('');
+    lines.push('3 points d\'attention :');
+    syn.watch.forEach((s, i) => lines.push(`${i + 1}. ${plain(s.title)}`));
+    lines.push('');
+    lines.push('Détail technique :');
+    lines.push(`${w.count} session${w.count > 1 ? 's' : ''} · ${w.turns} tours · ${eur(w.cost.total)}`);
+    lines.push(`- occupation : médiane ${tok(w.occupancy.median)} · p90 ${tok(w.occupancy.p90)} · max ${tok(w.occupancy.max)}`);
+    lines.push(`- accrétion : ${w.accretion.median == null ? '—' : dec(w.accretion.median, 0) + ' tokens/tour'}`);
+    lines.push(`- loi d'échelle : ${w.scaling ? 'coût ∝ tours^' + dec(w.scaling.exponent) : '— (pas assez de sessions longues)'}`);
+    lines.push(`- décomposition : contrôle ${dec(b.ratio)}` +
+      (b.ratio != null && b.ratio > RATIO_WARN ? ` > ${fr(String(RATIO_WARN))} → parts affichées comme des PLAFONDS` : ' (dans la plage attendue)'));
+    lines.push('');
+    lines.push('Recommandations chiffrées :');
+    recommendations(w).forEach((r, i) => lines.push(`${i + 1}. ${r.title.replace(/<[^>]+>/g, '')}`));
+  }
+  process.stdout.write(lines.join('\n') + '\n');
+}
+
+try {
+  main();
+} catch (e) {
+  // Dernier rempart : appelé depuis une commande, ce script ne doit jamais faire échouer son
+  // appelant. L'échec ressort en valeur (JSON) ou en texte lisible, toujours en code 0.
+  if (flag('json')) process.stdout.write(JSON.stringify({ ok: false, reason: 'error', out: null, written: false }) + '\n');
+  else process.stdout.write('## Tableau de bord d\'économie de contexte\n\nStatut : indéterminé (aucune page produite).\n');
+}

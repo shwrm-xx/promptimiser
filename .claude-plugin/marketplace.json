@@ -1,0 +1,15 @@
+{
+  "name": "pmz-marketplace",
+  "owner": {
+    "name": "Marwan"
+  },
+  "metadata": {
+    "description": "Marketplace publique Promptimizer (gouvernance de session vibecoding)."
+  },
+  "plugins": [
+    {
+      "name": "pmz",
+      "source": "./promptimizer"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+#!/bin/sh
+# Wrapper de lancement des hooks PMZ en mode PLUGIN Claude Code.
+#
+# Pourquoi ce wrapper — il remplace le resolveNodeBin() de merge-settings.js (install manuelle) :
+#   - En install manuelle, PMZ fige le chemin absolu de `node` dans settings.json à l'install
+#     (le PATH des apps GUI macOS est épuré → `node` nu = exit 127). Un plugin est distribué
+#     et ne peut PAS figer un chemin machine-spécifique : la résolution se fait au RUNTIME.
+#   - Le bit +x n'est pas préservé dans un plugin distribué en .zip : hooks.json invoque donc
+#     ce script via `sh "$CLAUDE_PLUGIN_ROOT/bin/pmz-hook" <hook-path>` (pas d'exécution directe).
+#
+# Contrat FAIL-OPEN absolu (règle du dépôt) : si `node` reste introuvable, on sort en 0
+# SILENCIEUX — un hook ne casse JAMAIS une session. Jamais d'exit 2, jamais de bruit stderr.
+#
+# Arg $1 = chemin du fichier hook (déjà substitué par Claude Code : "$CLAUDE_PLUGIN_ROOT/hooks/x.js").
+# stdin (JSON du hook) est transmis tel quel à node via l'héritage des descripteurs.
+
+hook_path="$1"
+[ -n "$hook_path" ] || exit 0
+[ -f "$hook_path" ] || exit 0
+
+# Résolution de node : PATH d'abord (command -v), puis emplacements usuels absents du PATH
+# GUI macOS. Premier candidat exécutable gagne. exec => node hérite stdin/stdout/stderr.
+for candidate in \
+  "$(command -v node 2>/dev/null)" \
+  /opt/homebrew/bin/node \
+  /usr/local/bin/node \
+  /usr/bin/node \
+  /bin/node
+do
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    exec "$candidate" "$hook_path"
+  fi
+done
+
+# node introuvable → fail-open : la session continue normalement, sans hook PMZ.
+exit 0
