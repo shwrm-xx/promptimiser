@@ -5,6 +5,15 @@ const { COST_BUDGET_TOKENS, modelEffortTag } = require('./backlog');
 const { hintResolvableClaude } = require('./modelwatch');
 const { SEV, withSeverity } = require('./severity');
 
+// Base des chemins d'aide AFFICHÉS dans les messages injectés (même motif que
+// scripts/backlog.js et scripts/close-batch.js) : racine du plugin en mode plugin, sinon
+// l'emplacement de l'install manuelle. Sans ça, une session en canal plugin reçoit une
+// commande `node ~/.claude/promptimizer/scripts/…` qui n'existe pas sur la machine — et la
+// réécriture de build-plugin.js ne rattrape pas le cas (rewriteMdInDir ne traite que les .md).
+// Chemin littéral (`~` non résolu) : c'est une commande à copier dans un shell, pas un accès fs
+// — d'où le motif brut plutôt que claude-dir.pmzDir(), qui résout en absolu.
+const PMZ_BASE = (process.env.CLAUDE_PLUGIN_ROOT || '').trim() || '~/.claude/promptimizer';
+
 const MSG_ACTIF = [
   'Promptimizer actif.',
   'Priorité : réduire les relectures de contexte.',
@@ -55,7 +64,7 @@ const MSG_HANDOFF = [
 const MSG_LARGE = [
   'Demande potentiellement large.',
   'Propose un découpage en 2 à 5 lots (1 lot = 1 commit livrable), fais-le valider, puis',
-  'persiste-le : /scope, ou node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "fait quand : …" (puis start --id N).',
+  `persiste-le : /scope, ou node ${PMZ_BASE}/scripts/backlog.js add --title "…" --scope "fait quand : …" (puis start --id N).`,
   'Traite ensuite UNIQUEMENT le premier lot.',
 ].join('\n');
 
@@ -439,34 +448,60 @@ function compactResumeMessage(lot, prog, opts) {
 // modèle préconisé est un Claude joignable, et un rappel « pose une verify » si le lot n'en a
 // pas (sinon il se clôturera « sans preuve »). Ordre = par priorité DÉCROISSANTE : les nudges
 // secondaires (/model surtout, déjà couvert par le tag) passent EN DERNIER pour être rognés en
-// premier par le cap 400c — l'identité du lot et l'instruction cœur survivent toujours.
+// premier par le cap BACKLOG_RESUME_CAP.
+//
+// Cap 400 -> 460 + troncature SÉLECTIVE (lot #128). Le « les nudges secondaires seront rognés
+// d'abord » supposait que la troncature ne morde jamais dans le cas nominal. Faux dès le canal
+// plugin : `PMZ_BASE` y est un chemin ABSOLU (~65 c. contre 22 pour `~/.claude/promptimizer`),
+// la branche `next` au pire cas nominal atteint ~474 c., et la ligne perdue était la
+// préconisation de modèle (lot B6) — à CHAQUE session démarrée sans lot en cours. Relever le cap
+// ne suffit pas : la longueur de `PMZ_BASE` n'est pas bornable (nom d'utilisateur et chemin de
+// cache arbitraires), donc aucune valeur fixe ne garantit la survie de la dernière ligne.
+// D'où le budget : en dépassement, on rogne le SCOPE (confort, déjà coupé à 100 c. et redonné
+// par le backlog) au lieu de couper la fin du message (consignes). La troncature dure reste en
+// filet pour le cas dégénéré où même sans scope ça dépasse.
+//
 // `blockedBy` (lot #97) : ids des dépendances encore ouvertes de `next` (backlog.blockedByOf).
 // Non vide ⇒ tous les todos sont bloqués (cycle) : on remplace « Démarre-le » par l'avertissement
 // plutôt que d'inviter à démarrer un lot qui ne peut pas l'être.
+const BACKLOG_RESUME_CAP = 460;
+const BACKLOG_RESUME_SCOPE_MAX = 100;
 function backlogResumeMessage(cur, next, prog, blockedBy) {
-  const lines = [];
-  if (cur) {
-    lines.push(`Plan de lots : ${prog.done}/${prog.total} faits. Lot en cours : « ${String(cur.title).slice(0, 60)} »${modelEffortTag(cur)}${cur.scope ? ` — ${String(cur.scope).slice(0, 100)}` : ''}.`);
-    lines.push('Traite ce lot uniquement ; clôture par vérif ciblée + CHANGELOG + commit.');
-    if (!cur.verify) {
-      lines.push('Ce lot n\'a pas de commande verify — sans elle, « clos sans preuve » à la clôture (pose-en une : backlog.js verify --set).');
+  // scopeMax = budget d'affichage du scope ; 0 ⇒ scope omis (le reste du message est prioritaire).
+  const build = (scopeMax) => {
+    const scopeOf = (l) => (l.scope && scopeMax > 0 ? ` — ${String(l.scope).slice(0, scopeMax)}` : '');
+    const lines = [];
+    if (cur) {
+      lines.push(`Plan de lots : ${prog.done}/${prog.total} faits. Lot en cours : « ${String(cur.title).slice(0, 60)} »${modelEffortTag(cur)}${scopeOf(cur)}.`);
+      lines.push('Traite ce lot uniquement ; clôture par vérif ciblée + CHANGELOG + commit.');
+      if (!cur.verify) {
+        lines.push('Ce lot n\'a pas de commande verify — sans elle, « clos sans preuve » à la clôture (pose-en une : backlog.js verify --set).');
+      }
+      if (hintResolvableClaude(cur.model_hint)) {
+        lines.push('Modèle préconisé ci-dessus : bascule via /model avant d\'attaquer si besoin.');
+      }
+    } else if (next) {
+      lines.push(`Plan de lots : ${prog.done}/${prog.total} faits. Prochain lot : « ${String(next.title).slice(0, 60)} »${modelEffortTag(next)}${scopeOf(next)}.`);
+      const bl = Array.isArray(blockedBy) ? blockedBy : [];
+      if (bl.length) lines.push(`⚠️ Bloqué par ${bl.map((d) => '#' + d).join(', ')} encore ouvert : ne le démarre pas, clôture d'abord cette dépendance.`);
+      else lines.push(`Démarre-le (node ${PMZ_BASE}/scripts/backlog.js start --id ${next.id}) puis traite ce lot uniquement.`);
+      if (hintResolvableClaude(next.model_hint)) {
+        lines.push('Modèle préconisé ci-dessus : bascule via /model avant de démarrer si besoin.');
+      }
+    } else {
+      return null; // plan terminé/abandonné : rien à rappeler
     }
-    if (hintResolvableClaude(cur.model_hint)) {
-      lines.push('Modèle préconisé ci-dessus : bascule via /model avant d\'attaquer si besoin.');
-    }
-  } else if (next) {
-    lines.push(`Plan de lots : ${prog.done}/${prog.total} faits. Prochain lot : « ${String(next.title).slice(0, 60)} »${modelEffortTag(next)}${next.scope ? ` — ${String(next.scope).slice(0, 100)}` : ''}.`);
-    const bl = Array.isArray(blockedBy) ? blockedBy : [];
-    if (bl.length) lines.push(`⚠️ Bloqué par ${bl.map((d) => '#' + d).join(', ')} encore ouvert : ne le démarre pas, clôture d'abord cette dépendance.`);
-    else lines.push(`Démarre-le (node ~/.claude/promptimizer/scripts/backlog.js start --id ${next.id}) puis traite ce lot uniquement.`);
-    if (hintResolvableClaude(next.model_hint)) {
-      lines.push('Modèle préconisé ci-dessus : bascule via /model avant de démarrer si besoin.');
-    }
-  } else {
-    return null; // plan terminé/abandonné : rien à rappeler
+    return lines.join('\n');
+  };
+  let msg = build(BACKLOG_RESUME_SCOPE_MAX);
+  if (msg === null) return null;
+  if (msg.length > BACKLOG_RESUME_CAP) {
+    // Budget rendu au scope = ce qui reste sous le cap une fois le message SANS scope posé
+    // (moins les 3 caractères du séparateur « — »). Négatif ⇒ scope omis.
+    const bare = build(0);
+    msg = build(Math.max(0, BACKLOG_RESUME_CAP - bare.length - 3));
   }
-  let msg = lines.join('\n');
-  if (msg.length > 400) msg = msg.slice(0, 399) + '…';
+  if (msg.length > BACKLOG_RESUME_CAP) msg = msg.slice(0, BACKLOG_RESUME_CAP - 1) + '…'; // filet
   return msg;
 }
 
@@ -735,7 +770,7 @@ module.exports = {
   occupancyMessage, occupancyPromptMessage, compactionNudgeMessage, redZonePrescriptionMessage, sessionTitleMessage, autoInitMessage,
   turnBudgetWarnMessage, turnBudgetPrescriptionMessage, turnBudgetPromptMessage,
   turnSplitGainRange, TURN_SCALING_MIN, TURN_SCALING_MAX,
-  compactResumeMessage, COMPACT_RESUME_CAP, backlogResumeMessage, largeWithPlanMessage,
+  compactResumeMessage, COMPACT_RESUME_CAP, backlogResumeMessage, BACKLOG_RESUME_CAP, largeWithPlanMessage,
   costlyTurnMessage, outputBudgetMessage, driftMessage, loopingCommandMessage, gitDebtMessage, claudeMdMessage, bustIntraMessage, pauseTtlMessage, modelMismatchMessage, lotCostMessage, closureProofMessage,
   wasteBucketMessage, subagentNudgeMessage, readHygieneMessage, avoidableRereadsMessage,
   closureWithDraftMessage, epicBilanMessage, lotClosureCardMessage, closureCardMessage, freshSessionCodaMessage,
