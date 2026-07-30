@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 131,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-30T10:58:00.211Z",
+  "updated_at": "2026-07-30T11:18:26.663Z",
   "lots": [
     {
       "id": 1,
@@ -3678,23 +3678,23 @@
       "id": 130,
       "title": "Titre de session : numéro de lot retrouvé + sessions de plan",
       "scope": "fait quand : node test/run-tests.js vert ; suggestedTitle ne rend plus jamais « Session Libre » nue quand un plan existe ; une session de conception (plan mode ou /pmz:scope) est titrée « [XXX · Plan] <epic> »",
-      "status": "in_progress",
+      "status": "done",
       "model_hint": "opus",
       "effort_hint": "high",
       "epic": "Titre de session",
       "verify": "node test/run-tests.js",
       "us": null,
-      "closed_commit": null,
-      "closed_at": null,
-      "closed_session_id": null,
-      "closed_occupancy": null,
-      "closed_verify": null,
+      "closed_commit": "7f58cb4",
+      "closed_at": "2026-07-30T11:18:26.621Z",
+      "closed_session_id": "88fdeca0-be99-441d-9ced-7fdd6b0d9c9a",
+      "closed_occupancy": 152831,
+      "closed_verify": "ok",
       "cost_tokens": 0,
       "cost_turns": 0,
       "cost_subagent_tokens": 0,
       "closed_avg_cost_per_turn": null,
       "started_at": "2026-07-30T10:58:00.200Z",
-      "lot_number": null,
+      "lot_number": 111,
       "note": null,
       "session_touches": 0,
       "perimeter": [
@@ -3702,20 +3702,7 @@
         "test/**"
       ],
       "depends_on": [],
-      "session_owner": null,
-      "integrations": {
-        "command_optimizer": {
-          "snapshot_start": {
-            "commands": 1,
-            "delivered_tokens": 4
-          },
-          "rtk_gain_start": {
-            "raw_tokens": 0,
-            "delivered_tokens": 0,
-            "commands": 0
-          }
-        }
-      }
+      "session_owner": null
     }
   ]
 }

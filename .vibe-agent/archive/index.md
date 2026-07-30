@@ -132,3 +132,4 @@
 #0127 | 2026-07-29 | a3df852 | epic:Diffusion plugin | verify:inconnu | fiche:oui | Dépôt ajoutable en marketplace
 #0128 | 2026-07-29 | edff444 | epic:Diffusion plugin | verify:inconnu | fiche:non | Chemins d'aide plugin-conscients dans messages.js
 #0129 | 2026-07-29 | e1a1981 | epic:Diffusion plugin | verify:inconnu | fiche:non | Préconisation de modèle non rognée par le cap du resume
+#0130 | 2026-07-30 | 7f58cb4 | epic:Titre de session | verify:inconnu | fiche:non | Titre de session : numéro de lot retrouvé + sessions de plan
