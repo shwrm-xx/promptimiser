@@ -2425,6 +2425,23 @@ section('suggestedTitle : déduction depuis CHANGELOG/git quand le plan n\'a auc
     '« (lot N) » écarté (non descriptif) : résumé déduit du sujet du dernier commit');
 }
 {
+  // Bug réel lot #130 : la parenthèse finale porte la forme RÉELLEMENT en usage dans ce
+  // dépôt, « (lot #N, epic X) » (avec « # » et un epic), pas le simple « (lot N) » du test
+  // ci-dessus -> devait aussi être écartée comme métadonnée, pas fuiter dans le titre.
+  const repo = path.join(SANDBOX, 'repo-deduce-git-epic');
+  fs.mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'CHANGELOG.md'),
+    '## 2026-07-30 — Titre de session : numéro de lot retrouvé (lot #130, epic Titre de session)\n');
+  execFileSync('git', ['-C', repo, 'add', '.']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'fix(titre): lot #130 — numéro de lot retrouvé']);
+  const t = lot.suggestedTitle(repo);
+  ok(!/epic Titre de session/.test(t) && !/lot #130, epic/.test(t),
+    '« (lot #N, epic X) » écarté (métadonnée, pas descriptif) : ne fuite plus dans le titre');
+  ok(/^\[.{3}\] Session Libre · fix\(titre\): lot #130 — numéro de lot retrouvé$/.test(t),
+    'résumé déduit du sujet du dernier commit à la place');
+}
+{
   // Ni CHANGELOG ni commit exploitable -> titre nu (comportement inchangé, non-régression).
   const repo = path.join(SANDBOX, 'repo-deduce-none');
   fs.mkdirSync(repo, { recursive: true });

@@ -2,6 +2,23 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-30 — Titre de session : la parenthèse « (lot #N, epic X) » ne fuite plus dans le résumé (lot #131, epic Titre de session)
+
+Retour utilisateur (constaté en session) : la session précédente s'est vue titrée
+« [PMZ · #130] Titre de session · Lot #1 · lot #130, epic Titre de session » — le résumé
+affichait littéralement la métadonnée du lot au lieu d'une description.
+
+- **Cause** : `deduceFromChangelog` (`promptimizer/lib/lot.js`) n'écartait que la forme nue
+  « (lot N) » comme parenthèse non descriptive. La convention réellement en usage dans CE
+  dépôt (toutes les entrées de ce CHANGELOG) est « (lot #N, epic X) » — jamais filtrée, donc
+  systématiquement recopiée telle quelle dans le titre de session dès qu'un lot était écarté
+  comme périmé (`knownStale`).
+- **`promptimizer/lib/lot.js`** : regex élargie pour reconnaître aussi « (lot #N, epic X) »
+  comme métadonnée pure ; retombe alors sur le sujet du dernier commit (comportement déjà
+  correct pour l'ancienne forme).
+- **`test/run-tests.js`** : nouveau cas reproduisant l'entrée CHANGELOG réelle du lot #130
+  (avec `#` et `, epic X`), distinct du test existant qui ne couvrait que « (lot N) ».
+
 ## 2026-07-30 — Titre de session : numéro de lot retrouvé, sessions de plan nommées (lot #130, epic Titre de session)
 
 Retour utilisateur : « le renommage de session est ENCORE cassé — oublié du numéro du lot,

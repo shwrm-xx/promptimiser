@@ -153,8 +153,10 @@ function planSessionEpic(root, b) {
 
 // Intitulé déduit du dernier titre `## ...` de CHANGELOG.md (parenthèse finale de la
 // ligne, convention de ce dépôt : « ## [x.y.z] — date (résumé) » ou « ## date (résumé) »).
-// Ignore une parenthèse qui n'est qu'un marqueur « (lot N) » : déjà repris par le
-// numéro de la base, pas descriptif en soi.
+// Ignore une parenthèse qui n'est qu'un marqueur de métadonnée lot — « (lot N) » ou, forme
+// réellement en usage dans ce dépôt, « (lot #N, epic X) » (bug lot #130 : cette 2e forme
+// n'était pas filtrée et fuitait telle quelle dans le titre de session, ex. « lot #130, epic
+// Titre de session » à la place d'un résumé).
 function deduceFromChangelog(root) {
   try {
     const content = fs.readFileSync(path.join(root, 'CHANGELOG.md'), 'utf8');
@@ -163,7 +165,7 @@ function deduceFromChangelog(root) {
     const m = heading.match(/\(([^)]+)\)\s*$/);
     if (!m) return null;
     const text = m[1].trim();
-    if (!text || /^lot\s+\d+$/i.test(text)) return null;
+    if (!text || /^lot\s*#?\d+(\s*,\s*epic\s+.+)?$/i.test(text)) return null;
     return text;
   } catch (_) {
     return null;
