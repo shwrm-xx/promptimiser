@@ -2,7 +2,7 @@
   "version": 1,
   "next_id": 132,
   "created_at": "2026-07-10T19:22:52+02:00",
-  "updated_at": "2026-07-30T11:52:10.650Z",
+  "updated_at": "2026-07-30T11:55:19.004Z",
   "lots": [
     {
       "id": 1,
@@ -3708,41 +3708,28 @@
       "id": 131,
       "title": "Fix — CHANGELOG fuitait (lot #N, epic X) dans le titre de session",
       "scope": "fait quand : node test/run-tests.js vert ; deduceFromChangelog écarte aussi la forme réelle « (lot #N, epic X) », pas seulement « (lot N) »",
-      "status": "in_progress",
+      "status": "done",
       "model_hint": "sonnet",
       "effort_hint": "medium",
       "epic": "Titre de session",
       "verify": "node test/run-tests.js",
       "us": null,
-      "closed_commit": null,
-      "closed_at": null,
-      "closed_session_id": null,
-      "closed_occupancy": null,
-      "closed_verify": null,
-      "cost_tokens": 0,
-      "cost_turns": 0,
+      "closed_commit": "d9cd7dd",
+      "closed_at": "2026-07-30T11:55:18.958Z",
+      "closed_session_id": "b080e6f3-4ba0-4005-81f1-c65e9749984c",
+      "closed_occupancy": 71827,
+      "closed_verify": "ok",
+      "cost_tokens": 34543,
+      "cost_turns": 1,
       "cost_subagent_tokens": 0,
-      "closed_avg_cost_per_turn": null,
+      "closed_avg_cost_per_turn": 34543,
       "started_at": "2026-07-30T11:52:10.641Z",
-      "lot_number": null,
+      "lot_number": 378,
       "note": null,
       "session_touches": 0,
       "perimeter": [],
       "depends_on": [],
-      "session_owner": null,
-      "integrations": {
-        "command_optimizer": {
-          "snapshot_start": {
-            "commands": 1,
-            "delivered_tokens": 4
-          },
-          "rtk_gain_start": {
-            "raw_tokens": 0,
-            "delivered_tokens": 0,
-            "commands": 0
-          }
-        }
-      }
+      "session_owner": null
     }
   ]
 }
