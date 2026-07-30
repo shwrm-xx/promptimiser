@@ -15,7 +15,7 @@ const lot = require('../lib/lot');
 const trigram = require('../lib/trigram');
 const perimeter = require('../lib/perimeter');
 const { fmtK } = require('../lib/messages');
-const { previousSessionId } = require('../lib/state');
+const { previousSessionId, markPlanSession } = require('../lib/state');
 const { loadContextLedger } = require('../lib/ledger');
 
 const LABELS = { todo: 'à faire', in_progress: 'en cours', done: 'fait', dropped: 'abandonné' };
@@ -508,6 +508,9 @@ function main() {
     const name = flag('set');
     if (!name) return out(`Epic actuel : ${lot.readEpic(root)}`);
     const okw = lot.writeEpic(root, name);
+    // Poser un epic = acte de CONCEPTION (/pmz:scope étape 3, lot #130) : la session courante
+    // sera titrée « [XXX · Plan] <epic> » par la suivante. Best-effort, jamais bloquant.
+    if (okw) { try { markPlanSession(root); } catch (_) { /* fail-open */ } }
     return out(okw ? `Epic « ${name.trim().slice(0, lot.MAX_EPIC)} » enregistré (.vibe-agent/epic).`
       : 'Refusé : nom vide ou échec d\'écriture.');
   }
@@ -559,7 +562,11 @@ function main() {
       }
       return out('Refusé : --title manquant ou vide.');
     }
-    let addMsg = `Lot #${newLot.id} « ${newLot.title} » ajouté (à faire)${backlog.modelEffortTag(newLot)}${newLot.epic ? ` [epic : ${newLot.epic}]` : ''}${newLot.verify ? ` [verify : ${newLot.verify}]` : ''}${newLot.us ? ` [US : ${newLot.us}]` : ''}${newLot.perimeter.length ? ` [périmètre : ${newLot.perimeter.join(', ')}]` : ''}${newLot.depends_on.length ? ` [dépend de : ${newLot.depends_on.map((d) => '#' + d).join(', ')}]` : ''}.`;
+    // NOTE (lot #130) : `add` ne marque PAS la session comme session de plan, même avec --epic.
+    // Se poser un lot avant de le traiter est le geste ORDINAIRE d'une session de travail (et le
+    // marquer « Plan » la décrivait à faux) ; l'acte de conception tracé est `epic --set`, que
+    // /pmz:scope exécute pour le plan qu'il découpe.
+    let addMsg =`Lot #${newLot.id} « ${newLot.title} » ajouté (à faire)${backlog.modelEffortTag(newLot)}${newLot.epic ? ` [epic : ${newLot.epic}]` : ''}${newLot.verify ? ` [verify : ${newLot.verify}]` : ''}${newLot.us ? ` [US : ${newLot.us}]` : ''}${newLot.perimeter.length ? ` [périmètre : ${newLot.perimeter.join(', ')}]` : ''}${newLot.depends_on.length ? ` [dépend de : ${newLot.depends_on.map((d) => '#' + d).join(', ')}]` : ''}.`;
     addMsg += estimateSuffix(backlog.loadBacklog(root), newLot);
     return out(addMsg);
   }

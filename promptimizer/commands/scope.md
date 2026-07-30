@@ -38,9 +38,10 @@ quand : … » vérifiable** — au-delà, redécouper plutôt que grossir un lo
 2. Faire valider le découpage, les modèles préconisés, l'epic éventuel, le périmètre/les
    dépendances proposés, **le statut US de chaque lot et le contenu rédigé des US à créer**
    par l'utilisateur en **UNE** question (pas dix).
-3. Si un epic a été validé, l'enregistrer une fois pour la session/le titre :
-   `node ~/.claude/promptimizer/scripts/backlog.js epic --set "Nom de l'epic"`
-   (écrit `.vibe-agent/epic`, cap 60 caractères).
+3. Si un epic a été validé, l'enregistrer — **toujours**, même s'il était déjà posé par un
+   découpage précédent : `node ~/.claude/promptimizer/scripts/backlog.js epic --set "Nom de l'epic"`
+   (écrit `.vibe-agent/epic`, cap 60 caractères). C'est aussi ce qui marque la session courante
+   comme **session de conception** : la session suivante la titrera `[XXX · Plan] Nom de l'epic`.
 4. Persister chaque lot validé (un appel par lot), avec sa préconisation de modèle, son
    effort, si présent l'epic, et si validé son périmètre/ses dépendances :
    `node ~/.claude/promptimizer/scripts/backlog.js add --title "…" --scope "fait quand : …" --model sonnet --effort medium --verify "npm test" --epic "Nom de l'epic" --perimeter "src/a/**" --depends 12 --us "docs/us/US-42.md"`

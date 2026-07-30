@@ -18,17 +18,24 @@ function epicFile(root) {
   return path.join(vibeDir(root), 'epic');
 }
 
-// Nom de l'epic : fichier .vibe-agent/epic (1re ligne non vide) si présent,
-// sinon le nom du dossier du repo.
-function readEpic(root) {
+// Label d'epic RÉELLEMENT posé (.vibe-agent/epic, 1re ligne non vide), ou null. Distinct de
+// readEpic, qui replie sur le nom du dossier : un titre de session ne doit jamais présenter
+// « promptimiser » comme un nom de plan (cf. planSessionEpic).
+function readEpicRaw(root) {
   try {
     const raw = fs.readFileSync(epicFile(root), 'utf8');
     const line = raw.split(/\r?\n/).map((l) => l.trim()).find((l) => l);
     if (line) return line;
   } catch (_) {
-    /* fichier absent ou illisible -> fallback */
+    /* fichier absent ou illisible -> null */
   }
-  return path.basename(root);
+  return null;
+}
+
+// Nom de l'epic : fichier .vibe-agent/epic (1re ligne non vide) si présent,
+// sinon le nom du dossier du repo.
+function readEpic(root) {
+  return readEpicRaw(root) || path.basename(root);
 }
 
 // Écrit le label d'epic global (.vibe-agent/epic), utilisé par /scope au découpage
@@ -123,6 +130,27 @@ function titleForLot(trigram, l, touches, rank) {
   return touches > 1 ? `${base} (partie ${touches})` : base;
 }
 
+// Titre d'une session de CONCEPTION — « [XXX · Plan] Thème du plan » (nomenclature validée
+// utilisateur 2026-07-30, lot #130). Le thème est le nom de l'epic, jamais un lot : une session
+// de plan ne livre pas de lot, elle en découpe (la titrer par le lot #1 qu'elle vient de démarrer
+// décrirait un travail qui n'a pas encore commencé).
+const PLAN_TAG = 'Plan';
+
+function titleForPlanSession(trigram, epic) {
+  return `[${trigram} · ${PLAN_TAG}] ${truncateTitle(epic)}`;
+}
+
+// Thème à afficher pour une session de plan : l'epic du DERNIER lot créé (plus grand id) — ce
+// que le découpage vient de nommer — sinon le label global .vibe-agent/epic (posé par
+// `/pmz:scope` étape 3). null si aucun epic nulle part : rien à annoncer, on retombe alors sur
+// la logique normale plutôt que d'inventer un nom de plan.
+function planSessionEpic(root, b) {
+  const lots = (b && Array.isArray(b.lots)) ? b.lots.slice() : [];
+  lots.sort((a, c) => (c.id || 0) - (a.id || 0));
+  const fromLot = (lots.length && lots[0].epic) ? String(lots[0].epic).trim() : '';
+  return fromLot || readEpicRaw(root);
+}
+
 // Intitulé déduit du dernier titre `## ...` de CHANGELOG.md (parenthèse finale de la
 // ligne, convention de ce dépôt : « ## [x.y.z] — date (résumé) » ou « ## date (résumé) »).
 // Ignore une parenthèse qui n'est qu'un marqueur « (lot N) » : déjà repris par le
@@ -159,7 +187,7 @@ function suggestedTitle(root) {
     // require paresseux : backlog.js require lot.js en tête, un require en tête ici
     // créerait un cycle de modules.
     const backlog = require('./backlog');
-    const { previousSessionId } = require('./state');
+    const { previousSessionMeta } = require('./state');
     const b = backlog.loadBacklog(root);
     if (b.lots.length) {
       // Lot en cours (travail qui continue) : le focus du lot backlog prime, jamais de
@@ -169,7 +197,8 @@ function suggestedTitle(root) {
       // passage qui décrit la session précédente à la session suivante.
       // Rang dans le plan calculé au point d'appel (backlog `b` sous la main).
       const T = (l, touches) => titleForLot(trigram, l, touches, backlog.lotRankInEpic(b, l));
-      const prevSid = previousSessionId(root);
+      const prev = previousSessionMeta(root);
+      const prevSid = prev.id;
       // Chemin PRIMAIRE : le lot que la session PRÉCÉDENTE a réellement clos (attribution
       // par closed_session_id, posé par stop.js). Fiable, indépendant des horodatages sales,
       // et distinct d'une session à l'autre — chaque session clôt son propre lot, donc plus
@@ -180,6 +209,15 @@ function suggestedTitle(root) {
       // affichait le lot courant au lieu du lot clos).
       const mine = backlog.lotClosedBySession(b, prevSid);
       if (mine) return T(mine, 0);
+      // Session de CONCEPTION (lot #130) : mode plan de Claude Code, ou /pmz:scope (epic posé /
+      // lots ajoutés). Vérifiée APRÈS la clôture attribuée (une session qui a livré un lot est
+      // décrite par ce lot, même si elle a aussi planifié la suite) mais AVANT le lot en cours :
+      // une session de scope démarre le lot #1 en dernière étape, la titrer par ce lot
+      // annoncerait un travail pas encore commencé.
+      if (prev.plan) {
+        const planEpic = planSessionEpic(root, b);
+        if (planEpic) return titleForPlanSession(trigram, planEpic);
+      }
       // Lot en cours (travail qui continue, rien clos par la session précédente) : le focus
       // du lot backlog prime, jamais de numéro d'ID concurrent. touchLot compte les sessions
       // successives qui laissent ce lot ouvert (« (partie N) » si >1, cf. titleForLot) —
@@ -191,27 +229,34 @@ function suggestedTitle(root) {
         return T(cur, touches);
       }
       // Repli SANS attribution possible (clôture manuelle/legacy, closed_session_id absent) :
-      // dernier lot clos par id. Mais un lot clos par une session ANTÉRIEURE à la précédente
-      // ne décrit pas cette session-là (ex. « état des lieux » qui n'a rien clos) : on ne
-      // l'affiche que si aucune preuve du contraire n'existe — closed_session_id absent =>
-      // affiché (mieux qu'un titre nu) ; présent mais ≠ session précédente => tu.
+      // dernier lot clos par id. Un lot clos par une session ANTÉRIEURE à la précédente ne
+      // décrit pas le TRAVAIL de cette session-là (ex. release, merge de vague, état des lieux
+      // qui n'a rien clos) : dans ce cas on garde de lui ce qui reste VRAI — la position dans le
+      // plan (« [XXX · #Y] Plan · Lot #X », le projet en est bien là) — et on remplace son
+      // résumé par ce que la session précédente a laissé dans le dépôt (dernière entrée
+      // CHANGELOG, sinon dernier commit).
+      // Lot #130 : cette branche rendait « Session Libre » NUE, par prudence d'attribution.
+      // Sur données réelles (9 des 12 dernières sessions de ce dépôt), c'était le cas NOMINAL —
+      // vagues parallèles, réintégrations, releases et sessions courtes ne closent rien dans le
+      // backlog principal — et le titre n'aidait plus personne. Un titre positionnel + le
+      // dernier travail enregistré vaut mieux qu'un titre nu, systématiquement faux d'utilité.
       const last = backlog.lastDoneLot(b);
       if (last) {
         const knownStale = last.closed_session_id && prevSid && last.closed_session_id !== prevSid;
         // Pas de « (partie N) » sur un lot déjà clos : le travail est fini, peu importe
         // combien de sessions ça a pris pour y arriver.
         if (!knownStale) return T(last, 0);
+        const deducedStale = deduceTitle(root);
+        return T(deducedStale ? Object.assign({}, last, { title: deducedStale }) : last, 0);
       }
       // PAS de repli sur le prochain lot à faire : `nextLot` est todo, jamais touché — le
       // rendre avec `titleForLot` (même format qu'un lot clos, cf. ci-dessus) affirmerait que
       // la session précédente a fait un travail qui n'a même pas commencé (bug 2026-07-29 :
-      // titre affichait le prochain lot todo comme s'il était clos). PAS de déduction
-      // CHANGELOG/git non plus : ce texte souffre du même biais d'attribution qu'un lot
-      // périmé (dernier commit/entrée possiblement posé par une session ENCORE plus ancienne
-      // que la précédente, cf. test « lot clos périmé sans lot suivant »). Un titre EXISTE
-      // dans le plan mais ne décrit pas la session précédente : le taire (Session Libre nue)
-      // plutôt que le remplacer par une autre supposition, aussi fausse l'une que l'autre.
-      return libre;
+      // titre affichait le prochain lot todo comme s'il était clos). Plan sans AUCUN lot clos :
+      // même traitement que sans plan — « Session Libre » + résumé déduit (jamais nue quand une
+      // information existe).
+      const deducedNoDone = deduceTitle(root);
+      return deducedNoDone ? `${libre} · ${truncateTitle(stripLotPrefix(deducedNoDone))}` : libre;
     }
   } catch (_) {
     /* fail-open : on tente quand même la déduction ci-dessous */

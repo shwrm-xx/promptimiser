@@ -64,6 +64,12 @@ function main() {
   const sid = input.session_id || null;
   const st = loadSessionState(root, sid);
 
+  // Session de CONCEPTION (lot #130) : le mode plan de Claude Code est porté par le champ
+  // commun `permission_mode` du payload hook. Marqué ici — l'état est déjà réécrit en fin de
+  // hook, coût nul — pour que la session SUIVANTE titre celle-ci « [XXX · Plan] <epic> ».
+  // Champ optionnel côté Claude Code : absent => rien, jamais d'erreur.
+  if (input.permission_mode === 'plan') st.plan_session = true;
+
   st.prompt_reminders = st.prompt_reminders || {};
   const parts = [];
 

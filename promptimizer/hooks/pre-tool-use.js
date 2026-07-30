@@ -19,6 +19,13 @@ const { rewriteCommand } = require('../lib/optimizer');
 const { recordRewrite } = require('../lib/rtk-metrics');
 const { findFleetRoot, loadFleet, lotForSession, requestExtension } = require('../lib/fleet');
 const { memberVerdict, toRelPosix } = require('../lib/perimeter');
+const { markPlanSession } = require('../lib/state');
+const { gitRoot } = require('../lib/project');
+
+// Outils du mode plan de Claude Code (lot #130) : leur simple passage prouve que la session
+// fait de la CONCEPTION, quel que soit le champ `permission_mode` du payload (optionnel).
+// Volontairement limité à ces deux noms : aucun coût ajouté sur le chemin chaud (Bash, Edit…).
+const PLAN_TOOLS = new Set(['ExitPlanMode', 'EnterPlanMode']);
 
 // Outils d'écriture-fichier soumis au test de périmètre. Edit/Write partagent le champ
 // `file_path` ; MultiEdit aussi (même sémantique de cible) → même garde, sinon la garde se
@@ -55,6 +62,14 @@ function perimeterDeny(input) {
 
 function main() {
   const input = parseHookInput();
+  // Trace de session de plan (lot #130) : ne change AUCUN verdict, best-effort strict —
+  // markPlanSession est idempotent (au plus une écriture par session).
+  if (PLAN_TOOLS.has(input.tool_name)) {
+    try {
+      const planRoot = gitRoot(input.cwd || process.cwd());
+      if (planRoot) markPlanSession(planRoot);
+    } catch (_) { /* fail-open : la trace est un bonus, jamais un blocage */ }
+  }
   if (input.tool_name === 'Bash') {
     const cmd = String((input.tool_input && input.tool_input.command) || '');
     const verdict = classify(cmd);

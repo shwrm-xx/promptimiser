@@ -24,9 +24,10 @@ quand : … » vérifiable** — au-delà, redécouper plutôt que grossir un lo
    `[XXX · #Y] Session Libre · résumé`).
 2. Faire valider le découpage, les modèles préconisés **et l'epic éventuel** par
    l'utilisateur en **UNE** question (pas dix).
-3. Si un epic a été validé, l'enregistrer une fois pour la session/le titre :
-   `node ~/.config/opencode/pmz/scripts/backlog.js epic --set "Nom de l'epic"`
-   (écrit `.vibe-agent/epic`, cap 60 caractères).
+3. Si un epic a été validé, l'enregistrer — **toujours**, même s'il était déjà posé par un
+   découpage précédent : `node ~/.config/opencode/pmz/scripts/backlog.js epic --set "Nom de l'epic"`
+   (écrit `.vibe-agent/epic`, cap 60 caractères). C'est aussi ce qui marque la session courante
+   comme **session de conception** : la session suivante la titrera `[XXX · Plan] Nom de l'epic`.
 4. Persister chaque lot validé (un appel par lot), avec sa préconisation de modèle, son
    effort et, si présent, l'epic :
    `node ~/.config/opencode/pmz/scripts/backlog.js add --title "…" --scope "fait quand : …" --model sonnet --effort medium --epic "Nom de l'epic"`

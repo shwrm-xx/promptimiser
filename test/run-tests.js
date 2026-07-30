@@ -1812,6 +1812,10 @@ section('backlog — champ epic optionnel du lot (lot #28)');
   // global (accolé au trigramme), PlanTitle = epic ≤ 3 mots, Lot #X = rang dans le plan
   // (ici 1er lot de son epic), résumé = focus du lot (préfixe métier « Lot X — » retiré).
   const trgN = trigram.deriveTrigram(repo);
+  // `epic --set` de P1 a marqué ce repo comme session de conception (lot #130) : la marque
+  // est un état de SESSION, remis à zéro au démarrage suivant. Ici on la retire pour tester
+  // la nomenclature du lot en cours (le titre « [XXX · Plan] … » a sa propre section B130).
+  try { fs.rmSync(path.join(repo, '.vibe-agent', 'session-state.json'), { force: true }); } catch (_) {}
   const planLot = backlogLib.addLot(repo, 'Lot E1 — Namespace plugin pmz', null, 'opus', 'Diffusion pmz — marketplace GitHub publique');
   backlogLib.startLot(repo, planLot.id);
   ok(lot.suggestedTitle(repo) === `[${trgN} · #${planLot.id}] Diffusion pmz · Lot #1 · Namespace plugin pmz`,
@@ -2385,9 +2389,12 @@ section('suggestedTitle : un lot clos par une session plus ancienne ne doit pas 
   // "Session C" (ce test) : la session précédente est désormais sess-B, qui n'a rien
   // clos -> le lot fermé par sess-A ne doit plus être suggéré (clôture plus ancienne).
   ok(lot.suggestedTitle(repo) !== `[${trgMismatch} · #1] Session Libre · Travail session A`,
-    'après une session B sans activité de lot : le lot de sess-A n\'est plus suggéré (mismatch détecté)');
-  ok(lot.suggestedTitle(repo) === `[${trgMismatch}] Session Libre`,
-    'titre retombe sur la forme nue « Session Libre » plutôt que de mentir sur ce qui vient de se passer');
+    'après une session B sans activité de lot : le focus du lot de sess-A n\'est plus suggéré (mismatch détecté)');
+  // Lot #130 : le titre ne se TAIT plus (forme nue « Session Libre », inutilisable et devenue
+  // le cas nominal). Il garde du lot clos ce qui reste vrai — la position dans le plan, numéro
+  // compris — et remplace son résumé par le dernier travail enregistré dans le dépôt.
+  ok(lot.suggestedTitle(repo) === `[${trgMismatch} · #1] Session Libre · lot 1 fini`,
+    'mismatch : position dans le plan conservée (#1) + résumé déduit du dépôt, jamais de titre nu');
 }
 
 // ============================ P4. suggestedTitle DÉDUIT UN TITRE SANS PLAN DE LOTS ============================
@@ -2438,9 +2445,10 @@ section('suggestedTitle : déduction depuis CHANGELOG/git quand le plan n\'a auc
     'backlog.json avec lots:[] traité comme « pas de titre dans le plan » -> déduction');
 }
 {
-  // Backlog non vide mais rien d'exploitable pour CETTE session (lot clos périmé,
-  // rien à faire ensuite) : la déduction NE DOIT PAS s'appliquer (un titre existe dans
-  // le plan, il est juste tu à raison — cf. P3) même si CHANGELOG/git offrent un texte.
+  // Lot clos PÉRIMÉ (clos par une session antérieure à la précédente), rien à faire ensuite.
+  // Contrat lot #130 (remplace l'ancien « on se tait ») : le titre garde la position dans le
+  // plan (numéro du lot) et prend pour résumé le dernier travail enregistré (CHANGELOG/git),
+  // PAS le focus du lot périmé — ce focus-là décrirait le travail d'une autre session.
   const repo = path.join(SANDBOX, 'repo-deduce-notstale-skip');
   fs.mkdirSync(repo, { recursive: true });
   execFileSync('git', ['init', '-q', repo]);
@@ -2453,12 +2461,14 @@ section('suggestedTitle : déduction depuis CHANGELOG/git quand le plan n\'a auc
   fs.writeFileSync(path.join(repo, 'w.txt'), 'x');
   runHook('stop.js', { session_id: 'sess-A2', cwd: repo, transcript_path: empty });
   execFileSync('git', ['-C', repo, 'add', '.']);
-  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'fix: ceci ne doit PAS apparaître dans le titre']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'chore: release de la vague']);
   runHook('stop.js', { session_id: 'sess-A2', cwd: repo, transcript_path: empty });
   runHook('session-start.js', { source: 'startup', session_id: 'sess-B2', cwd: repo, transcript_path: empty });
   const t = lot.suggestedTitle(repo);
-  ok(!/ceci ne doit PAS apparaître/.test(t) && !/Travail session A$/.test(t),
-    'lot clos périmé sans lot suivant : pas de repli sur git/CHANGELOG (ça mentirait)');
+  ok(t === `[${trigram.deriveTrigram(repo)} · #1] Session Libre · chore: release de la vague`,
+    'lot clos périmé sans lot suivant : numéro du lot conservé + résumé déduit du dépôt');
+  ok(!/Travail session A/.test(t),
+    'lot clos périmé : son focus n\'est PAS réutilisé (il décrit le travail d\'une autre session)');
 }
 
 // ============================ Q. CONTINUITÉ — PRECOMPACT & SESSIONSTART ============================
@@ -9328,6 +9338,135 @@ process.stdout.write(JSON.stringify({ offenders, produced,
     'B128-6 : sans CLAUDE_PLUGIN_ROOT, MSG_LARGE garde le chemin de l\'install manuelle');
   ok(manualOut && /Démarre-le \(node ~\/\.claude\/promptimizer\/scripts\/backlog\.js/.test(manualOut.resume),
     'B128-7 : sans CLAUDE_PLUGIN_ROOT, backlogResumeMessage garde le chemin de l\'install manuelle');
+}
+
+// ============================ B130 — TITRE : NUMÉRO DE LOT + SESSIONS DE PLAN ============================
+section('B130 — titre de session : jamais nu quand un plan existe, sessions de plan nommées');
+{
+  const stateLib = require(path.join(PKG, 'lib', 'state.js'));
+  const empty = path.join(SANDBOX, 'empty.jsonl');
+  // Fabrique un repo initialisé (git + CLAUDE.md + .vibe-agent) avec un lot clos par `closer`.
+  const mk = (name, commitSubject, closer) => {
+    const repo = path.join(SANDBOX, name);
+    fs.mkdirSync(repo, { recursive: true });
+    execFileSync('git', ['init', '-q', repo]);
+    fs.writeFileSync(path.join(repo, 'CLAUDE.md'), 'règles');
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'init']);
+    runNode(BKLG, ['add', '--cwd', repo, '--title', 'Chemins plugin', '--model', 'sonnet', '--epic', 'Diffusion plugin']);
+    runNode(BKLG, ['start', '--cwd', repo, '--id', '1']);
+    fs.writeFileSync(path.join(repo, 'w.txt'), 'x');
+    execFileSync('git', ['-C', repo, 'add', '.']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', commitSubject]);
+    runNode(BKLG, ['done', '--cwd', repo, '--id', '1', '--session', closer, '--no-verify']);
+    return repo;
+  };
+
+  // B130-1. Cas RÉEL du bug : la session précédente (release/merge/vague) n'a rien clos dans le
+  // backlog -> le titre gardait la seule forme nue « [XXX] Session Libre ». Désormais : position
+  // dans le plan (id + rang) conservée, résumé = dernier travail enregistré dans le dépôt.
+  const repo1 = mk('repo-b130-stale', 'chore(release): version 2.5.0', 'sess-vague');
+  const trg1 = trigram.deriveTrigram(repo1);
+  runHook('session-start.js', { source: 'startup', session_id: 'sess-release', cwd: repo1, transcript_path: empty });
+  const t1 = lot.suggestedTitle(repo1);
+  ok(t1 === `[${trg1} · #1] Diffusion plugin · Lot #1 · chore(release): version 2.5.0`,
+    `B130-1 : session sans clôture -> numéro + plan conservés, résumé déduit (${t1})`);
+  ok(t1 !== `[${trg1}] Session Libre`, 'B130-2 : plus jamais la forme nue quand un plan existe');
+
+  // B130-3. Attribution normale intacte : la session qui a clos le lot est décrite par son lot.
+  const repo3 = mk('repo-b130-attrib', 'fix: chemins plugin', 'sess-closer');
+  const trg3 = trigram.deriveTrigram(repo3);
+  runHook('session-start.js', { source: 'startup', session_id: 'sess-closer', cwd: repo3, transcript_path: empty });
+  ok(lot.suggestedTitle(repo3) === `[${trg3} · #1] Diffusion plugin · Lot #1 · Chemins plugin`,
+    'B130-3 : non-régression — le lot clos par la session précédente reste prioritaire');
+
+  // B130-4/5. Session de CONCEPTION marquée par `epic --set` (/pmz:scope étape 3) :
+  // titre « [XXX · Plan] Thème du plan », le thème étant le nom de l'epic.
+  const repo4 = mk('repo-b130-plan', 'chore: init plan', 'sess-old');
+  const trg4 = trigram.deriveTrigram(repo4);
+  runHook('session-start.js', { source: 'startup', session_id: 'sess-scope', cwd: repo4, transcript_path: empty });
+  const rEpic = runNode(BKLG, ['epic', '--set', 'Sessions courtes', '--cwd', repo4]);
+  ok(/enregistré/.test(rEpic.out), 'B130-4 : `epic --set` accepté (précondition)');
+  ok(stateLib.previousSessionMeta(repo4).plan === true,
+    'B130-5 : `epic --set` marque la session courante comme session de conception');
+  // Un lot du plan est démarré juste après (étape 5 de /pmz:scope) : la marque « Plan » doit
+  // gagner sur ce lot en cours, sinon le titre annoncerait un travail pas encore commencé.
+  runNode(BKLG, ['add', '--cwd', repo4, '--title', 'Budget de tours', '--model', 'sonnet', '--epic', 'Sessions courtes']);
+  runNode(BKLG, ['start', '--cwd', repo4, '--id', '2']);
+  ok(lot.suggestedTitle(repo4) === `[${trg4} · Plan] Sessions courtes`,
+    'B130-6 : session de plan -> « [XXX · Plan] <epic> », prioritaire sur le lot fraîchement démarré');
+
+  // B130-7. Le mode plan de Claude Code marque aussi la session : outil ExitPlanMode (PreToolUse)…
+  const repo7 = mk('repo-b130-planmode', 'chore: exploration', 'sess-old7');
+  const trg7 = trigram.deriveTrigram(repo7);
+  runHook('session-start.js', { source: 'startup', session_id: 'sess-planmode', cwd: repo7, transcript_path: empty });
+  const rPlanTool = runHook('pre-tool-use.js', { tool_name: 'ExitPlanMode', cwd: repo7, session_id: 'sess-planmode', tool_input: { plan: 'faire ceci' } });
+  ok(rPlanTool.code === 0 && !rPlanTool.out.trim(),
+    'B130-7 : ExitPlanMode ne change aucun verdict (allow silencieux)');
+  ok(stateLib.previousSessionMeta(repo7).plan === true,
+    'B130-8 : ExitPlanMode marque la session comme session de conception');
+  ok(lot.suggestedTitle(repo7) === `[${trg7} · Plan] Diffusion plugin`,
+    'B130-9 : mode plan -> « [XXX · Plan] <epic> » (epic du dernier lot du plan)');
+
+  // …et le champ `permission_mode: plan` du payload hook (UserPromptSubmit).
+  const repo10 = mk('repo-b130-permmode', 'chore: exploration', 'sess-old10');
+  runHook('session-start.js', { source: 'startup', session_id: 'sess-pm', cwd: repo10, transcript_path: empty });
+  runHook('user-prompt-submit.js', { session_id: 'sess-pm', cwd: repo10, transcript_path: empty, prompt: 'on regarde', permission_mode: 'plan' });
+  ok(stateLib.previousSessionMeta(repo10).plan === true,
+    'B130-10 : permission_mode « plan » marque la session (UserPromptSubmit)');
+  const repo11 = mk('repo-b130-defaultmode', 'chore: travail', 'sess-old11');
+  runHook('session-start.js', { source: 'startup', session_id: 'sess-def', cwd: repo11, transcript_path: empty });
+  runHook('user-prompt-submit.js', { session_id: 'sess-def', cwd: repo11, transcript_path: empty, prompt: 'on code', permission_mode: 'default' });
+  ok(stateLib.previousSessionMeta(repo11).plan === false,
+    'B130-11 : hors mode plan, aucune marque (pas de faux positif)');
+
+  // B130-12. Une session de plan QUI A AUSSI CLOS un lot est décrite par son lot (l'attribution
+  // par closed_session_id reste le signal le plus fort).
+  const repo12 = mk('repo-b130-planandclose', 'fix: chemins plugin', 'sess-both');
+  const trg12 = trigram.deriveTrigram(repo12);
+  runHook('session-start.js', { source: 'startup', session_id: 'sess-both', cwd: repo12, transcript_path: empty });
+  runNode(BKLG, ['epic', '--set', 'Autre plan', '--cwd', repo12]);
+  ok(lot.suggestedTitle(repo12) === `[${trg12} · #1] Diffusion plugin · Lot #1 · Chemins plugin`,
+    'B130-12 : lot clos par la session précédente > marque « Plan »');
+
+  // B130-13. Session de plan SANS aucun epic nulle part : pas de thème à annoncer -> on ne rend
+  // pas « [XXX · Plan] » vide, on retombe sur la logique normale.
+  const repo13 = path.join(SANDBOX, 'repo-b130-planwithoutepic');
+  fs.mkdirSync(repo13, { recursive: true });
+  execFileSync('git', ['init', '-q', repo13]);
+  fs.writeFileSync(path.join(repo13, 'CLAUDE.md'), 'règles');
+  execFileSync('git', ['-C', repo13, 'add', '.']);
+  execFileSync('git', ['-C', repo13, 'commit', '-q', '-m', 'chore: socle']);
+  runNode(BKLG, ['add', '--cwd', repo13, '--title', 'Lot sans plan', '--model', 'sonnet']);
+  runNode(BKLG, ['start', '--cwd', repo13, '--id', '1']);
+  runHook('session-start.js', { source: 'startup', session_id: 'sess-noepic', cwd: repo13, transcript_path: empty });
+  runHook('pre-tool-use.js', { tool_name: 'ExitPlanMode', cwd: repo13, session_id: 'sess-noepic', tool_input: {} });
+  const t13 = lot.suggestedTitle(repo13);
+  ok(!/· Plan\]/.test(t13) && /Lot sans plan/.test(t13),
+    `B130-13 : marque « Plan » sans epic -> aucun titre « Plan » inventé (${t13})`);
+
+  // B130-14. Plan sans AUCUN lot clos (tout en todo) : « Session Libre » + résumé déduit,
+  // jamais nue (avant B130 : forme nue).
+  const repo14 = path.join(SANDBOX, 'repo-b130-alltodo');
+  fs.mkdirSync(repo14, { recursive: true });
+  execFileSync('git', ['init', '-q', repo14]);
+  fs.writeFileSync(path.join(repo14, 'CLAUDE.md'), 'règles');
+  execFileSync('git', ['-C', repo14, 'add', '.']);
+  execFileSync('git', ['-C', repo14, 'commit', '-q', '-m', 'chore: socle du plan']);
+  runNode(BKLG, ['add', '--cwd', repo14, '--title', 'Rien commencé', '--model', 'sonnet']);
+  ok(lot.suggestedTitle(repo14) === `[${trigram.deriveTrigram(repo14)}] Session Libre · chore: socle du plan`,
+    'B130-14 : plan sans lot clos ni en cours -> Session Libre + résumé déduit (jamais nue)');
+
+  // B130-15/16. Les DEUX canaux d'install doivent router les outils de mode plan vers
+  // pre-tool-use : sans ça la marque ne se pose jamais en vrai (le hook n'est pas appelé du
+  // tout), et le test B130-7 ci-dessus, qui invoque le hook en direct, ne le verrait pas.
+  const ptuMatcher = JSON.parse(fs.readFileSync(path.join(PKG, 'hooks', 'hooks.json'), 'utf8'))
+    .hooks.PreToolUse[0].matcher;
+  ok(/ExitPlanMode/.test(ptuMatcher) && /EnterPlanMode/.test(ptuMatcher) && /Bash/.test(ptuMatcher),
+    `B130-15 : canal plugin — matcher PreToolUse couvre le mode plan (${ptuMatcher})`);
+  const msMatcher = (fs.readFileSync(MS, 'utf8').match(/PreToolUse: \[\{ matcher: '([^']+)'/) || [])[1];
+  ok(msMatcher === ptuMatcher,
+    `B130-16 : canal manuel — matcher PreToolUse identique au canal plugin (${msMatcher})`);
 }
 
 // ============================ RÉSUMÉ ============================

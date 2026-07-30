@@ -71,7 +71,9 @@ const PMZ_HOOKS = {
   // compact : passThrough aujourd'hui, branche dédiée prévue (réinjection post-compaction).
   SessionStart: [{ matcher: 'startup|resume|clear|compact', hooks: [cmd('session-start.js', T.sessionStart)] }],
   UserPromptSubmit: [{ hooks: [cmd('user-prompt-submit.js', T.default)] }],
-  PreToolUse: [{ matcher: 'Bash|Edit|Write|MultiEdit', hooks: [cmd('pre-tool-use.js', T.default)] }],
+  // ExitPlanMode|EnterPlanMode (lot #130) : aucun verdict rendu sur ces outils — seule trace de
+  // « cette session fait de la conception », pour la titrer « [XXX · Plan] <epic> ».
+  PreToolUse: [{ matcher: 'Bash|Edit|Write|MultiEdit|ExitPlanMode|EnterPlanMode', hooks: [cmd('pre-tool-use.js', T.default)] }],
   PostToolUse: [{ matcher: 'Read|Edit|Write|TodoWrite|Bash', hooks: [cmd('post-tool-use.js', T.default)] }],
   Stop: [{ hooks: [cmd('stop.js', T.default)] }],
   PreCompact: [{ matcher: 'manual|auto', hooks: [cmd('pre-compact.js', T.default)] }],

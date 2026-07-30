@@ -30,8 +30,8 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
 | Hook | Event / matcher | Lit (stdin) | Émet | Rôle |
 |------|-----------------|-------------|------|------|
 | `session-start.js` | SessionStart `startup\|resume\|clear\|compact` (injecte au `startup`/`clear` ; `compact` → réinjection **enrichie** sous budget chiffré (`COMPACT_RESUME_CAP`, #72) : lot+verify + `pmz:skip` + résumés connus + todos ; `resume` → nudge occupation seul, voir ci-dessous) | `cwd`, `source`, `transcript_path` | `additionalContext` (startup/clear/compact) ou `systemMessage` (resume) | détecte projet, auto-scaffold si projet neuf (0 commit), sinon propose init, rappel court + titre de session suggéré + injecte le handoff de la session précédente puis le marque consommé ; sans handoff, le plan de lots sert de filet (2 lignes) ; au `resume`, si occupation ≥ 300k, `systemMessage` d'occupation (lot B5, zéro token injecté) |
-| `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd`, `transcript_path` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large (anti-spam 1×/session), nudge occupation ≥ 500k en 2 lignes (anti-spam 1×/palier, lot B5), vigie modèle réel vs préconisé du lot en cours (anti-spam 1×/session, lot #42), **budget de tours** au palier de prescription (≥ 20 tours par défaut → consigne d'amener le lot à un point de commit et de proposer la clôture ; anti-spam 1×/palier, `lib/turnbudget.js`, lot #124) |
-| `pre-tool-use.js` | PreToolUse `Bash` (+ `Edit`/`Write`/`MultiEdit` en vague) | `tool_input.command` / `.file_path` | `permissionDecision` allow/ask/deny **ou** `updatedInput` (réécriture RTK, sans `permissionDecision`) | sûreté commandes + périmètre fleet-fille + **bridge RTK optionnel** (default OFF, lot #81) |
+| `user-prompt-submit.js` | UserPromptSubmit | `prompt`, `cwd`, `transcript_path` | `additionalContext` | auto-`git init`+scaffold si aucun `.git` et prompt de démarrage, détecte init/large (anti-spam 1×/session), nudge occupation ≥ 500k en 2 lignes (anti-spam 1×/palier, lot B5), vigie modèle réel vs préconisé du lot en cours (anti-spam 1×/session, lot #42), **budget de tours** au palier de prescription (≥ 20 tours par défaut → consigne d'amener le lot à un point de commit et de proposer la clôture ; anti-spam 1×/palier, `lib/turnbudget.js`, lot #124), **marque de session de plan** si `permission_mode: "plan"` (lot #130) |
+| `pre-tool-use.js` | PreToolUse `Bash` (+ `Edit`/`Write`/`MultiEdit` en vague, + `ExitPlanMode`/`EnterPlanMode` en trace seule) | `tool_input.command` / `.file_path` | `permissionDecision` allow/ask/deny **ou** `updatedInput` (réécriture RTK, sans `permissionDecision`) | sûreté commandes + périmètre fleet-fille + **bridge RTK optionnel** (default OFF, lot #81) + **marque de session de plan** (`plan_session`, aucun verdict changé, lot #130) |
 | `post-tool-use.js` | PostToolUse `Read\|Edit\|Write\|TodoWrite\|Bash` | `tool_input.file_path`, `tool_input.todos`, `tool_input.command` + `tool_response` (Bash) | `additionalContext` (rare, advisory) **ou** `updatedToolOutput` (réduction sortie Bash, lot #84) + effet de bord ledgers | auto-crée le ledger si absent, journalise lectures/édits, capture la todo-list (`todo-snapshot.json`, écrasé à chaque TodoWrite), signale une relecture complète redondante (lot B4), **réduit une sortie Bash volumineuse** hors RTK (lot #84) |
 | `stop.js` | Stop | `stop_hook_active`, `transcript_path` | `systemMessage` | alerte coût (paliers fixes + flottant), **métrologie par tour** (tour coûteux + cache-busts, `lib/turnstats.js`), **détecteur de dérive de session** (coût↑ + hitRate↓ sur 6 tours → prescrit la clôture, lot #62), **budget de tours par session** (rappel ⚠ à 12 tours, prescription ⛔ en coda hors arbitre à 20 puis tous les +10 — réglable par `budget.warn_after_session_turns`/`recommend_fresh_session_after_turns`, `lib/turnbudget.js`, lot #124), **frein sur la sortie relue** (nudge ⚠ 1×/session quand la sortie cumulée ET sa moyenne par tour dépassent toutes deux leur seuil — défauts 30000/1500, réglable par `budget.warn_after_output_tokens`/`warn_after_output_per_turn`, `lib/outputbudget.js`, lot #125), **vigie des tours en boucle** (commande Bash qui échoue ≥ 3 fois d'affilée → nudge « change d'approche », anti-spam par commande, `lib/loopwatch.js`, lot #69), **vigie de dette git non commitée** (diff significatif qui grossit sur ≥ 3 tours sans commit → nudge « commit/clôture », anti-spam par palier, `lib/gitdebt.js`, lot #73), **vigie de gouvernance du CLAUDE.md** (absent ou hypertrophié > 10 Ko → nudge créer / dégraisser, 1×/session, `lib/claudemd.js`, lot #74), **notification OS opt-in** sur zone rouge et clôture de lot (`PMZ_NOTIFY=1`, `lib/notify.js`, lot #75), **borne d'occupation réglable par projet** (`budget.red_zone_tokens`/`red_zone_ratio` de `rules.yaml` via `lib/rules.js` — au franchissement, clôture prescrite y compris **en milieu de lot**, lot #112), hygiène de lecture, **nudge subagent** à haute occupation + lectures (lot #52), **palier de gaspillage auto-surfacé** avec top-3 coupables (`waste_bucket` persisté, lot #52), rappel de clôture nommant les skills **et embarquant un brouillon d'entrée CHANGELOG pré-mâché** (en-tête daté + lot/epic/titre, scope sans son préfixe « fait quand : », fichiers modifiés plafonnés à 6, verify — `closureWithDraftMessage`, soudé au rappel pour rester atomique sous l'arbitre, lot #68), incrémente le compteur de lot, agrège le coût réel du lot en cours (`cost_tokens`) — **coût des tours délégués à un sous-agent inclus** (`lib/subagentcost.js`, lot #119) et imputé **nominativement** au lot de la session (`costLotFor`, fin du vol de coût en vague) — et alerte à l'approche du budget ~300k avec proposition de redécoupage (lot #43), auto-clôt le lot backlog en cours (cas univoque : exactement un `in_progress`) et annonce le suivant, exécute la `verify` du lot à l'auto-clôture (timeout court `VERIFY_AUTOCLOSE_MS`, résultat visible, verdict calculé **avant** `doneLot` depuis le lot #111 — un `timeout` empêche la clôture, un `failed` non) + rappel doux si le commit de clôture ne touche pas `CHANGELOG.md` (lot #44), **plafonne les nudges du tour par sévérité** (`lib/arbiter.js`, ≤ 3, lot #57), écrit le handoff auto (écrasé à chaque tour) |
 | `pre-compact.js` | PreCompact `manual\|auto` | `cwd`, `trigger`, `transcript_path` | `systemMessage` (manual) ou — (auto : effet de bord handoff seul) | sauve le handoff auto (plan de lots + todos compris) AVANT compaction ; la réinjection minimale se fait au SessionStart(compact). Sur `manual` (/compact), ajoute un rappel **chiffré** visible : compacter ≈ réécriture de l'occupation en cache-write (×1,25) + résumé lossy, vs clôture + handoff (~8k) — TTL prudent, aucun prix en dur (lot T1). `auto` reste silencieux (compaction subie) |
@@ -918,16 +918,37 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   ou `lots: []` — retour utilisateur : un titre nu ne sert à rien pour retracer l'avancée),
   `suggestedTitle` retombe sur **« Session Libre »** et lui **déduit** un résumé des infos disponibles plutôt que de rester nu : dernier
   résumé `CHANGELOG.md` (parenthèse finale du dernier titre `##` — convention de ce dépôt — ignorée
-  si ce n'est qu'un marqueur `(lot N)` non descriptif), sinon sujet du dernier commit. Cette
-  déduction ne s'applique **jamais** quand le plan contient un lot mais qu'il est écarté comme
-  périmé (cas ci-dessus) : un titre existe alors dans le plan, il est volontairement tu — le
-  remplacer par une supposition externe reviendrait à mentir de la même façon que ce que le fix
-  visait à éliminer. Tentation écartée (fix 2026-07-29) : déduire du CHANGELOG/dernier commit
-  dans CE cas précis plutôt que de rester nu — rejeté, car ce texte souffre du **même biais
-  d'attribution** qu'un lot périmé (le dernier commit peut appartenir à une session encore plus
-  ancienne que la précédente, pas à celle qu'on nomme) ; la déduction ne reste légitime que
-  lorsque le plan n'offre **aucun** titre du tout (cas ci-dessus), pas quand il en offre un qu'on
-  choisit de taire. Puis demande à l'assistant de **proposer** ce nom en clair **et de poser une
+  si ce n'est qu'un marqueur `(lot N)` non descriptif), sinon sujet du dernier commit.
+  **Lot #130 — jamais de titre nu quand un plan existe.** Quand le dernier lot clos est écarté
+  comme **périmé** (clos par une session antérieure à la précédente), le titre ne se **tait** plus :
+  il garde du lot ce qui reste **vrai** — la position dans le plan, `#Y` et `Lot #X` compris (le
+  projet en est bien là) — et **remplace son résumé** par la déduction `CHANGELOG`/dernier commit
+  (le dernier travail réellement enregistré dans le dépôt). Le focus du lot périmé, lui, n'est
+  jamais réutilisé : il décrit le travail d'une autre session. Idem quand le plan n'a aucun lot
+  clos ni en cours (tout en `todo`) : « Session Libre · résumé déduit », pas la forme nue.
+  Décision **inversée** par rapport au fix 2026-07-29 (qui préférait se taire plutôt que risquer
+  un biais d'attribution sur le dernier commit) : mesuré sur données réelles, ce silence était le
+  cas **NOMINAL** — 9 des 12 dernières sessions de ce dépôt affichaient « [PMZ] Session Libre » nu
+  (vagues parallèles, réintégrations, releases et sessions courtes ne closent rien dans le backlog
+  principal), et le renommage était devenu inutilisable (retour utilisateur 2026-07-30 : « oublié
+  du numéro du lot », « systématiquement Session libre »). Un titre **positionnel** + le dernier
+  travail enregistré vaut mieux qu'un titre juste-mais-vide.
+  **Sessions de CONCEPTION (lot #130)** : une session qui **planifie** au lieu de livrer est titrée
+  **« [XXX · Plan] Thème du plan »** (nomenclature validée utilisateur 2026-07-30 ; thème = nom de
+  l'**epic**, jamais un lot — une session de plan ne livre pas de lot, elle en découpe). Le thème
+  vient de l'epic du **dernier lot créé** (le découpage le plus frais), sinon du label global
+  `.vibe-agent/epic` ; **aucun** epic nulle part → pas de titre « Plan » inventé, on retombe sur la
+  logique normale. La marque est un **état de session** (`session-state.json: plan_session`, remis à
+  zéro au démarrage suivant comme les autres flags), posée par : le champ commun
+  `permission_mode: "plan"` du payload hook (`user-prompt-submit.js`, coût nul — l'état est déjà
+  réécrit à chaque prompt), les outils de mode plan `ExitPlanMode`/`EnterPlanMode`
+  (`pre-tool-use.js`, aucun verdict changé, écriture au plus une fois par session), et
+  `backlog.js epic --set` (étape 3 de `/pmz:scope`). Volontairement **pas** `add` : se poser un lot
+  avant de le traiter est le geste ordinaire d'une session de travail. Priorité : lot **attribué**
+  (`lotClosedBySession`) > marque **Plan** > lot **en cours** — une session de scope démarre le lot
+  #1 en dernière étape, la titrer par ce lot annoncerait un travail pas encore commencé ; à
+  l'inverse, une session qui a réellement **clos** un lot est décrite par ce lot même si elle a
+  aussi planifié la suite. Puis demande à l'assistant de **proposer** ce nom en clair **et de poser une
   question à choix IMMÉDIATE** (valider / autre nom / non) **en tout début de 1er tour, avant de
   traiter la demande** — retour utilisateur 2026-07-12 (v1.1.1) : un renommage proposé en fin de
   tour ou sans dialogue n'est jamais traité — puis de tenter le renommage réel

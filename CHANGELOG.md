@@ -2,6 +2,51 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-07-30 — Titre de session : numéro de lot retrouvé, sessions de plan nommées (lot #130, epic Titre de session)
+
+Retour utilisateur : « le renommage de session est ENCORE cassé — oublié du numéro du lot,
+systématiquement *Session libre* ». Mesuré avant de corriger : **9 des 12 dernières sessions** de ce
+dépôt ont reçu le titre nu « [PMZ] Session Libre ».
+
+- **Cause** : le titre n'était rendu que si le lot pouvait être **attribué** à la session précédente
+  (`closed_session_id === previousSessionId`) ; sinon le fix du 2026-07-29 préférait **se taire**
+  plutôt que risquer un biais d'attribution. Or « la session précédente n'a rien clos dans le
+  backlog principal » n'est pas le cas rare qu'on supposait, c'est le cas **nominal** de ce flux de
+  travail : vagues parallèles (lots clos dans un worktree, par une session fille), réintégrations,
+  releases, `/clear`, sessions courtes. Le garde-fou anti-mensonge était devenu un garde-fou
+  anti-titre.
+- **`promptimizer/lib/lot.js`** : décision inversée, et bornée. Quand le dernier lot clos est écarté
+  comme périmé, le titre garde de lui ce qui reste **vrai** — la position dans le plan,
+  `[XXX · #Y] Plan · Lot #X` compris — et **remplace son résumé** par la déduction
+  `CHANGELOG`/dernier commit (le dernier travail réellement enregistré). Le focus du lot périmé,
+  lui, n'est jamais réutilisé : c'est le travail d'une autre session. Idem quand le plan n'a aucun
+  lot clos ni en cours : « Session Libre · résumé déduit », plus jamais la forme nue.
+- **Sessions de conception** (`[XXX · Plan] Thème du plan`, demande utilisateur) : une session qui
+  **planifie** au lieu de livrer est titrée par le nom de son **epic**, jamais par un lot — une
+  session de scope démarre le lot #1 en dernière étape, la titrer par ce lot annoncerait un travail
+  pas encore commencé. Thème = epic du dernier lot créé, sinon `.vibe-agent/epic` ; aucun epic
+  nulle part → aucun titre « Plan » inventé.
+- **Marque de session de plan** (`plan_session`, état de session remis à zéro au démarrage suivant) :
+  posée par `permission_mode: "plan"` du payload hook (`user-prompt-submit.js`, coût nul — l'état
+  est déjà réécrit à chaque prompt), par les outils `ExitPlanMode`/`EnterPlanMode`
+  (`pre-tool-use.js`, **aucun verdict changé**, au plus une écriture par session) et par
+  `backlog.js epic --set` (étape 3 de `/pmz:scope`). Volontairement **pas** par `add` : se poser un
+  lot avant de le traiter est le geste ordinaire d'une session de travail — le marquer « Plan » la
+  décrirait à faux (vérifié : c'était une régression de 2 tests de nomenclature).
+- **Matcher `PreToolUse` étendu** à `ExitPlanMode|EnterPlanMode` dans **les deux canaux**
+  (`hooks/hooks.json` plugin + `install/merge-settings.js` manuel) : sans ça le hook n'est jamais
+  appelé sur ces outils et la marque ne se poserait qu'en test.
+- **Priorité finale** : lot **attribué** > marque **Plan** > lot **en cours** > dernier lot **clos**
+  (périmé ou non) > « Session Libre » + résumé déduit. Une session qui a réellement clos un lot
+  reste décrite par ce lot, même si elle a aussi planifié la suite.
+- **`promptimizer/commands/scope.md`** (+ miroir OpenCode) : `epic --set` devient **systématique**
+  pour le plan découpé, même si l'epic était déjà posé — c'est lui qui trace la session de plan.
+- **`test/run-tests.js`** : section B130 (16 assertions) sur données réalistes — cas réel du bug,
+  non-régression de l'attribution, les 3 canaux de marque, absence de faux positif hors mode plan,
+  priorité lot clos > Plan, plan sans epic, cohérence des matchers entre canaux. Deux tests
+  encodaient l'ancien contrat (titre nu, pas de déduction sur lot périmé) : réécrits au nouveau,
+  avec la raison. 2209 OK · 0 échec.
+
 ## 2026-07-29 — Préconisation de modèle non rognée par le cap du resume (lot #129, epic Diffusion plugin)
 
 Suite directe du lot #128, qui avait **signalé** cet effet de bord au CHANGELOG sans le traiter :
