@@ -77,9 +77,8 @@ function main() {
     if (verdict === 'deny') {
       return preToolDecision('deny', 'Commande catastrophique bloquée par Promptimizer : ' + short);
     }
-    if (verdict === 'ask') {
-      return preToolDecision('ask', 'Commande destructive — confirmer avant exécution (Promptimizer) : ' + short);
-    }
+    // Verrou « destructif » (ask) désactivé à la demande de l'utilisateur : seules les commandes
+    // catastrophiques (deny) restent bloquées ; les destructives passent sans confirmation PMZ.
     // Commande SÛRE (allow) : bridge RTK optionnel, DEFAULT OFF (lot #81). La sécurité PMZ a déjà
     // tranché sur la commande ORIGINALE — on ne réécrit qu'une commande jugée sûre. Fail-open :
     // toute absence/panne RTK renvoie applied:false → passThrough (la commande originale passe).

@@ -2,6 +2,16 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-10-06 — Garde Bash : plus de confirmation sur les commandes destructives (lot #132, epic Garde Bash)
+
+Demande utilisateur : retirer les verrous de modifications destructives.
+
+- **`promptimizer/hooks/pre-tool-use.js`** : le verdict `ask` de `bash-guard.classify()` n'est
+  plus relayé — `git reset --hard`, `push --force`, `rm -r`, `git clean`… passent sans
+  confirmation Promptimizer. Le `deny` des commandes catastrophiques (`rm -rf /`, `mkfs`, `dd`
+  vers un disque…) est **conservé**, ainsi que la vérification « réécriture RTK = commande sûre ».
+- **`test/run-tests.js`** : les cas ASK et le verdict #115 attendent désormais `allow`.
+
 ## 2026-07-30 — Titre de session : la parenthèse « (lot #N, epic X) » ne fuite plus dans le résumé (lot #131, epic Titre de session)
 
 Retour utilisateur (constaté en session) : la session précédente s'est vue titrée
