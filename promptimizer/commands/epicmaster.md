@@ -19,11 +19,15 @@ Restitue la sortie **telle quelle** (elle est déjà mise en forme : une ligne a
 cocher précochées** — jamais une liste à retaper :
 
 - **Si un outil de widget interactif est disponible** (`show_widget` / module *elicitation*) :
-  rends un formulaire d'elicitation, titre « Lots à lancer », **un groupe de cartes par epic**
-  (`data-multi="true"`), **une carte par lot déjà sélectionnée** (`aria-pressed="true"`,
-  `data-value="#id"`), titre = `#id titre`, sous-titre = `modèle · effort · vague N`, puis un
-  bouton « Lancer la sélection ». La réponse revient sous forme `… — Epic X: #1, #2 · …` : tout
-  lot **absent** de la réponse est décoché.
+  rends un formulaire d'elicitation, titre « Lots à lancer ». Sous l'en-tête, pour chaque epic
+  embarquée : son **nom** et une **description courte** (une phrase, déduite des titres et
+  « fait quand » de ses lots — jamais inventée au-delà). Puis **un groupe par vague** (question
+  « Vague N — k en parallèle » ou « Vague N — série »), `data-multi="true"`, et **un lot par
+  ligne** : une rangée pleine largeur **déjà sélectionnée** (`aria-pressed="true"`,
+  `data-value="#id"`), icône case à cocher, **titre** `#id titre` et **description** = le « fait
+  quand » du lot, suivi de `modèle · effort` en sourdine. Bouton « Lancer la sélection ». La
+  réponse revient sous forme `… — Vague 1: #1, #2 · Vague 2: #3` : tout lot **absent** de la
+  réponse est décoché.
 - **Sinon** (outil AskUserQuestion) : une question à choix multiples « Quels lots lancer ? »
   avec, en premier, « Tous les lots (Recommandé) », puis une option par lot « #id titre —
   modèle · effort » ; sélection = lancer. À défaut de tout outil : texte « Je lance ces lots
