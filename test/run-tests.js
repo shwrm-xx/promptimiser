@@ -9629,7 +9629,7 @@ section('Session maître — lib/epicmaster + CLI epicmaster + fin de /scope (lo
   const cmdEm = fs.readFileSync(path.join(PKG, 'commands', 'epicmaster.md'), 'utf8');
   ok(/^description: Session maître/m.test(cmdEm) && /Agent/.test(cmdEm.split('\n')[2]) && /--skip/.test(cmdEm) && /--brief --id/.test(cmdEm),
     'commands/epicmaster.md : description, outil Agent autorisé, décochage, brief');
-  ok(/\*\*UNE\*\* fois/.test(cmdEm) && /précochées/.test(cmdEm) && /type="checkbox" checked/.test(cmdEm) && /jamais plus de lots en vol/i.test(cmdEm) && /Arrête-toi/.test(cmdEm), 'commands/epicmaster.md : une question à cases précochées, parallélisme borné, arrêt à la borne');
+  ok(/\*\*UNE\*\* fois/.test(cmdEm) && /précochées/.test(cmdEm) && /show_pane/.test(cmdEm) && /type="checkbox" checked/.test(cmdEm) && /jamais plus de lots en vol/i.test(cmdEm) && /Arrête-toi/.test(cmdEm), 'commands/epicmaster.md : une question à cases précochées, parallélisme borné, arrêt à la borne');
   ok(/\[x\] #1   Auth core {2,}opus · high {2,}← vague 1/.test(rh.out) && /\n {8}verify : npm test · périmètre : lib\/a\/\*\*/.test(rh.out), 'CLI epicmaster : ligne alignée + détail indenté (lot #134)');
   ok(/'epicmaster\.md'/.test(fs.readFileSync(path.join(PKG, 'install', 'build-plugin.js'), 'utf8')), 'build-plugin : epicmaster.md requise au plugin');
   const cmdScope = fs.readFileSync(path.join(PKG, 'commands', 'scope.md'), 'utf8');
