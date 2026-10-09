@@ -18,24 +18,23 @@ Restitue la sortie **telle quelle** (elle est déjà mise en forme : une ligne a
 **modèle préconisé pour toi**). Puis demande la confirmation en **UNE** fois, avec des **cases à
 cocher précochées** — jamais une liste à retaper :
 
-- **Dans l'app desktop (panneau latéral disponible : outil `show_pane`)** — même geste qu'en
-  mode plan : le **plan va dans le panneau**, la **conversation ne garde que les boutons**.
-  Écris le plan en Markdown dans le scratchpad (`epicmaster-plan.md`) : pour chaque epic son
-  **nom** et une **description courte** (une phrase déduite des titres et « fait quand » des lots,
-  jamais inventée au-delà), puis **un bloc par vague** et **un lot par ligne** `- [x] #id titre —
-  modèle · effort` suivi de sa description (« fait quand », verify, périmètre, dépendances) ; en
-  pied, modèle maître, parallélisme et capacité. Ouvre-le avec `show_pane` (pane `file`). Puis
-  pose la question par **boutons** (AskUserQuestion) : « Lancer tous les lots (Recommandé) » /
-  « Écarter certains lots » / « Annuler ». Sur « Écarter » : une seconde question à **choix
-  multiples**, une option par lot `#id titre — modèle · effort`, les lots cochés sont écartés.
-- **Sinon, si un widget interactif est disponible** (`show_widget`) : widget HTML libre avec de
-  **vraies `<input type="checkbox" checked>`**, même contenu que le plan ci-dessus (epic +
-  description, blocs par vague, un lot par ligne), bouton « Lancer la sélection » →
-  `sendPrompt("Lancer : #1, #2 · sans : #3")` ; zéro case cochée → erreur inline, pas d'envoi.
-- **Sinon** (AskUserQuestion seul) : une question à choix multiples « Quels lots lancer ? »
-  avec, en premier, « Tous les lots (Recommandé) », puis une option par lot « #id titre —
-  modèle · effort » ; sélection = lancer. À défaut de tout outil : texte « Je lance ces lots
-  tels quels ? Pour en décocher : « sans #12, #15 ». »
+- **Affichage du plan** : dans l'app desktop (outil `show_pane`), même geste qu'en mode plan —
+  écris le plan en Markdown dans le scratchpad (`epicmaster-plan.md`) et ouvre-le dans le
+  panneau latéral (pane `file`) ; la conversation ne garde que les boutons. Contenu : pour
+  chaque epic son **nom** et une **description courte** (une phrase déduite des titres et « fait
+  quand » des lots, jamais inventée au-delà), puis **un bloc par vague** et **un lot par ligne**
+  `- [x] #id titre — modèle · effort` suivi de sa description (« fait quand », verify,
+  périmètre, dépendances) ; en pied, modèle maître, parallélisme, capacité. Sans panneau
+  (session hors fenêtre, autre hôte) : le même plan en Markdown dans la conversation, ou en
+  widget HTML (`show_widget`) **en lecture seule** — un widget n'est **jamais** le moyen de
+  répondre : un bouton `sendPrompt` peut rester sans effet selon l'hôte (constaté : clic sur
+  « Lancer la sélection » sans aucun envoi), et l'utilisateur croirait avoir lancé.
+- **Réponse, toujours par les boutons natifs** (AskUserQuestion) : « Lancer tous les lots
+  (Recommandé) » / « Écarter certains lots » / « Annuler ». Sur « Écarter » : une seconde
+  question à **choix multiples** (vraies cases, une option par lot `#id titre — modèle · effort`),
+  les lots cochés sont écartés. Sans AskUserQuestion : texte « Je lance ces lots tels quels ?
+  Pour en décocher : « sans #12, #15 ». » Une question **fermée sans réponse** = rien n'est
+  lancé, les lots restent « à faire » ; ne jamais interpréter un silence comme un oui.
 
 Si des lots sont décochés : relance avec `--skip 12,15`, réaffiche, et ne redemande que si un
 lot est devenu **bloqué** (dépendance sur un lot décoché). N'embarque **jamais** un lot absent de
