@@ -9553,11 +9553,13 @@ section('Session maître — lib/epicmaster + CLI epicmaster + fin de /scope (lo
   ok(bgHaiku.red_zone_tokens === 170000 && bgHaiku.red_zone_source === 'window', 'EM-6 : haiku -> 85 % de 200k');
   ok(bgOpus.max_lots_per_session === Math.floor((occ.BUCKETS[1] - em.MASTER_BASELINE_TOKENS) / em.MASTER_COST_PER_LOT) && bgOpus.sessions_needed === 1,
     'EM-6 : capacité = (borne - socle) / coût par lot ; 5 lots -> 1 session');
+  ok(bgOpus.subagents_min_total === 5 * em.SUBAGENT_BASE_TOKENS && /consommation des sous-agents : au moins 5 × ~60k ≈ 300k/.test(runNode(BKLG, ['epicmaster', '--cwd', repoEm]).out),
+    'EM-6 : socle mesuré par sous-agent affiché comme consommation prévue (lot #135)');
   fs.mkdirSync(path.join(repoEm, '.vibe-agent'), { recursive: true });
-  fs.writeFileSync(path.join(repoEm, '.vibe-agent', 'rules.yaml'), 'budget:\n  red_zone_tokens: 80000\n');
+  fs.writeFileSync(path.join(repoEm, '.vibe-agent', 'rules.yaml'), 'budget:\n  red_zone_tokens: 72000\n');
   const tight = em.planMaster(repoEm, b, {});
   ok(tight.budget.red_zone_source === 'config' && tight.budget.max_lots_per_session === 3 && tight.budget.sessions_needed === 2,
-    `EM-6 : red_zone_tokens 80k -> 3 lots/session, 2 sessions maîtres (${tight.budget.max_lots_per_session}/${tight.budget.sessions_needed})`);
+    `EM-6 : red_zone_tokens 72k -> 3 lots/session, 2 sessions maîtres (${tight.budget.max_lots_per_session}/${tight.budget.sessions_needed})`);
   ok(tight.sessions.length === 2 && tight.sessions.flat().length === 5 && tight.parallelism.max <= 3,
     'EM-6 : vagues réparties en 2 sessions, parallélisme borné par la capacité');
   fs.unlinkSync(path.join(repoEm, '.vibe-agent', 'rules.yaml'));

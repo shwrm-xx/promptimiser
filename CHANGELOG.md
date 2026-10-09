@@ -2,6 +2,23 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-10-09 — Budget maître recalé sur la mesure réelle (lot #135, epic Session maître)
+
+Première session maître réelle (epic de test « Calc test », 3 lots, 2 vagues) : chaque sous-agent
+a consommé ~62k tokens pour ~10 s de travail — le socle (système, outils, brief) domine sur un
+petit lot — tandis que le coût dans le contexte du maître s'est établi autour de 2,5k par lot.
+
+- **`promptimizer/lib/epicmaster.js`** : `MASTER_COST_PER_LOT` 6k → **4k** (mesure + marge) ;
+  nouvelle constante `SUBAGENT_BASE_TOKENS` = **60k** (socle mesuré par sous-agent, hors travail
+  propre du lot) ; `contextBudget` rend `subagent_base_tokens` et `subagents_min_total` ; le plan et
+  le handoff maître affichent la **consommation prévue des sous-agents** (« au moins N × ~60k »),
+  distincte du budget de contexte du maître.
+- **`promptimizer/commands/epicmaster.md`** (lot précédent, même session) : lot sans verify = clôture
+  sans preuve (`--verify-verdict none`), pas un blocage ; réponse par boutons natifs, widget en
+  lecture seule.
+- **`test/run-tests.js`** : seuil du cas « découpe en sessions » adapté (72k) ; consommation prévue
+  vérifiée.
+
 ## 2026-10-09 — Confirmation `/epicmaster` lisible, cases précochées (lot #134, epic Session maître)
 
 Retour utilisateur (premier essai sur une epic de test) : la liste de confirmation était dense et

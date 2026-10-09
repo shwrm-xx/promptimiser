@@ -36,7 +36,15 @@ const { MANUAL_MARKER, MAX_INJECT_CHARS } = require('./handoff');
 const MAX_PARALLEL_DEFAULT = 4;  // sous-agents en vol simultanément, sans réglage
 const MAX_PARALLEL_CAP = 8;      // borne dure du réglage --max-parallel (au-delà : ignoré)
 const MASTER_BASELINE_TOKENS = 60000; // socle d'une session (système, CLAUDE.md, injections, skill)
-const MASTER_COST_PER_LOT = 6000;     // brief + rapport (≤ REPORT_MAX_WORDS) + commit/clôture, côté maître
+// Coût d'un lot délégué DANS LE CONTEXTE du maître. Mesuré le 2026-10-09 sur l'epic test « Calc
+// test » (3 lots) : brief affiché ~0,7k + prompt Agent ~0,5k + rapport ~0,4k + commandes de
+// commit/clôture ~0,9k ≈ 2,5k ; 4k garde une marge pour un rapport au plafond et une relance.
+const MASTER_COST_PER_LOT = 4000;
+// Socle CONSOMMÉ par un sous-agent, quel que soit le lot (système, outils, lecture du brief) :
+// mesuré ~62k tokens par sous-agent sur les 3 lots triviaux de l'epic test (10 s de travail
+// chacun). Ce n'est PAS du contexte du maître — c'est la facture : un lot délégué coûte au moins
+// cela, en plus de son travail propre (estimateCost quand une famille comparable existe).
+const SUBAGENT_BASE_TOKENS = 60000;
 const REPORT_MAX_WORDS = 250;         // plafond du rapport rendu par un sous-agent
 const DEFAULT_MASTER_MODEL = 'sonnet';
 const DEFAULT_MASTER_EFFORT = 'medium';
@@ -167,6 +175,8 @@ function contextBudget(root, model, nLots) {
     per_lot_tokens: MASTER_COST_PER_LOT,
     max_lots_per_session: maxLots,
     sessions_needed: nLots ? Math.ceil(nLots / maxLots) : 0,
+    subagent_base_tokens: SUBAGENT_BASE_TOKENS,
+    subagents_min_total: nLots * SUBAGENT_BASE_TOKENS,
   };
 }
 
@@ -286,6 +296,7 @@ function renderPlan(plan, b, pmzBase) {
   L.push(`### Session maître — modèle préconisé : ${plan.master.model} · effort ${plan.master.effort}`);
   L.push(`- borne ${Math.round(bg.red_zone_tokens / 1000)}k (${src}) · socle ~${Math.round(bg.baseline_tokens / 1000)}k · ~${Math.round(bg.per_lot_tokens / 1000)}k par lot délégué (brief + rapport ≤ ${REPORT_MAX_WORDS} mots + clôture)`);
   L.push(`- capacité : ${bg.max_lots_per_session} lot(s) par session maître → ${bg.sessions_needed} session(s) pour ${plan.lots.length} lot(s)`);
+  L.push(`- consommation des sous-agents : au moins ${plan.lots.length} × ~${Math.round(bg.subagent_base_tokens / 1000)}k ≈ ${Math.round(bg.subagents_min_total / 1000)}k tokens (socle mesuré par sous-agent, hors travail propre du lot)`);
   if (plan.sessions.length > 1) {
     plan.sessions.forEach((ids, i) => L.push(`  - session ${i + 1} : ${ids.map((id) => '#' + id).join(', ')}`));
     L.push('  Après la dernière vague d\'une session : handoff consolidé, puis session fraîche — `/epicmaster` reprend les lots restés ouverts.');
@@ -371,7 +382,7 @@ function renderMasterHandoff(plan, opts) {
   if (plan.blocked.length) L.push(`Bloqués (non embarqués) : ${plan.blocked.map((x) => `#${x.id} — ${x.reason}`).join(' ; ')}.`);
   L.push('');
   const bg = plan.budget;
-  L.push(`Budget contexte : au plus ${bg.max_lots_per_session} lot(s) par session maître (zone rouge ${Math.round(bg.red_zone_tokens / 1000)}k, ~${Math.round(bg.per_lot_tokens / 1000)}k/lot) → ${bg.sessions_needed} session(s) maître.`);
+  L.push(`Budget contexte : au plus ${bg.max_lots_per_session} lot(s) par session maître (borne ${Math.round(bg.red_zone_tokens / 1000)}k, ~${Math.round(bg.per_lot_tokens / 1000)}k/lot) → ${bg.sessions_needed} session(s) maître ; sous-agents ≥ ${Math.round(bg.subagents_min_total / 1000)}k tokens au total.`);
   if (plan.sessions.length > 1) L.push(`Cette session s'arrête après : ${plan.sessions[0].map((id) => '#' + id).join(', ')} ; handoff consolidé, puis session fraîche + /epicmaster pour la suite.`);
   L.push('');
   L.push('Prochaine action recommandée :');
@@ -396,6 +407,6 @@ function writeMasterHandoff(root, text, file) {
 module.exports = {
   selectLots, groupByEpic, planMasterWaves, chunkWaves, masterModel, contextBudget, splitSessions,
   planMaster, renderPlan, renderBrief, launchCommand, closeCommands, renderMasterHandoff, writeMasterHandoff,
-  MAX_PARALLEL_DEFAULT, MAX_PARALLEL_CAP, MASTER_BASELINE_TOKENS, MASTER_COST_PER_LOT,
+  MAX_PARALLEL_DEFAULT, MAX_PARALLEL_CAP, MASTER_BASELINE_TOKENS, MASTER_COST_PER_LOT, SUBAGENT_BASE_TOKENS,
   REPORT_MAX_WORDS, DEFAULT_MASTER_MODEL, DEFAULT_MASTER_EFFORT, NO_EPIC, OWNER_PREFIX,
 };
