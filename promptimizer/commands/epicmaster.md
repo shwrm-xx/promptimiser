@@ -62,10 +62,11 @@ Pour **chaque vague** du plan, et **jamais plus de lots en vol que le paralléli
    - **Verify verte** → commit **borné au périmètre** (`git add -- ':(glob)…'`, ou `git add -A`
      pour un lot sans périmètre, seul en vol) + message français court, puis
      `backlog.js done --id <id> --commit "$(git rev-parse --short HEAD)" --verify-verdict ok`.
-   - **Verify rouge ou absente** → **pas de commit** ; `backlog.js note --id <id> --note "verify
-     rouge : <cause en une ligne>"` ; le lot reste ouvert et passe dans « À trancher ». Si la
-     cause est triviale (< 5 min), relance **un** sous-agent de correction au même modèle, une
-     seule fois.
+   - **Lot sans verify** (non vérifiable par commande : doc, choix visuel) → commit + `done
+     --verify-verdict none` : clos **sans preuve**, et dit comme tel dans le handoff.
+   - **Verify rouge** → **pas de commit** ; `backlog.js note --id <id> --note "verify rouge :
+     <cause en une ligne>"` ; le lot reste ouvert et passe dans « À trancher ». Si la cause est
+     triviale (< 5 min), relance **un** sous-agent de correction au même modèle, une seule fois.
    - Un sous-agent qui a écrit **hors de son périmètre** : ne commite pas ses écritures hors zone
      (`git checkout -- <chemin>` après confirmation), note-le, poursuis.
 4. Ajoute au `CHANGELOG.md` une entrée datée par lot, reprise du « Bloc CHANGELOG » du rapport.
