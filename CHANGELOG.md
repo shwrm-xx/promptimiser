@@ -2,6 +2,20 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-10-09 — Confirmation `/epicmaster` lisible, cases précochées (lot #134, epic Session maître)
+
+Retour utilisateur (premier essai sur une epic de test) : la liste de confirmation était dense et
+demandait de retaper les lots à écarter.
+
+- **`promptimizer/lib/epicmaster.js`** (`renderPlan`) : une ligne **alignée** par lot
+  (`[x] #id  titre  modèle · effort  ← vague N`) + une ligne de détail indentée (verify, périmètre,
+  dépendances, estimation, reprise) ; sections « Ordre de lancement » et « Session maître » en
+  puces courtes. Aucune donnée retirée.
+- **`promptimizer/commands/epicmaster.md`** §1 : confirmation par **cases à cocher précochées** —
+  formulaire d'elicitation (cartes par epic, toutes sélectionnées, bouton « Lancer la sélection »)
+  quand un widget interactif est disponible, question à choix multiples sinon, texte en dernier
+  recours. Les lots absents de la réponse sont décochés (`--skip`).
+
 ## 2026-10-09 — Session maître : `/epicmaster` + préparation systématique en fin de `/scope` (lot #133, epic Session maître)
 
 Demande utilisateur : qu'une commande de scope prépare **toujours** la session fraîche qui lancera

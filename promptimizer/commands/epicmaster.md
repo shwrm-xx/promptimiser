@@ -8,17 +8,30 @@ Tu es la **session maître** : tu ne codes pas, tu **lances** les lots ouverts d
 tu **consolides** — commit et clôture par lot, CHANGELOG, et UN handoff final qui porte la
 dette et ce qui reste à trancher. Les lots peuvent appartenir à une seule epic ou à plusieurs.
 
-## 1. Plan et confirmation (UNE question)
+## 1. Plan et confirmation (UNE question, cases précochées)
 
 `node ~/.claude/promptimizer/scripts/backlog.js epicmaster` (ajouter `--epic "…"` pour se limiter
 à une epic ; `--max-parallel N` pour abaisser le plafond de sous-agents en vol).
 
-Restitue la sortie **telle quelle** : lots embarqués **classés par epic**, tous **cochés par
-défaut**, vagues, parallélisme retenu, budget de contexte et **modèle préconisé pour toi**.
-Puis pose **UNE** question : « Je lance ces lots tels quels ? Pour en décocher, réponds par
-exemple « sans #12, #15 ». » Si l'utilisateur décoche : relance avec `--skip 12,15`, réaffiche,
-et ne repose la question que si un lot est devenu **bloqué** (dépendance sur un lot décoché).
-N'embarque **jamais** un lot absent de la sortie du script.
+Restitue la sortie **telle quelle** (elle est déjà mise en forme : une ligne alignée par lot
+`[x] #id  titre  modèle · effort  ← vague`, détail indenté, ordre de lancement, budget et
+**modèle préconisé pour toi**). Puis demande la confirmation en **UNE** fois, avec des **cases à
+cocher précochées** — jamais une liste à retaper :
+
+- **Si un outil de widget interactif est disponible** (`show_widget` / module *elicitation*) :
+  rends un formulaire d'elicitation, titre « Lots à lancer », **un groupe de cartes par epic**
+  (`data-multi="true"`), **une carte par lot déjà sélectionnée** (`aria-pressed="true"`,
+  `data-value="#id"`), titre = `#id titre`, sous-titre = `modèle · effort · vague N`, puis un
+  bouton « Lancer la sélection ». La réponse revient sous forme `… — Epic X: #1, #2 · …` : tout
+  lot **absent** de la réponse est décoché.
+- **Sinon** (outil AskUserQuestion) : une question à choix multiples « Quels lots lancer ? »
+  avec, en premier, « Tous les lots (Recommandé) », puis une option par lot « #id titre —
+  modèle · effort » ; sélection = lancer. À défaut de tout outil : texte « Je lance ces lots
+  tels quels ? Pour en décocher : « sans #12, #15 ». »
+
+Si des lots sont décochés : relance avec `--skip 12,15`, réaffiche, et ne redemande que si un
+lot est devenu **bloqué** (dépendance sur un lot décoché). N'embarque **jamais** un lot absent de
+la sortie du script.
 
 Si le script préconise un autre modèle que le tien pour la session maître, dis-le en une
 ligne (`/model …`) avant de lancer — tu orchestres, tu n'as pas besoin de raisonner lourd.

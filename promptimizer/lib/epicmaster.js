@@ -225,34 +225,42 @@ function planMaster(root, b, opts) {
   };
 }
 
-function lotLine(l, b, checked) {
-  let s = `- [${checked === false ? ' ' : 'x'}] #${l.id} « ${l.title} »${modelEffortTag(l)}`;
-  if (l.status === 'in_progress') s += ` ⟳ en cours${l.session_owner ? ` (session ${l.session_owner})` : ''} — sera repris`;
-  if (l.verify) s += ` [verify : ${l.verify}]`;
-  if (l.us) s += ` [US : ${l.us}]`;
-  s += hasPerimeter(l) ? ` [périmètre : ${l.perimeter.join(', ')}]` : ' [sans périmètre → série]';
-  if (l.depends_on && l.depends_on.length) s += ` [dépend de : ${l.depends_on.map((d) => '#' + d).join(', ')}]`;
+// Une ligne de confirmation par lot, ALIGNÉE (titre padé) + une ligne de détail indentée :
+// la liste se lit en colonne (case · id · titre · modèle · vague), le détail reste disponible.
+function pad(s, n) { s = String(s); return s.length >= n ? s : s + ' '.repeat(n - s.length); }
+function lotLine(l, b, waveOf, checked) {
+  const tag = l.model_hint ? `${l.model_hint}${l.effort_hint ? ' · ' + l.effort_hint : ''}` : '?';
+  const w = waveOf && waveOf.get(l.id);
+  const head = `[${checked === false ? ' ' : 'x'}] ${pad('#' + l.id, 4)} ${pad(String(l.title || '').slice(0, 44), 44)} ${pad(tag, 16)}${w ? ` ← vague ${w.index}${w.parallel > 1 ? '' : ' (série)'}` : ''}`;
+  const det = [];
+  if (l.verify) det.push(`verify : ${l.verify}`);
+  det.push(hasPerimeter(l) ? `périmètre : ${l.perimeter.join(', ')}` : 'sans périmètre → série');
+  if (l.depends_on && l.depends_on.length) det.push(`dépend de : ${l.depends_on.map((d) => '#' + d).join(', ')}`);
+  if (l.us) det.push(`US : ${l.us}`);
   const est = b ? estimateCost(b, l) : null;
-  if (est) s += ` (~${Math.round(est.avg / 1000)}k tokens estimés)`;
-  return s;
+  if (est) det.push(`~${Math.round(est.avg / 1000)}k tokens`);
+  if (l.status === 'in_progress') det.push(`⟳ en cours${l.session_owner ? ` (session ${l.session_owner})` : ''} — sera repris`);
+  return `${head}\n        ${det.join(' · ')}`;
 }
 
 // RENDU LISIBLE du plan : liste de confirmation (tout coché), vagues, parallélisme, budget.
 function renderPlan(plan, b, pmzBase) {
   const base = pmzBase || '~/.claude/promptimizer';
   const L = [];
-  L.push('## Session maître — lots à embarquer (proposition, rien n\'est lancé)');
   if (!plan.lots.length) {
-    L.push('Aucun lot ouvert à embarquer.');
-    if (plan.blocked.length) for (const x of plan.blocked) L.push(`Bloqué : #${x.id} « ${x.title} » — ${x.reason}.`);
+    L.push('## Session maître — aucun lot à embarquer (rien n\'est lancé)');
+    if (plan.blocked.length) for (const x of plan.blocked) L.push(`⛔ Bloqué : #${x.id} « ${x.title} » — ${x.reason}.`);
     if (plan.excluded.length) L.push(`Exclus : ${plan.excluded.map((x) => `#${x.id} (${x.reason})`).join(', ')}.`);
     return L.join('\n');
   }
-  L.push(`${plan.lots.length} lot(s) embarqué(s), tous cochés par défaut — décocher : \`epicmaster --skip <id,id>\`.`);
+  const waveOf = new Map();
+  for (const w of plan.waves) for (const id of w.ids) waveOf.set(id, w);
+  L.push(`## Session maître — ${plan.lots.length} lot(s) à embarquer (proposition, rien n'est lancé)`);
+  L.push('Tous cochés par défaut. Décocher : « sans #id » (ou `epicmaster --skip id,id`).');
   L.push('');
   for (const g of plan.groups) {
     L.push(`### Epic « ${g.epic} » — ${g.ids.length} lot(s)`);
-    for (const id of g.ids) L.push(lotLine(plan._lotsById.get(id), b));
+    for (const id of g.ids) L.push(lotLine(plan._lotsById.get(id), b, waveOf));
     L.push('');
   }
   if (plan.blocked.length) {
@@ -263,7 +271,7 @@ function renderPlan(plan, b, pmzBase) {
     L.push(`Exclus : ${plan.excluded.map((x) => `#${x.id} (${x.reason})`).join(', ')}.`);
     L.push('');
   }
-  L.push(`### Vagues (${plan.waves.length}) — parallélisme max ${plan.parallelism.max} sous-agent(s)`);
+  L.push(`### Ordre de lancement — ${plan.waves.length} vague(s), ${plan.parallelism.max} sous-agent(s) max en vol`);
   for (const w of plan.waves) {
     const ids = w.ids.map((id) => {
       const l = plan._lotsById.get(id);
@@ -271,20 +279,20 @@ function renderPlan(plan, b, pmzBase) {
     }).join(', ');
     L.push(`- Vague ${w.index} — ${w.parallel > 1 ? `${w.parallel} en parallèle` : 'série (seul en vol)'} : ${ids}`);
   }
-  if (!plan.parallelism.opportunity) L.push('Parallélisation : aucune opportunité — tous les lots partent en série (sans périmètre, dépendances en chaîne ou périmètres chevauchants).');
+  if (!plan.parallelism.opportunity) L.push('Parallélisation : aucune opportunité — tout part en série (sans périmètre, dépendances en chaîne ou périmètres chevauchants).');
   L.push('');
   const bg = plan.budget;
-  L.push(`### Budget contexte du maître — modèle préconisé : ${plan.master.model} · effort ${plan.master.effort}`);
   const src = { config: 'borne rules.yaml', window: 'zone rouge du modèle', 'fresh-session': 'seuil « session fraîche »' }[bg.red_zone_source] || bg.red_zone_source;
-  L.push(`Borne d'occupation (${src}) : ${Math.round(bg.red_zone_tokens / 1000)}k tokens ; socle ~${Math.round(bg.baseline_tokens / 1000)}k ; ~${Math.round(bg.per_lot_tokens / 1000)}k par lot délégué (brief + rapport ≤ ${REPORT_MAX_WORDS} mots + clôture).`);
-  L.push(`→ au plus ${bg.max_lots_per_session} lot(s) par session maître ; ${plan.lots.length} embarqué(s) → ${bg.sessions_needed} session(s) maître${bg.sessions_needed > 1 ? 's successives' : ''}.`);
+  L.push(`### Session maître — modèle préconisé : ${plan.master.model} · effort ${plan.master.effort}`);
+  L.push(`- borne ${Math.round(bg.red_zone_tokens / 1000)}k (${src}) · socle ~${Math.round(bg.baseline_tokens / 1000)}k · ~${Math.round(bg.per_lot_tokens / 1000)}k par lot délégué (brief + rapport ≤ ${REPORT_MAX_WORDS} mots + clôture)`);
+  L.push(`- capacité : ${bg.max_lots_per_session} lot(s) par session maître → ${bg.sessions_needed} session(s) pour ${plan.lots.length} lot(s)`);
   if (plan.sessions.length > 1) {
-    plan.sessions.forEach((ids, i) => L.push(`  - Session maître ${i + 1} : ${ids.map((id) => '#' + id).join(', ')}`));
-    L.push('  Après la dernière vague d\'une session : handoff consolidé puis session fraîche — `/epicmaster` reprend les lots restés ouverts.');
+    plan.sessions.forEach((ids, i) => L.push(`  - session ${i + 1} : ${ids.map((id) => '#' + id).join(', ')}`));
+    L.push('  Après la dernière vague d\'une session : handoff consolidé, puis session fraîche — `/epicmaster` reprend les lots restés ouverts.');
   }
   L.push('');
   L.push('⚠️ Proposition seule : aucun lot démarré, aucun sous-agent lancé.');
-  L.push(`Lancer (après confirmation de la liste) : /epicmaster — brief d'un lot : node ${base}/scripts/backlog.js epicmaster --brief --id <id>.`);
+  L.push(`Lancer (après confirmation) : /epicmaster — brief d'un lot : node ${base}/scripts/backlog.js epicmaster --brief --id <id>.`);
   return L.join('\n');
 }
 
