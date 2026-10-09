@@ -137,3 +137,4 @@
 #0132 | 2026-10-06 | e5cf5a9 | epic:Garde Bash | verify:inconnu | fiche:non | Garde Bash : verrou destructif (ask) désactivé
 #0133 | 2026-10-09 | 25bd658 | epic:Session maître | verify:inconnu | fiche:oui | Session maître : /epicmaster + préparation en fin de /scope
 #0134 | 2026-10-09 | 5a689ee | epic:Session maître | verify:inconnu | fiche:non | Confirmation /epicmaster lisible, cases précochées
+#0135 | 2026-10-09 | 1bc96b3 | epic:Session maître | verify:inconnu | fiche:non | Budget maître recalé sur la mesure réelle
