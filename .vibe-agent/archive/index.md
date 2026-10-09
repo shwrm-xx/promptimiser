@@ -136,3 +136,4 @@
 #0131 | 2026-07-30 | d9cd7dd | epic:Titre de session | verify:inconnu | fiche:non | Fix — CHANGELOG fuitait (lot #N, epic X) dans le titre de session
 #0132 | 2026-10-06 | e5cf5a9 | epic:Garde Bash | verify:inconnu | fiche:non | Garde Bash : verrou destructif (ask) désactivé
 #0133 | 2026-10-09 | 25bd658 | epic:Session maître | verify:inconnu | fiche:oui | Session maître : /epicmaster + préparation en fin de /scope
+#0134 | 2026-10-09 | 5a689ee | epic:Session maître | verify:inconnu | fiche:non | Confirmation /epicmaster lisible, cases précochées
