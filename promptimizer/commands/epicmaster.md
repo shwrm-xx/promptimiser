@@ -18,16 +18,15 @@ Restitue la sortie **telle quelle** (elle est déjà mise en forme : une ligne a
 **modèle préconisé pour toi**). Puis demande la confirmation en **UNE** fois, avec des **cases à
 cocher précochées** — jamais une liste à retaper :
 
-- **Si un outil de widget interactif est disponible** (`show_widget` / module *elicitation*) :
-  rends un formulaire d'elicitation, titre « Lots à lancer ». Sous l'en-tête, pour chaque epic
-  embarquée : son **nom** et une **description courte** (une phrase, déduite des titres et
-  « fait quand » de ses lots — jamais inventée au-delà). Puis **un groupe par vague** (question
-  « Vague N — k en parallèle » ou « Vague N — série »), `data-multi="true"`, et **un lot par
-  ligne** : une rangée pleine largeur **déjà sélectionnée** (`aria-pressed="true"`,
-  `data-value="#id"`), icône case à cocher, **titre** `#id titre` et **description** = le « fait
-  quand » du lot, suivi de `modèle · effort` en sourdine. Bouton « Lancer la sélection ». La
-  réponse revient sous forme `… — Vague 1: #1, #2 · Vague 2: #3` : tout lot **absent** de la
-  réponse est décoché.
+- **Si un outil de widget interactif est disponible** (`show_widget`) : rends un widget HTML
+  **libre** (pas le formulaire d'elicitation, qui n'a pas de cases) avec de **vraies
+  `<input type="checkbox" checked>`**. En tête, pour chaque epic embarquée : son **nom** et une
+  **description courte** (une phrase, déduite des titres et « fait quand » de ses lots — jamais
+  inventée au-delà). Puis **un bloc par vague** (« Vague N — k en parallèle » / « Vague N —
+  série ») et **un lot par ligne** : case cochée (`value="#id"`), **titre** `#id titre`,
+  **description** = le « fait quand » du lot, `modèle · effort` en sourdine. Un bouton « Lancer
+  la sélection » appelle `sendPrompt("Lancer : #1, #2 · sans : #3")` à partir des cases ; zéro
+  case cochée → erreur inline, pas d'envoi. Tout lot listé dans « sans » est décoché.
 - **Sinon** (outil AskUserQuestion) : une question à choix multiples « Quels lots lancer ? »
   avec, en premier, « Tous les lots (Recommandé) », puis une option par lot « #id titre —
   modèle · effort » ; sélection = lancer. À défaut de tout outil : texte « Je lance ces lots
