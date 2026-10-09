@@ -2,6 +2,44 @@
 
 Toutes les évolutions notables de ce dépôt. Format inspiré de Keep a Changelog.
 
+## 2026-10-09 — Session maître : `/epicmaster` + préparation systématique en fin de `/scope` (lot #133, epic Session maître)
+
+Demande utilisateur : qu'une commande de scope prépare **toujours** la session fraîche qui lancera
+tous les lots de l'epic en sous-agents au modèle préconisé et consolide dette / à trancher en
+handoff, avec le calcul de parallélisation et la vigilance contexte ; et un `/epicmaster` standalone
+qui embarque **tous les lots ouverts** (une epic ou plusieurs) après un message de confirmation
+classé par epic, tout coché, décochable.
+
+- **`promptimizer/lib/epicmaster.js`** (nouveau, pur) : sélection des lots ouverts (`--epic`,
+  `--only`, `--skip` ; un lot dépendant d'un lot décoché est **bloqué**, jamais contourné),
+  regroupement par epic, **vagues maître** (périmètres disjoints en parallèle ; lot sans périmètre
+  = **exclusif**, seul en vol), parallélisme = min(plafond 4 / `--max-parallel` ≤ 8, capacité),
+  **budget de contexte** du maître (borne = min(zone rouge via rules.yaml, seuil session fraîche
+  300k) ; socle 60k ; ~6k par lot délégué → N lots max par session maître, découpe en sessions
+  successives au-delà), modèle maître (opus dès qu'un lot le préconise, sinon majoritaire ;
+  effort medium), rendus : plan de confirmation, handoff maître (manuel, sous le cap d'injection,
+  sans brief), brief autonome par lot + commandes maître (`start --owner "master/lot-N"` avant,
+  commit borné `git add -- ':(glob)…'` + `done --verify-verdict` après).
+- **`promptimizer/scripts/backlog.js epicmaster`** : `--json`, `--write-handoff`
+  (`--handoff-file`), `--brief --id N`, `--master-model/--master-effort` ; **propose, ne lance rien**.
+  Flags enregistrés dans `VALUE_FLAGS`/`BOOL_FLAGS` (garde anti-orphelins).
+- **`promptimizer/commands/epicmaster.md`** (nouveau, requis au plugin) : une question de
+  confirmation, lancement vague par vague en sous-agents au modèle/effort du lot (jamais plus en vol
+  que le parallélisme affiché), aucune relecture de sortie brute (rapport ≤ 250 mots, sections
+  fixes), commit par périmètre, clôture avec verdict persisté, arrêt à la capacité ou sur
+  prescription du Stop, consolidation : fiches d'archive + handoff `templates/epicmaster-handoff.md`
+  (dette consolidée, à trancher).
+- **`promptimizer/commands/scope.md`** : étapes 5–6 réécrites — préparation **systématique** de la
+  session maître (`epicmaster --epic … --write-handoff`, restituée telle quelle), **aucun lot
+  démarré** dans la session de conception ; l'ancienne question à 3 choix disparaît (vagues calculées
+  par epicmaster, verdict toujours visible) ; exception sur demande explicite (lot 1 à la main, ou
+  vraies sessions filles via `/parallelize`).
+- **`skills/promptimizer/SKILL.md`** (2bis/2ter), **`lib/handoff.js`** (exporte `MAX_INJECT_CHARS`),
+  **`install/build-plugin.js`** (`epicmaster.md` requise), README, ARCHITECTURE.
+- **`test/run-tests.js`** : section « Session maître » (sélection/epics/vagues/blocage, modèle maître,
+  budget et découpe en sessions, plafond, CLI lisible + JSON + refus, handoff maître lu manuel et
+  injecté au SessionStart, brief, owners distincts, commandes/skill/gabarit).
+
 ## 2026-10-06 — Garde Bash : plus de confirmation sur les commandes destructives (lot #132, epic Garde Bash)
 
 Demande utilisateur : retirer les verrous de modifications destructives.

@@ -317,4 +317,5 @@ module.exports = {
   writeAutoHandoff,
   AUTO_MARKER,
   MANUAL_MARKER,
+  MAX_INJECT_CHARS,
 };

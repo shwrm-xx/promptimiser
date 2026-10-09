@@ -106,11 +106,12 @@ const CLOSED_VERIFY_VALUES = ['ok', 'failed', 'timeout', 'none'];
 // Flags qui consomment une valeur (mono ou liste répétable — cf. flag()/flagList()) :
 const VALUE_FLAGS = ['cwd', 'id', 'epic', 'set', 'model', 'effort', 'title', 'scope',
   'verify', 'us', 'owner', 'commit', 'note', 'into', 'format', 'depends', 'perimeter', 'session', 'occupancy',
-  'gate', 'final-gate', 'branch', 'state', 'verify-verdict'];
+  'gate', 'final-gate', 'branch', 'state', 'verify-verdict',
+  'only', 'skip', 'max-parallel', 'master-model', 'master-effort', 'handoff-file'];
 // Flags booléens (ne consomment aucune valeur) — listés pour documentation ;
 // tout flag hors VALUE_FLAGS est traité comme booléen (ne consomme rien).
 const BOOL_FLAGS = ['json', 'suggest', 'execute', 'allow-trunc', 'no-session', 'no-occupancy', 'allow-no-gate', 'new',
-  'allow-incomplete-us', 'no-verify'];
+  'allow-incomplete-us', 'no-verify', 'write-handoff', 'brief'];
 
 // Garde anti-troncature de champ (lot #90), 2e vecteur après les orphelins argv (#88) :
 // une valeur QUOTÉE mais au-delà de son plafond MAX_* serait stockée coupée par trunc()

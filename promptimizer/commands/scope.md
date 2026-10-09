@@ -61,32 +61,32 @@ quand : … » vérifiable** — au-delà, redécouper plutôt que grossir un lo
    placeholders du gabarit.
    Un fichier US déjà écrit ailleurs se rattache après coup : `backlog.js us --id <id> --set
    "docs/us/US-42.md"`.
-4bis. **Si ≥ 2 lots viennent d'être persistés**, calculer le plan de vagues :
-   `node ~/.claude/promptimizer/scripts/backlog.js parallelize --json` (ajouter `--epic "…"` si
-   posé). Une **opportunité réelle** = au moins une vague contenant **≥ 2 lots** (une vague à 1
-   lot n'apporte rien). Le verdict est **toujours restitué** — jamais de silence :
-   - **Aucune opportunité** : **une seule ligne** qui dit pourquoi, tirée de la sortie du
-     script (ex. « Parallélisation : aucune opportunité — lots posés en série / chaîne de
-     dépendances / périmètres chevauchants »), puis passer à l'étape 5. Pas de question,
-     pas de plan détaillé : le raisonnement est visible, le bruit s'arrête à cette ligne.
-   - **Opportunité** : afficher le plan lisible (`parallelize` sans `--json` : vagues,
-     branches suggérées, périmètres) puis poser **une** question à **3 choix** :
-     - **Tout en parallèle** → afficher, pour chaque lot de la 1ʳᵉ vague, la commande de
-       démarrage suggérée (`backlog.js start --id <id> --owner <session>`) ; rappeler que
-       l'ouverture des sessions filles reste **manuelle** (PMZ ne lance rien tout seul).
-     - **Partiellement** → proposer **le** sous-ensemble cohérent le plus utile (ex. les
-       lots les plus indépendants de la 1ʳᵉ vague en parallèle, le reste en série), en
-       respectant `depends_on` — jamais un panachage qui casse une dépendance ou marie
-       deux périmètres chevauchants. Même restitution que « tout en parallèle », limitée
-       au sous-ensemble retenu ; les lots écartés repassent en série.
-     - **En série** → comportement classique, passer à l'étape 5.
-5. Démarrer et traiter le lot voulu : `node ~/.claude/promptimizer/scripts/backlog.js start --id <id>`,
-   afficher le plan (`show`, ou `show --epic "Nom de l'epic"` pour filtrer) et traiter
-   **UNIQUEMENT** le(s) lot(s) démarré(s) (le premier lot en série ; la 1ʳᵉ vague si parallèle).
+5. **Préparer la session maître — systématique, dès qu'un lot est persisté** :
+   `node ~/.claude/promptimizer/scripts/backlog.js epicmaster --epic "Nom de l'epic" --write-handoff`
+   (sans `--epic` si aucun n'a été posé). Le script calcule et le handoff maître est **écrit**
+   dans `.vibe-agent/handoff.md` (marqueur manuel) — il sera **injecté automatiquement** au
+   démarrage de la prochaine session fraîche. Restituer la sortie **telle quelle**, sans la
+   paraphraser : lots embarqués par epic (tous cochés), **vagues** (périmètres disjoints en
+   parallèle, lots sans périmètre seuls en vol — le calcul de parallélisation est fait là,
+   `/parallelize` n'a plus à être appelé ici), **parallélisme max**, **budget de contexte** du
+   maître (au plus N lots par session maître, nombre de sessions maîtres si le plan dépasse) et
+   **modèle · effort préconisés pour la session maître**. Le verdict de parallélisation est
+   **toujours visible** — jamais de silence ; n'invente aucune vague absente de la sortie.
+6. **Ne démarrer aucun lot dans cette session** : elle est une session de conception (titrée
+   `[XXX · Plan] Nom de l'epic`). Conclure en **trois lignes** : (1) « ouvre une session fraîche
+   avec `/model <modèle maître>` » ; (2) « le handoff maître y sera injecté ; lance `/epicmaster`
+   (ou `/pmz:epicmaster`) : il confirme la liste des lots — tous cochés, décochables — puis lance
+   chaque lot en sous-agent au modèle préconisé et consolide dette / à trancher en handoff » ;
+   (3) le nombre de sessions maîtres prévu si > 1.
+   **Exception, sur demande explicite seulement** : si l'utilisateur veut traiter le 1ᵉʳ lot
+   lui-même ici, ou ouvrir de vraies sessions filles (vague D3, `/parallelize` + `fleet join`),
+   `backlog.js start --id <id>` comme avant et ne traiter **que** ce lot. Le handoff maître
+   écrit à l'étape 5 reste valable pour les lots restants.
 
-Le suivi est ensuite automatique : le hook Stop clôt le lot au commit et annonce le suivant,
-le handoff porte l'avancement (x/y faits), le plan est réinjecté au démarrage suivant et
-après compaction. `/close-batch` marque le lot fait si le hook ne l'a pas déjà fait.
+Le suivi est ensuite automatique : la session maître clôt chaque lot au commit
+(`done --verify-verdict`), le handoff porte l'avancement (x/y faits), le plan est réinjecté au
+démarrage suivant et après compaction. Hors session maître, le hook Stop clôt le lot au commit
+et `/close-batch` le marque fait s'il ne l'a pas déjà fait.
 
 La préconisation de modèle et l'effort sont **réaffichés** à chaque `show`/`start`/`next`
 et dans le handoff auto (`[modèle : … · effort …]`) — pense à basculer de modèle/effort

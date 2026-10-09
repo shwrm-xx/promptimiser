@@ -768,6 +768,44 @@ par le wrapper `bin/pmz-hook` — voir « Canal plugin Claude Code » plus bas. 
   repasse en série) / série. Le lancement des sessions filles reste **manuel** dans tous les
   cas — aucun changement à la doctrine D3 palier 2, seule la découverte et la visibilité du
   raisonnement deviennent automatiques.
+- **Session maître — `pmz:epicmaster`** (lot #133, epic « Session maître ») : troisième voie
+  d'exécution d'un plan, entre la série classique (un lot par session) et la vague D3 (N sessions
+  réelles + `fleet.json`). Une **session fraîche qui ne code pas** lance les lots ouverts (todo +
+  in_progress, une epic ou plusieurs) en **sous-agents** (outil Agent), chacun au **modèle + effort
+  préconisés par le lot**, et consolide. Validation humaine conservée (D3 palier 2, déplacée : on
+  confirme la **liste embarquée**, tous cochés, `--skip` pour décocher ; un lot dépendant d'un lot
+  décoché est **bloqué**, jamais contourné), lancement automatisé, zéro session fille ni worktree
+  — donc **pas de `fleet join`** : la garde de périmètre protège une session, pas ses sous-agents ;
+  le périmètre exclusif est transmis **dans le brief** et le maître commite **borné au périmètre**
+  (`git add -- ':(glob)…'`). `lib/epicmaster.js` (pur, sauf `writeMasterHandoff`) :
+  `selectLots` (ouverts, `--epic`/`--only`/`--skip`) → `groupByEpic` (ordre d'apparition, « sans
+  epic » en dernier) → `planMasterWaves` (même disjonction que `planWaves`, mais un lot **sans
+  périmètre** n'est pas « non parallélisable » : il est **exclusif**, seul en vol dans sa vague ;
+  dépendances honorées par les vagues antérieures) → `chunkWaves` (parallélisme = min(plafond
+  `MAX_PARALLEL_DEFAULT` 4 / `--max-parallel` ≤ 8, capacité de la session)) → `contextBudget`
+  (borne = min(zone rouge résolue par `occupancy.resolveRedZone` — rules.yaml honoré —, seuil
+  « session fraîche » `BUCKETS[1]` = 300k, même seuil que le verdict de `/close-batch` #109) ;
+  capacité = (borne − socle 60k) / ~6k par lot délégué (brief + rapport ≤ 250 mots + clôture)) →
+  `splitSessions` (sessions maîtres successives si le plan dépasse) ; `masterModel` = opus dès
+  qu'un lot le préconise, sinon le modèle majoritaire, effort `medium` (le maître orchestre, il ne
+  raisonne pas sur le code). CLI `scripts/backlog.js epicmaster` (`--json`, `--write-handoff`
+  [+ `--handoff-file`], `--brief --id N`) **PROPOSE** et ne lance rien. `--write-handoff` pose un
+  handoff **manuel** (marqueur, < `MAX_INJECT_CHARS`, sans brief de lot — régénérable) : modèle à
+  poser (`/model …`), vagues, borne, prochaine action `/epicmaster`. `--brief` rend le brief
+  **autonome** d'un lot (contrat : jamais de commit, pas de script PMZ, verify rejouée, rapport
+  ≤ 250 mots aux sections fixes Fait / Fichiers / Verify / Non vérifié / Dette / À trancher /
+  Bloc CHANGELOG) + commandes maître : `start --owner "master/lot-<id>"` AVANT (owner **distinct
+  par lot**, sinon `startLot` en régime classique rétrograde le précédent), commit borné puis
+  `done --verify-verdict` APRÈS. Vigilance contexte : arrêt à la capacité ou dès que le Stop
+  prescrit une session fraîche, après la vague en cours — le backlog porte l'état, `/epicmaster`
+  reprend les lots restés ouverts (un lot `in_progress` orphelin est réembarqué, marqué « sera
+  repris »). Sortie : `templates/epicmaster-handoff.md` (livrés / ouverts / non vérifié / dette
+  consolidée / à trancher). **`/pmz:scope` se termine systématiquement** par
+  `epicmaster --epic … --write-handoff` et **ne démarre plus de lot** (session de conception) ;
+  l'ancienne question à 3 choix (tout parallèle / partiel / série) disparaît, le verdict de
+  vagues restant toujours visible. Coût par lot non imputé au maître quand plusieurs lots sont en
+  vol (`costLotFor` : owners `master/lot-N` ≠ session) — trou de mesure visible, assumé, jamais une
+  imputation au hasard.
 - **Réintégration en pipeline — `pmz:reintegrate`** (lot #80, 5ᵉ/6ᵉ brique de
   [D3](docs/decisions/D3-parallelisation-gouvernee.md), principe **P3** « jamais de big-bang ») :
   `lib/reintegrate.js` sépare trois responsabilités. `planReintegration(fleet, backlog)` (**pur**)

@@ -9487,6 +9487,159 @@ section('B130 — titre de session : jamais nu quand un plan existe, sessions de
     `B130-16 : canal manuel — matcher PreToolUse identique au canal plugin (${msMatcher})`);
 }
 
+section('Session maître — lib/epicmaster + CLI epicmaster + fin de /scope (lot #133)');
+{
+  const em = require(path.join(PKG, 'lib', 'epicmaster'));
+  const repoEm = path.join(SANDBOX, 'repo-epicmaster');
+  fs.mkdirSync(repoEm, { recursive: true });
+  execFileSync('git', ['init', '-q', repoEm]);
+  fs.writeFileSync(path.join(repoEm, 'a.txt'), '1');
+  execFileSync('git', ['-C', repoEm, 'add', '.']);
+  execFileSync('git', ['-C', repoEm, 'commit', '-q', '-m', 'init']);
+  // Deux epics + un lot sans epic ; périmètres disjoints (#1,#2), chevauchant (#3 avec #1),
+  // sans périmètre (#4), dépendant (#5 de #1,#2), et un lot clos (#6) dont #2 dépend.
+  runNode(BKLG, ['add', '--cwd', repoEm, '--title', 'Auth core', '--model', 'opus', '--effort', 'high', '--epic', 'Auth', '--perimeter', 'lib/a/**', '--verify', 'npm test']);
+  runNode(BKLG, ['add', '--cwd', repoEm, '--title', 'UI panel', '--model', 'sonnet', '--effort', 'medium', '--epic', 'UI', '--perimeter', 'lib/b/**', '--depends', '6']);
+  runNode(BKLG, ['add', '--cwd', repoEm, '--title', 'Auth refacto', '--model', 'sonnet', '--effort', 'low', '--epic', 'Auth', '--perimeter', 'lib/a/x/**']);
+  runNode(BKLG, ['add', '--cwd', repoEm, '--title', 'Doc sans périmètre', '--model', 'haiku', '--effort', 'low']);
+  runNode(BKLG, ['add', '--cwd', repoEm, '--title', 'Wire', '--model', 'opus', '--effort', 'medium', '--epic', 'UI', '--perimeter', 'lib/c/**', '--depends', '1,2']);
+  runNode(BKLG, ['add', '--cwd', repoEm, '--title', 'Déjà fait', '--model', 'sonnet', '--effort', 'low', '--perimeter', 'lib/d/**']);
+  runNode(BKLG, ['done', '--cwd', repoEm, '--id', '6', '--commit', 'abc1234', '--no-verify']);
+
+  // EM-1. Sélection : lots ouverts seulement, groupés par epic, « sans epic » en dernier.
+  let b = backlogLib.loadBacklog(repoEm);
+  let plan = em.planMaster(repoEm, b, {});
+  ok(plan.launched === false && plan.lots.map((l) => l.id).join(',') === '1,2,3,4,5',
+    'EM-1 : lots ouverts embarqués (le lot clos #6 exclu), tous cochés');
+  ok(plan.groups.map((g) => g.epic).join('|') === 'Auth|UI|' + em.NO_EPIC && plan.groups[2].ids.join(',') === '4',
+    'EM-1 : groupes par epic dans l\'ordre d\'apparition, « sans epic » en dernier');
+
+  // EM-2. Vagues maître : #1+#2 disjoints en parallèle (dép. de #2 sur #6 clos = satisfaite) ;
+  // #3 chevauche #1 → vague suivante ; #4 sans périmètre → SEUL en vol ; #5 après #1 et #2.
+  const wv = plan.waves.map((w) => w.ids.join('+')).join(' | ');
+  ok(plan.waves[0].ids.join(',') === '1,2' && plan.waves[0].parallel === 2, `EM-2 : vague 1 = #1 + #2 en parallèle (${wv})`);
+  ok(plan.waves.every((w) => !(w.ids.includes(4) && w.parallel > 1)), `EM-2 : lot sans périmètre jamais en vague à plusieurs (${wv})`);
+  ok(!plan.waves.some((w) => w.ids.includes(1) && w.ids.includes(3)), 'EM-2 : périmètres chevauchants (#1/#3) jamais dans la même vague');
+  const wIdx = (id) => plan.waves.findIndex((w) => w.ids.includes(id));
+  ok(wIdx(5) > wIdx(1) && wIdx(5) > wIdx(2), 'EM-2 : #5 (dépend de #1,#2) placé après ses dépendances');
+  ok(plan.parallelism.opportunity === true && plan.parallelism.max >= 2, 'EM-2 : opportunité de parallélisation détectée');
+  ok(plan.blocked.length === 0, 'EM-2 : aucun lot bloqué');
+
+  // EM-3. Modèle maître : opus dès qu'un lot le préconise ; effort medium par défaut ; override.
+  ok(plan.master.model === 'opus' && plan.master.effort === 'medium', 'EM-3 : maître = opus · medium (un lot opus embarqué)');
+  const onlySonnet = em.planMaster(repoEm, b, { only: '2,3' });
+  ok(onlySonnet.master.model === 'sonnet', 'EM-3 : sans lot opus embarqué -> modèle majoritaire (sonnet)');
+  ok(em.planMaster(repoEm, b, { masterModel: 'haiku', masterEffort: 'low' }).master.model === 'haiku', 'EM-3 : --master-model respecté');
+
+  // EM-4. --skip : décoche ; un lot dépendant d'un lot décoché (ouvert, non embarqué) est BLOQUÉ.
+  const skipped = em.planMaster(repoEm, b, { skip: '2' });
+  ok(!skipped.lots.some((l) => l.id === 2) && skipped.excluded.some((x) => x.id === 2 && x.reason === 'décoché'),
+    'EM-4 : --skip 2 -> lot décoché, listé exclu avec raison');
+  ok(skipped.blocked.some((x) => x.id === 5 && /#2/.test(x.reason)) && !skipped.lots.some((l) => l.id === 5),
+    'EM-4 : #5 dépend du lot décoché #2 -> bloqué, non embarqué (jamais contourné)');
+
+  // EM-5. --epic : filtre ; les autres sont « hors epic ».
+  const auth = em.planMaster(repoEm, b, { epic: 'Auth' });
+  ok(auth.lots.map((l) => l.id).join(',') === '1,3' && auth.excluded.every((x) => /hors epic/.test(x.reason)),
+    'EM-5 : --epic Auth -> #1 et #3 seulement');
+
+  // EM-6. Budget de contexte : borne = min(zone rouge, seuil session fraîche 300k) ; haiku (200k)
+  // -> 170k ; rules.yaml red_zone_tokens respecté ; capacité -> découpe en sessions maîtres.
+  const occ = require(path.join(PKG, 'lib', 'occupancy'));
+  const bgOpus = em.contextBudget(repoEm, 'opus', 5);
+  ok(bgOpus.red_zone_tokens === occ.BUCKETS[1] && bgOpus.red_zone_source === 'fresh-session',
+    `EM-6 : opus -> borne = seuil session fraîche ${occ.BUCKETS[1]} (pas 850k)`);
+  const bgHaiku = em.contextBudget(repoEm, 'haiku', 5);
+  ok(bgHaiku.red_zone_tokens === 170000 && bgHaiku.red_zone_source === 'window', 'EM-6 : haiku -> 85 % de 200k');
+  ok(bgOpus.max_lots_per_session === Math.floor((occ.BUCKETS[1] - em.MASTER_BASELINE_TOKENS) / em.MASTER_COST_PER_LOT) && bgOpus.sessions_needed === 1,
+    'EM-6 : capacité = (borne - socle) / coût par lot ; 5 lots -> 1 session');
+  fs.mkdirSync(path.join(repoEm, '.vibe-agent'), { recursive: true });
+  fs.writeFileSync(path.join(repoEm, '.vibe-agent', 'rules.yaml'), 'budget:\n  red_zone_tokens: 80000\n');
+  const tight = em.planMaster(repoEm, b, {});
+  ok(tight.budget.red_zone_source === 'config' && tight.budget.max_lots_per_session === 3 && tight.budget.sessions_needed === 2,
+    `EM-6 : red_zone_tokens 80k -> 3 lots/session, 2 sessions maîtres (${tight.budget.max_lots_per_session}/${tight.budget.sessions_needed})`);
+  ok(tight.sessions.length === 2 && tight.sessions.flat().length === 5 && tight.parallelism.max <= 3,
+    'EM-6 : vagues réparties en 2 sessions, parallélisme borné par la capacité');
+  fs.unlinkSync(path.join(repoEm, '.vibe-agent', 'rules.yaml'));
+
+  // EM-7. Plafond de parallélisme : --max-parallel 1 tranche la vague #1+#2 en deux ; hors bornes ignoré.
+  const p1 = em.planMaster(repoEm, b, { maxParallel: 1 });
+  ok(p1.waves.every((w) => w.parallel === 1) && p1.parallelism.max === 1, 'EM-7 : --max-parallel 1 -> tout en série');
+  ok(em.planMaster(repoEm, b, { maxParallel: 99 }).parallelism.cap === em.MAX_PARALLEL_DEFAULT, 'EM-7 : --max-parallel hors bornes -> plafond par défaut');
+
+  // EM-8. CLI : plan lisible (cases cochées, par epic, vagues, budget, modèle), rien lancé.
+  const rh = runNode(BKLG, ['epicmaster', '--cwd', repoEm]);
+  ok(rh.code === 0 && /\[x\] #1 /.test(rh.out) && /\[x\] #4 /.test(rh.out), 'CLI epicmaster : lots cochés par défaut');
+  ok(/### Epic « Auth »/.test(rh.out) && /### Epic « UI »/.test(rh.out) && rh.out.indexOf('Epic « ' + em.NO_EPIC) !== -1, 'CLI epicmaster : classés par epic');
+  ok(/Vague 1 — 2 en parallèle : #1 \[opus · high\], #2 \[sonnet · medium\]/.test(rh.out), 'CLI epicmaster : vague 1 avec modèle·effort par lot');
+  ok(/sans périmètre → série/.test(rh.out) && /série \(seul en vol\) : #4/.test(rh.out), 'CLI epicmaster : lot sans périmètre seul en vol');
+  ok(/modèle préconisé : opus · effort medium/.test(rh.out) && /lot\(s\) par session maître/.test(rh.out), 'CLI epicmaster : modèle maître + budget affichés');
+  ok(/rien n'est lancé/.test(rh.out) && /aucun lot démarré, aucun sous-agent lancé/.test(rh.out), 'CLI epicmaster : garde-fou « rien lancé »');
+  b = backlogLib.loadBacklog(repoEm);
+  ok(b.lots.filter((l) => l.id !== 6).every((l) => l.status === 'todo' && l.session_owner === null), 'CLI epicmaster : n\'a rien démarré');
+  const rj = runNode(BKLG, ['epicmaster', '--cwd', repoEm, '--json', '--skip', '2']);
+  let pj = null; try { pj = JSON.parse(rj.out); } catch (_) { /* null */ }
+  ok(pj && pj.launched === false && Array.isArray(pj.waves) && pj.blocked.some((x) => x.id === 5) && pj._lotsById === undefined && pj.handoff_written === null,
+    'CLI epicmaster --json : plan machine (sans champ interne), --skip appliqué, handoff non écrit');
+  ok(/Refusé : --master-effort invalide/.test(runNode(BKLG, ['epicmaster', '--cwd', repoEm, '--master-effort', 'max']).out), 'CLI epicmaster : effort maître invalide refusé');
+
+  // EM-9. --write-handoff : handoff MANUEL (marqueur), court (< cap d'injection), modèle à poser,
+  // prochaine action = /epicmaster ; lu par readHandoff comme manuel ; injecté au SessionStart.
+  const rw = runNode(BKLG, ['epicmaster', '--cwd', repoEm, '--epic', 'Auth', '--write-handoff']);
+  const hfEm = path.join(repoEm, '.vibe-agent', 'handoff.md');
+  ok(/Handoff maître écrit : \.vibe-agent\/handoff\.md/.test(rw.out) && fs.existsSync(hfEm), 'CLI epicmaster --write-handoff : fichier écrit et annoncé');
+  const hoText = fs.readFileSync(hfEm, 'utf8');
+  const handoffLib = require(path.join(PKG, 'lib', 'handoff'));
+  ok(hoText.startsWith(handoffLib.MANUAL_MARKER) && hoText.length < handoffLib.MAX_INJECT_CHARS, 'handoff maître : marqueur manuel en 1re ligne, sous le cap d\'injection');
+  ok(/SESSION MAÎTRE/.test(hoText) && /\/model opus/.test(hoText) && /\/epicmaster/.test(hoText) && /epic « Auth »/.test(hoText),
+    'handoff maître : modèle à poser, prochaine action /epicmaster, epic nommée');
+  ok(!/Règles :/.test(hoText), 'handoff maître : aucun brief de lot embarqué (régénérable à la demande)');
+  const rd = handoffLib.readHandoff(repoEm, 'sess-em');
+  ok(rd && rd.manual === true && /SESSION MAÎTRE/.test(rd.text), 'handoff maître : lu comme handoff manuel');
+  const ss = runHook('session-start.js', { session_id: 'sess-em-start', cwd: repoEm, source: 'startup', hook_event_name: 'SessionStart' });
+  ok(ss.code === 0 && /SESSION MAÎTRE/.test(ss.out), 'handoff maître : injecté au SessionStart de la session fraîche');
+  const rwEmpty = runNode(BKLG, ['epicmaster', '--cwd', repoEm, '--epic', 'Inexistante', '--write-handoff']);
+  ok(/NON écrit/.test(rwEmpty.out), 'CLI epicmaster --write-handoff : rien à embarquer -> handoff non écrit, annoncé');
+
+  // EM-10. --brief --id : brief autonome (modèle/effort, fait quand, verify, périmètre exclusif,
+  // règles « ne commite jamais », rapport borné) + commandes maître (start avant, commit/done après).
+  const rb = runNode(BKLG, ['epicmaster', '--cwd', repoEm, '--brief', '--id', '1']);
+  ok(/# Lot #1 « Auth core » — brief/.test(rb.out) && /model=opus, effort=high/.test(rb.out), 'brief : en-tête + modèle/effort pour l\'outil Agent');
+  ok(/Verify .*: npm test/.test(rb.out) && /Périmètre EXCLUSIF[^\n]*lib\/a\/\*\*/.test(rb.out), 'brief : verify + périmètre exclusif');
+  ok(/Ne commite JAMAIS/.test(rb.out) && new RegExp('≤ ' + em.REPORT_MAX_WORDS + ' mots').test(rb.out), 'brief : règles de contrat (pas de commit, rapport borné)');
+  ok(/start --id 1 --owner "master\/lot-1"/.test(rb.out) && /git add -- ':\(glob\)lib\/a\/\*\*'/.test(rb.out) && /done --id 1 --commit/.test(rb.out),
+    'brief : commandes maître — start (owner distinct), commit borné au périmètre, done');
+  const rb4 = runNode(BKLG, ['epicmaster', '--cwd', repoEm, '--brief', '--id', '4']);
+  ok(/Périmètre : aucun — tu es seul en vol/.test(rb4.out) && /git add -A/.test(rb4.out), 'brief : lot sans périmètre -> seul en vol, git add -A');
+  ok(/Refusé : le lot #6 est fait/.test(runNode(BKLG, ['epicmaster', '--cwd', repoEm, '--brief', '--id', '6']).out), 'brief : lot clos refusé');
+  ok(/Refusé : --brief exige --id/.test(runNode(BKLG, ['epicmaster', '--cwd', repoEm, '--brief']).out), 'brief : --id manquant refusé');
+
+  // EM-11. Owner distinct par lot : deux `start` consécutifs gardent les deux lots en cours
+  // (régime fleet de startLot) — sans owner distinct le 2e rétrograderait le 1er.
+  runNode(BKLG, ['start', '--cwd', repoEm, '--id', '1', '--owner', em.OWNER_PREFIX + '1']);
+  runNode(BKLG, ['start', '--cwd', repoEm, '--id', '2', '--owner', em.OWNER_PREFIX + '2']);
+  b = backlogLib.loadBacklog(repoEm);
+  ok(b.lots.filter((l) => l.status === 'in_progress').map((l) => l.id).join(',') === '1,2', 'EM-11 : deux lots en vol simultanés avec owners master/lot-N distincts');
+  const resumed = em.planMaster(repoEm, b, {});
+  ok(resumed.lots.some((l) => l.id === 1 && l.status === 'in_progress'), 'EM-11 : un lot en cours (session maître interrompue) est réembarqué');
+  ok(/⟳ en cours \(session master\/lot-1\) — sera repris/.test(runNode(BKLG, ['epicmaster', '--cwd', repoEm]).out), 'CLI epicmaster : lot en cours marqué « sera repris »');
+
+  // EM-12. Commandes : /epicmaster présente, requise au plugin ; /scope prépare la session maître
+  // et ne démarre plus de lot d'office ; skill à jour ; gabarit de handoff consolidé.
+  const cmdEm = fs.readFileSync(path.join(PKG, 'commands', 'epicmaster.md'), 'utf8');
+  ok(/^description: Session maître/m.test(cmdEm) && /Agent/.test(cmdEm.split('\n')[2]) && /--skip/.test(cmdEm) && /--brief --id/.test(cmdEm),
+    'commands/epicmaster.md : description, outil Agent autorisé, décochage, brief');
+  ok(/UNE\*\* question/.test(cmdEm) && /jamais plus de lots en vol/i.test(cmdEm) && /Arrête-toi/.test(cmdEm), 'commands/epicmaster.md : une question, parallélisme borné, arrêt à la borne');
+  ok(/'epicmaster\.md'/.test(fs.readFileSync(path.join(PKG, 'install', 'build-plugin.js'), 'utf8')), 'build-plugin : epicmaster.md requise au plugin');
+  const cmdScope = fs.readFileSync(path.join(PKG, 'commands', 'scope.md'), 'utf8');
+  ok(/epicmaster --epic "Nom de l'epic" --write-handoff/.test(cmdScope) && /Ne démarrer aucun lot dans cette session/.test(cmdScope),
+    'commands/scope.md : prépare la session maître (handoff écrit) et ne démarre plus de lot d\'office');
+  ok(!/3 choix/.test(cmdScope), 'commands/scope.md : l\'ancienne question à 3 choix a disparu (vagues calculées par epicmaster)');
+  ok(/## 2ter\. Session maître/.test(fs.readFileSync(path.join(REPO, 'skills', 'promptimizer', 'SKILL.md'), 'utf8')), 'SKILL.md : section session maître');
+  const tpl = fs.readFileSync(path.join(PKG, 'templates', 'epicmaster-handoff.md'), 'utf8');
+  ok(tpl.startsWith(handoffLib.MANUAL_MARKER) && /Dette consolidée/.test(tpl) && /À trancher/.test(tpl), 'templates/epicmaster-handoff.md : manuel, dette + à trancher');
+}
+
 // ============================ RÉSUMÉ ============================
 console.log(`\n${'='.repeat(50)}`);
 console.log(`Résultat : ${pass} OK · ${fail} échec(s)`);

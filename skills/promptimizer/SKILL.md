@@ -40,11 +40,22 @@ poser sur chaque lot via `--epic "<NomDePlan>"` : c'est lui qui nomme le plan da
 session (`[XXX · #Y] NomDePlan · Lot #X · résumé` — `#Y` = id backlog global, `Lot #X` = rang
 dans le plan). Sans nom de plan, la session s'affiche `[XXX · #Y] Session
 Libre · résumé`.
-Traiter **uniquement le premier lot** (ou les lots de la 1ʳᵉ vague retenus si une
-parallélisation a été choisie — `/scope` pense la parallélisation d'office : périmètre ou
-« série » motivé par lot, verdict de vagues toujours restitué, et l'utilisateur tranche
-tout parallèle / partiel / série). Le suivi est automatique ensuite : clôture au
-commit (hook Stop), avancement dans le handoff, réinjection au démarrage et après compaction.
+`/scope` pense la parallélisation d'office (périmètre ou « série » motivé par lot) et se
+termine **toujours** par la préparation de la **session maître** :
+`backlog.js epicmaster --epic "…" --write-handoff` calcule les vagues (périmètres disjoints en
+parallèle, lots sans périmètre seuls en vol), le parallélisme borné, le budget de contexte du
+maître et son modèle, puis écrit le handoff maître — la session de scope **ne démarre aucun
+lot**. La session fraîche suivante reçoit ce handoff et lance `/epicmaster`.
+
+## 2ter. Session maître (`/epicmaster`)
+Lance **tous les lots ouverts** du backlog (une epic ou plusieurs) en **sous-agents**, chacun au
+**modèle + effort préconisés** par le lot, après **une** confirmation (lots classés par epic,
+tous cochés, décochables : `--skip`). Vague par vague, jamais plus de sous-agents en vol que le
+parallélisme affiché ; le maître ne relit **jamais** la sortie brute d'un sous-agent (rapport
+≤ 250 mots, sections fixes), commite **par périmètre**, clôt (`done --verify-verdict`), et
+s'arrête à la borne « N lots par session maître » ou dès que le hook Stop prescrit une session
+fraîche — les lots restants restent ouverts, `/epicmaster` les reprend. Sortie : handoff
+consolidé (`templates/epicmaster-handoff.md`) avec **dette** et **à trancher**.
 
 **Règle de découpe** : 1 lot = 1 session sous ~300k tokens, 1 commit, un critère
 « fait quand : … » vérifiable. Un lot qui dépasse l'un de ces trois → le redécouper plutôt

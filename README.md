@@ -284,9 +284,21 @@ embarqué dans le plugin ; lance-le depuis le dépôt : `node promptimizer/insta
 
 ## Slash commands (secours)
 
-`/init` · `/scope` · `/parallelize` · `/reintegrate` · `/budget` · `/check-context` ·
+`/init` · `/scope` · `/epicmaster` · `/parallelize` · `/reintegrate` · `/budget` · `/check-context` ·
 `/close-batch` · `/fresh-session` · `/archive` · `/dashboard` · `/rtk` · `/about` · `/help` ·
 `/statusline`
+
+`/epicmaster` **(session maître)** lance **tous les lots ouverts** du backlog — une epic ou
+plusieurs — en **sous-agents**, chacun au **modèle + effort préconisés** par le lot, après **une**
+confirmation (lots classés par epic, **tous cochés par défaut**, décochables). Le plan est calculé par
+`backlog.js epicmaster` : vagues (périmètres disjoints en parallèle, lots sans périmètre seuls en
+vol), **parallélisme borné** (plafond 4, réglable) **et** budget de contexte du maître (au plus N lots
+par session maître, découpe en sessions successives au-delà), modèle préconisé pour le maître
+lui-même. Le maître ne relit jamais la sortie brute d'un sous-agent (rapport ≤ 250 mots, sections
+fixes), commite **par périmètre**, clôt chaque lot avec verdict de verify persisté, et termine par
+un **handoff consolidé** portant la **dette** et ce qui reste **à trancher**. `/scope` se termine
+**systématiquement** par la préparation de cette session maître (handoff maître écrit, injecté à la
+session fraîche suivante) et ne démarre plus de lot lui-même.
 
 `/about` affiche la version installée de PMZ (`promptimizer/VERSION`, historisée dans
 `CHANGELOG.md` à chaque évolution) ainsi que l'epic et le lot en cours du projet courant.

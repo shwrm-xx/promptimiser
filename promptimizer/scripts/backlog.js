@@ -482,6 +482,61 @@ function fleetCmd(root, sub, json) {
   return out(`Sous-commande fleet inconnue : ${sub}. Sous-commandes : join | ready | leave | show.`);
 }
 
+// pmz:epicmaster (lot #133) — plan de SESSION MAÎTRE : lots ouverts (todo + in_progress) groupés
+// par epic, vagues « maître » (périmètres disjoints ; lot sans périmètre = seul en vol, en série),
+// parallélisme borné (plafond + budget de contexte du maître), modèle/effort préconisés pour la
+// session maître elle-même. PROPOSE seulement — rien démarré, aucun sous-agent lancé. Options :
+//   --epic "…"            ne garder que cet epic        --only 1,2 / --skip 3   cocher/décocher
+//   --max-parallel N      plafond de sous-agents en vol  --master-model/--master-effort
+//   --write-handoff       pose le handoff maître dans .vibe-agent/handoff.md (--handoff-file <chemin>)
+//   --brief --id N        brief autonome d'UN lot, à coller dans le prompt du sous-agent
+//   --json                plan machine
+function epicmaster(root, json) {
+  const em = require('../lib/epicmaster');
+  const b = backlog.loadBacklog(root);
+  const opts = {
+    epic: flag('epic'), only: flagList('only'), skip: flagList('skip'),
+    maxParallel: flag('max-parallel'), masterModel: flag('master-model'), masterEffort: flag('master-effort'),
+  };
+  if (opts.masterEffort && !backlog.EFFORT_LEVELS.includes(opts.masterEffort)) {
+    return out(`Refusé : --master-effort invalide (« ${opts.masterEffort} »). Valeurs acceptées : ${backlog.EFFORT_LEVELS.join(' | ')}.`);
+  }
+  if (process.argv.includes('--brief')) {
+    const rawId = flag('id');
+    const l = b.lots.find((x) => x.id === Number(rawId));
+    if (rawId == null || !l) return out(`Refusé : --brief exige --id d'un lot existant (reçu : ${rawId == null ? 'aucun' : rawId}).`);
+    if (!(l.status === 'todo' || l.status === 'in_progress')) return out(`Refusé : le lot #${l.id} est ${LABELS[l.status]} — pas de brief pour un lot fermé.`);
+    out(em.renderBrief(l, b, PMZ_BASE));
+    out('');
+    out('Côté maître, AVANT de lancer le sous-agent :');
+    out(`  ${em.launchCommand(l, PMZ_BASE)}`);
+    out('Côté maître, à la réception du rapport (verify verte seulement, dans cet ordre) :');
+    for (const c of em.closeCommands(l, PMZ_BASE)) out(`  ${c}`);
+    return;
+  }
+  const plan = em.planMaster(root, b, opts);
+  let handoffPath = null;
+  if (process.argv.includes('--write-handoff')) {
+    if (!plan.lots.length) {
+      if (!json) out('Aucun lot à embarquer : handoff maître NON écrit (rien à préparer).');
+    } else {
+      const text = em.renderMasterHandoff(plan, { epic: opts.epic, pmzBase: PMZ_BASE });
+      const target = flag('handoff-file') ? path.resolve(root, flag('handoff-file')) : null;
+      handoffPath = em.writeMasterHandoff(root, text, target);
+    }
+  }
+  if (json) {
+    const { _lotsById, ...rest } = plan;
+    return out(JSON.stringify(Object.assign(rest, { handoff_written: handoffPath ? path.relative(root, handoffPath) : null }), null, 2));
+  }
+  out(em.renderPlan(plan, b, PMZ_BASE));
+  if (process.argv.includes('--write-handoff') && plan.lots.length) {
+    out(handoffPath
+      ? `Handoff maître écrit : ${path.relative(root, handoffPath)} — injecté automatiquement au démarrage de la prochaine session fraîche (pose-y le modèle ${plan.master.model}).`
+      : 'Refusé : écriture du handoff maître impossible (droits ? .vibe-agent absent ?).');
+  }
+}
+
 function main() {
   const root = gitRoot(parseCwd());
   if (!root) return out('Pas un dépôt git — backlog indisponible.');
@@ -791,6 +846,8 @@ function main() {
 
   if (cmd === 'parallelize') return parallelize(root, json, flag('epic'));
 
+  if (cmd === 'epicmaster') return epicmaster(root, json);
+
   if (cmd === 'fleet') return fleetCmd(root, sub, json);
 
   if (cmd === 'reintegrate') {
@@ -807,7 +864,7 @@ function main() {
     return;
   }
 
-  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | reopen | depends | next | parallelize | fleet <join|ready|leave|show> | reintegrate | reconcile | epic | verify | us | trigram | export.`);
+  out(`Commande inconnue : ${cmd}. Commandes : show | add | start | done | drop | note | reopen | depends | next | parallelize | epicmaster | fleet <join|ready|leave|show> | reintegrate | reconcile | epic | verify | us | trigram | export.`);
 }
 
 if (require.main === module) {
