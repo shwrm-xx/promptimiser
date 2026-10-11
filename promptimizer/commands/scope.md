@@ -1,0 +1,93 @@
+---
+description: Découpe une grosse demande en 2-5 lots persistés (.vibe-agent/backlog.json)
+allowed-tools: Bash(node *), Bash(git *)
+---
+
+Découpe la demande courante en un plan de lots persistant.
+
+Rappel de découpe : **1 lot = 1 session sous ~300k tokens, 1 commit, un critère « fait
+quand : … » vérifiable** — au-delà, redécouper plutôt que grossir un lot.
+
+Étapes :
+1. Reformuler la demande en **2 à 5 lots** : un titre court + un critère « fait quand : … »
+   par lot. Un lot = une **unité livrable** (1 commit cohérent), pas une étape d'exécution
+   (les étapes fines restent dans la todo-list, capturée automatiquement).
+   Pour **chaque** lot, préconiser un **modèle** (ex. `sonnet` pour du mécanique/CRUD,
+   `opus` pour du raisonnement lourd/archi) **et un effort de raisonnement**
+   (`low` | `medium` | `high` | `xhigh`) — les deux sont obligatoires, jamais omis.
+   Si ce découpage porte une **feature/epic** identifiable, proposer aussi un **nom de plan
+   court (≤ 3 mots, cap 60 caractères)** — c'est lui qui nomme le plan dans le titre de
+   session (`[XXX · #Y] NomDePlan · Lot #X · résumé` — `#Y` = id backlog global, `Lot #X` = rang
+   du lot dans le plan) ; sinon l'omettre (epic = label optionnel, la session s'affichera
+   `[XXX · #Y] Session Libre · résumé`).
+   **Penser la parallélisation d'office** : pour **chaque** lot, statuer explicitement —
+   soit un **périmètre** proposé (globs de chemins que ce lot a le droit de modifier),
+   soit « série » avec la raison en quelques mots (périmètre incertain, chevauchement
+   inévitable avec un autre lot, ordre imposé…). Jamais de silence sur ce point ; le
+   garde-fou anti-invention demeure : ne **jamais** deviner un périmètre incertain — au
+   doute, « série » assumé et annoncé (le lot reste périmètre-vide, séquentiel classique).
+   Si un ordre s'impose entre lots, poser un `depends_on` (id des lots qui doivent être
+   clos avant).
+   **Statuer aussi sur l'US** pour **chaque** lot : soit un chemin de fichier US existant,
+   soit « pas d'US » assumé, soit une US **à créer** — dans ce dernier cas, **rédiger tout de
+   suite** son contenu (gabarit `templates/us-template.md` : récit persona/besoin/bénéfice,
+   critères d'acceptation numérotés et vérifiables, hors-périmètre **et pourquoi**) à partir de
+   la demande, pour validation à l'étape 2 en même temps que le découpage. Jamais de silence sur
+   ce point, même règle que le périmètre. Ne **jamais** deviner ou halluciner un chemin de
+   fichier existant, ni inventer un critère hors de ce que la demande couvre.
+2. Faire valider le découpage, les modèles préconisés, l'epic éventuel, le périmètre/les
+   dépendances proposés, **le statut US de chaque lot et le contenu rédigé des US à créer**
+   par l'utilisateur en **UNE** question (pas dix).
+3. Si un epic a été validé, l'enregistrer — **toujours**, même s'il était déjà posé par un
+   découpage précédent : `node ${CLAUDE_PLUGIN_ROOT}/scripts/backlog.js epic --set "Nom de l'epic"`
+   (écrit `.vibe-agent/epic`, cap 60 caractères). C'est aussi ce qui marque la session courante
+   comme **session de conception** : la session suivante la titrera `[XXX · Plan] Nom de l'epic`.
+4. Persister chaque lot validé (un appel par lot), avec sa préconisation de modèle, son
+   effort, si présent l'epic, et si validé son périmètre/ses dépendances :
+   `node ${CLAUDE_PLUGIN_ROOT}/scripts/backlog.js add --title "…" --scope "fait quand : …" --model sonnet --effort medium --verify "npm test" --epic "Nom de l'epic" --perimeter "src/a/**" --depends 12 --us "docs/us/US-42.md"`
+   (`--model` est **obligatoire** — l'ajout est refusé sans lui ; `--effort` doit valoir
+   `low`/`medium`/`high`/`xhigh` sinon l'ajout est refusé ; `--epic` reste optionnel ;
+   `--perimeter`/`--depends` répétables, optionnels, omis si aucun périmètre net).
+   **`--verify` dès que le lot est vérifiable par une commande** (test, typecheck, build,
+   lint…) : c'est la preuve rejouée à l'auto-clôture. Un lot posé sans elle sera « clos sans
+   preuve » — à réserver aux lots réellement non vérifiables par commande (doc, choix visuel).
+   Elle est éditable après coup : `backlog.js verify --set "…" --id <id>`.
+   **`--us` uniquement si le fichier existe déjà** : l'ajout est **refusé** si le chemin est
+   introuvable (garde d'existence, aucun pointeur mort accepté) ; omis si l'US n'a pas été
+   statuée à l'étape 1. Pour un lot dont l'US a été rédigée et validée à l'étape 2 mais
+   **pas encore écrite** : `backlog.js us --id <id> --new` (pose `docs/us/US-<id>.md` depuis le
+   gabarit et rattache le pointeur ; refuse d'écraser un fichier existant), puis **écrire
+   aussitôt** (outil Edit) le contenu rédigé et validé dans ce fichier, à la place des
+   placeholders du gabarit.
+   Un fichier US déjà écrit ailleurs se rattache après coup : `backlog.js us --id <id> --set
+   "docs/us/US-42.md"`.
+5. **Préparer la session maître — systématique, dès qu'un lot est persisté** :
+   `node ${CLAUDE_PLUGIN_ROOT}/scripts/backlog.js epicmaster --epic "Nom de l'epic" --write-handoff`
+   (sans `--epic` si aucun n'a été posé). Le script calcule et le handoff maître est **écrit**
+   dans `.vibe-agent/handoff.md` (marqueur manuel) — il sera **injecté automatiquement** au
+   démarrage de la prochaine session fraîche. Restituer la sortie **telle quelle**, sans la
+   paraphraser : lots embarqués par epic (tous cochés), **vagues** (périmètres disjoints en
+   parallèle, lots sans périmètre seuls en vol — le calcul de parallélisation est fait là,
+   `/parallelize` n'a plus à être appelé ici), **parallélisme max**, **budget de contexte** du
+   maître (au plus N lots par session maître, nombre de sessions maîtres si le plan dépasse) et
+   **modèle · effort préconisés pour la session maître**. Le verdict de parallélisation est
+   **toujours visible** — jamais de silence ; n'invente aucune vague absente de la sortie.
+6. **Ne démarrer aucun lot dans cette session** : elle est une session de conception (titrée
+   `[XXX · Plan] Nom de l'epic`). Conclure en **trois lignes** : (1) « ouvre une session fraîche
+   avec `/model <modèle maître>` » ; (2) « le handoff maître y sera injecté ; lance `/epicmaster`
+   (ou `/pmz:epicmaster`) : il confirme la liste des lots — tous cochés, décochables — puis lance
+   chaque lot en sous-agent au modèle préconisé et consolide dette / à trancher en handoff » ;
+   (3) le nombre de sessions maîtres prévu si > 1.
+   **Exception, sur demande explicite seulement** : si l'utilisateur veut traiter le 1ᵉʳ lot
+   lui-même ici, ou ouvrir de vraies sessions filles (vague D3, `/parallelize` + `fleet join`),
+   `backlog.js start --id <id>` comme avant et ne traiter **que** ce lot. Le handoff maître
+   écrit à l'étape 5 reste valable pour les lots restants.
+
+Le suivi est ensuite automatique : la session maître clôt chaque lot au commit
+(`done --verify-verdict`), le handoff porte l'avancement (x/y faits), le plan est réinjecté au
+démarrage suivant et après compaction. Hors session maître, le hook Stop clôt le lot au commit
+et `/close-batch` le marque fait s'il ne l'a pas déjà fait.
+
+La préconisation de modèle et l'effort sont **réaffichés** à chaque `show`/`start`/`next`
+et dans le handoff auto (`[modèle : … · effort …]`) — pense à basculer de modèle/effort
+avant d'attaquer un lot.

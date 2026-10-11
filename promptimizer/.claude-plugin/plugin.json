@@ -1,0 +1,20 @@
+{
+  "name": "pmz",
+  "version": "2.7.1",
+  "description": "Promptimizer — gouvernance de session vibecoding (Claude Code) : réduit la relecture de contexte, force une clôture propre des lots, injecte les handoffs entre sessions.",
+  "author": {
+    "name": "Marwan"
+  },
+  "homepage": "https://github.com/shwrm-xx/promptimiser",
+  "repository": "https://github.com/shwrm-xx/promptimiser",
+  "license": "MIT",
+  "keywords": [
+    "session",
+    "contexte",
+    "tokens",
+    "handoff",
+    "gouvernance",
+    "vibecoding"
+  ],
+  "types": "./types/index.d.ts"
+}

@@ -1,0 +1,77 @@
+agent:
+  name: promptimizer
+  primary_objective: reduce_context_reread_cost
+  secondary_objective: close_batches_cleanly
+
+budget:
+  # DEUX signaux de coût cohabitent, ils ne mesurent pas la même chose : l'occupation du
+  # contexte en TOKENS (paliers dans lib/occupancy.js : 150k/300k/500k/750k puis +250k) dit
+  # la saturation ; le nombre de TOURS dit le coût cumulé — et c'est lui qui commande, le coût
+  # croissant en tours^1,66 à ^1,98 (mesuré, cf. lib/turnbudget.js).
+  # Seuls les scalaires NUMÉRIQUES de ce bloc sont exécutables (lib/rules.js, lecteur
+  # stdlib volontairement borné) ; le reste du fichier est lu par le modèle, pas par du code.
+  max_repeated_reads_per_file: 1   # documentaire : relecture complète d'un fichier inchangé = gaspillage
+
+  # BUDGET DE TOURS (lot #124) — ACTIF PAR DÉFAUT : ces clés ne l'allument pas, elles le
+  # déplacent (défauts codés en dur, comme les paliers d'occupation). Au 1er seuil le Stop
+  # rappelle (⚠) ; au 2nd il prescrit la session fraîche (⛔) ET le hook UserPromptSubmit
+  # injecte la consigne à Claude, puis rappel tous les +10 tours.
+  # Bornes acceptées : 3 à 500 ; hors bornes -> clé ignorée, défaut gardé.
+  # warn_after_session_turns: 12             # défaut : 12 tours
+  # recommend_fresh_session_after_turns: 20  # défaut : 20 tours
+  # Éteindre le budget de tours : AUCUN nombre ne le peut (0 est hors bornes, donc ignoré, donc
+  # retour au défaut). Une seule clé le fait, explicitement — off | false | no | none | disabled :
+  # turn_budget: off
+
+  # FREIN SUR LA SORTIE RELUE (lot #125) — ACTIF PAR DÉFAUT : nudge ⚠ 1×/session quand la
+  # sortie cumulée de la fenêtre de tours ET sa moyenne par tour dépassent toutes deux leur
+  # seuil (une sortie longue est réinjectée dans le contexte à chaque tour suivant).
+  # Bornes acceptées : 5000 à 2000000 (cumul), 200 à 50000 (moyenne/tour).
+  # warn_after_output_tokens: 30000       # défaut : 30000 tokens cumulés
+  # warn_after_output_per_turn: 1500      # défaut : 1500 tokens/tour
+  # Éteindre ce frein : off | false | no | none | disabled (même contrat que turn_budget) :
+  # output_budget: off
+
+  # BORNE D'OCCUPATION (lot #112) — au franchissement, le hook Stop prescrit la clôture,
+  # y compris EN MILIEU DE LOT (commit intermédiaire + /fresh-session), avec l'occupation
+  # courante et le coût comparé d'une compaction.
+  # Décommenter UNE des deux clés pour poser la borne ; sans elles, PMZ garde son seuil
+  # historique = 85 % de la fenêtre du modèle (soit ~850k sur une fenêtre de 1M — un
+  # chiffre qu'une session atteint rarement, donc une borne qui ne mord quasiment jamais).
+  # `red_zone_tokens` gagne sur `red_zone_ratio` si les deux sont posées.
+  # red_zone_tokens: 350000   # borne absolue en tokens
+  # red_zone_ratio: 0.35      # ou : fraction de la fenêtre du modèle (0 < r <= 1)
+
+  # BUDGET DE LA VERIFY DE CLÔTURE (lot #120) — délai laissé à la commande `verify` du lot
+  # quand elle est rejouée par /close-batch ou par `backlog.js done` (jamais par un hook :
+  # l'auto-clôture garde son délai court, non réglable). Sans cette clé : 300 s.
+  # À poser si la suite du dépôt s'en approche : une suite verte qui dépasse le budget est
+  # rendue « timeout » et PERSISTÉE telle quelle (closed_verify), donc une preuve de clôture
+  # faussée. Bornes acceptées : 1000 à 3600000 ms ; hors bornes -> clé ignorée, défaut gardé.
+  # verify_close_ms: 600000   # 10 min
+
+context_policy:
+  prefer:
+    - git_status
+    - git_diff
+    - git_grep
+    - partial_read
+    - local_summary
+  avoid:
+    - full_file_reread
+    - broad_project_scan
+    - exhaustive_visual_recapture
+    - long_handoff
+    - duplicated_rules
+  exceptions:
+    - file_changed_since_last_read
+    - previous_read_was_partial
+    - exact_content_required_for_bug
+    - user_explicitly_requests_full_review
+
+closure_policy:
+  one_batch_equals_one_commit: true
+  require_changelog: true
+  require_targeted_verification: true
+  require_unverified_items: true
+  recommend_fresh_session_after_commit: true
